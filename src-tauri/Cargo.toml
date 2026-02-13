@@ -1,0 +1,61 @@
+[package]
+name = "snipjet-backend"
+version = "0.1.0"
+description = "SnipJet clipboard manager backend"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.77.2"
+
+[package.metadata]
+name = "SnipJet"
+description = "Advanced clipboard manager"
+authors = ["you"]
+category = "utilities"
+license = "MIT"
+repository = ""
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+path = "src/lib.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.5.4", features = [] }
+
+[dependencies]
+regex = "1"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.10.0", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+clipboard-rs = "0.3.2"
+image = "0.24"       # 用于处理图片对象
+base64 = "0.21"      # 用于将图片转字符串
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+rdev = "0.5"       # 用于监听点击外部
+enigo = "0.1.3"      # 用于方便地输出文本
+env_logger = "0.10"   # 用于日志初始化
+serde_yaml = "0.9"    # 用于解析YAML文件
+nanohtml2text = "0.1"
+tauri-plugin-fs = "2.4.5"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# 仅在Windows平台下添加windows依赖
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi", # 用于获取鼠标位置和屏幕坐标计算
+] }
+
+[[bin]]
+name = "snipjet"
+path = "src/main.rs"

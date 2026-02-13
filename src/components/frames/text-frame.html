@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      /* --- 基础样式 --- */
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+
+      /* --- TextFrame 组件样式 --- */
+      .text-frame {
+        position: relative; /* 关键：为绝对定位的图标和弹窗提供锚点 */
+        width: 100%;
+        max-width: 800px;
+        height: 400px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        overflow: hidden; /* 防止内容溢出圆角 */
+      }
+
+      /* 编辑区域 */
+      .text-content {
+        width: 100%;
+        height: 100%;
+        padding: 20px;
+        box-sizing: border-box;
+        outline: none;
+        overflow-y: auto;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre-wrap; /* 保留换行 */
+      }
+
+      /* --- 功能图标 (Common) --- */
+      .tf-icon-btn {
+        position: absolute;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        cursor: pointer;
+        color: #666;
+        opacity: 0; /* 默认隐藏 */
+        transition: all 0.2s ease;
+        z-index: 10;
+      }
+
+      .tf-icon-btn:hover {
+        background: #f0f7ff;
+        color: #007bff;
+        border-color: #007bff;
+      }
+
+      /* 仅在悬停 .text-frame 时显示图标 */
+      .text-frame:hover .tf-icon-btn {
+        opacity: 1;
+      }
+
+      /* 位置定义 */
+      .btn-trim {
+        top: 12px;
+        right: 12px;
+      }
+      .btn-copy {
+        bottom: 12px;
+        right: 12px;
+      }
+
+      /* SVG 图标大小 */
+      .tf-icon-btn svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      /* --- 弹窗 (Modal) --- */
+      .tf-modal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.6); /* 浅色蒙版 */
+        backdrop-filter: blur(2px); /* 毛玻璃效果 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+        opacity: 0;
+        pointer-events: none; /* 隐藏时不阻挡点击 */
+        transition: opacity 0.2s;
+      }
+
+      .tf-modal-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .tf-modal-content {
+        background: #fff;
+        width: 280px;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        border: 1px solid #eee;
+        transform: translateY(10px);
+        transition: transform 0.2s;
+      }
+
+      .tf-modal-overlay.active .tf-modal-content {
+        transform: translateY(0);
+      }
+
+      .tf-modal-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: #333;
+      }
+
+      /* Checkbox 样式 */
+      .tf-checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .tf-checkbox-label {
+        display: flex;
+        align-items: center;
+        font-size: 13px;
+        color: #555;
+        cursor: pointer;
+      }
+
+      .tf-checkbox-label input {
+        margin-right: 8px;
+        accent-color: #007bff;
+      }
+
+      /* 按钮组 */
+      .tf-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .tf-btn {
+        padding: 6px 16px;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        border: none;
+        transition: background 0.2s;
+      }
+
+      .tf-btn-cancel {
+        background: #f5f5f5;
+        color: #666;
+      }
+      .tf-btn-cancel:hover {
+        background: #e0e0e0;
+      }
+
+      .tf-btn-confirm {
+        background: #007bff;
+        color: white;
+      }
+      .tf-btn-confirm:hover {
+        background: #0056b3;
+      }
+
+      /* 复制成功提示 */
+      .copy-toast {
+        position: absolute;
+        bottom: 50px;
+        right: 12px;
+        background: #333;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+      .copy-toast.show {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="my-text-frame" class="text-frame">
+      <div class="text-content">
+        这里是一段测试文本... 包含 markdown **加粗** 和 空行。 以及 连续的
+        空格。 english punctuation, like this.
+      </div>
+
+      <div class="tf-icon-btn btn-trim" title="格式化文本">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </div>
+
+      <div class="tf-icon-btn btn-copy" title="复制内容">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path
+            d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+          ></path>
+        </svg>
+      </div>
+      <div class="copy-toast">已复制</div>
+
+      <div class="tf-modal-overlay">
+        <div class="tf-modal-content">
+          <div class="tf-modal-title">文本格式化</div>
+          <div class="tf-checkbox-group">
+            <label class="tf-checkbox-label">
+              <input type="checkbox" value="clean_spaces" /> 1.
+              替换连续空行和连续空格
+            </label>
+            <label class="tf-checkbox-label">
+              <input type="checkbox" value="remove_empty_lines" /> 2. 删除空行
+            </label>
+            <label class="tf-checkbox-label">
+              <input type="checkbox" value="remove_spaces" /> 3. 删除所有空格
+            </label>
+            <label class="tf-checkbox-label">
+              <input type="checkbox" value="remove_markdown" /> 4. 删除 Markdown
+              标记
+            </label>
+            <label class="tf-checkbox-label">
+              <input type="checkbox" value="to_chinese_punct" /> 5.
+              批量替换为中文标点
+            </label>
+          </div>
+          <div class="tf-modal-actions">
+            <button class="tf-btn tf-btn-cancel">取消</button>
+            <button class="tf-btn tf-btn-confirm">确认</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      class TextFrame {
+        constructor(element, options = {}) {
+          this.element = element;
+          this.options = {
+            editable: true,
+            onChange: null,
+            ...options,
+          };
+
+          this.init();
+        }
+
+        init() {
+          // 1. 获取 DOM 元素
+          this.contentElement = this.element.querySelector(".text-content");
+          this.trimBtn = this.element.querySelector(".btn-trim");
+          this.copyBtn = this.element.querySelector(".btn-copy");
+          this.modalOverlay = this.element.querySelector(".tf-modal-overlay");
+          this.cancelBtn = this.element.querySelector(".tf-btn-cancel");
+          this.confirmBtn = this.element.querySelector(".tf-btn-confirm");
+          this.toast = this.element.querySelector(".copy-toast");
+
+          // 设置可编辑性
+          this.contentElement.contentEditable = this.options.editable;
+
+          // 2. 绑定事件
+          this.bindEvents();
+        }
+
+        bindEvents() {
+          // 内容变更回调
+          this.contentElement.addEventListener("blur", () => {
+            if (this.options.onChange)
+              this.options.onChange(this.contentElement.textContent);
+          });
+
+          // 打开 Trim 弹窗
+          this.trimBtn.addEventListener("click", () => {
+            this.openModal();
+          });
+
+          // 关闭 Trim 弹窗
+          this.cancelBtn.addEventListener("click", () => {
+            this.closeModal();
+          });
+
+          // 确认 Trim 操作
+          this.confirmBtn.addEventListener("click", () => {
+            this.applyTrim();
+            this.closeModal();
+          });
+
+          // 复制功能
+          this.copyBtn.addEventListener("click", async () => {
+            const text = this.contentElement.textContent;
+            try {
+              await navigator.clipboard.writeText(text);
+              this.showToast();
+            } catch (err) {
+              console.error("复制失败:", err);
+            }
+          });
+        }
+
+        openModal() {
+          this.modalOverlay.classList.add("active");
+          this.element.dataset.editing = "true"; // 可用于额外的 CSS 控制
+        }
+
+        closeModal() {
+          this.modalOverlay.classList.remove("active");
+          delete this.element.dataset.editing;
+        }
+
+        showToast() {
+          this.toast.classList.add("show");
+          setTimeout(() => this.toast.classList.remove("show"), 2000);
+        }
+
+        // --- 核心逻辑：应用文本清洗 ---
+        applyTrim() {
+          const checkboxes = this.element.querySelectorAll(
+            ".tf-checkbox-group input:checked",
+          );
+          let text = this.contentElement.textContent; // 使用 textContent 获取纯文本，如果需要保留 HTML 需改用 innerHTML
+
+          checkboxes.forEach((cb) => {
+            switch (cb.value) {
+              case "clean_spaces":
+                // 替换连续空格为一个空格，替换连续换行为一个换行
+                text = text.replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n");
+                break;
+
+              case "remove_empty_lines":
+                // 删除所有空行
+                text = text.replace(/^\s*[\r\n]/gm, "");
+                break;
+
+              case "remove_spaces":
+                // 删除所有空格（保留换行）
+                text = text.replace(/[ \t]/g, "");
+                break;
+
+              case "remove_markdown":
+                // 简单的 Markdown 清除正则
+                text = text
+                  .replace(/(\*\*|__)(.*?)\1/g, "$2") // 粗体
+                  .replace(/(\*|_)(.*?)\1/g, "$2") // 斜体
+                  .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // 链接 [text](url) -> text
+                  .replace(/[#]{1,6}\s/g, "") // 标题 #
+                  .replace(/`{1,3}(.*?)`{1,3}/g, "$1"); // 代码块
+                break;
+
+              case "to_chinese_punct":
+                // 英文标点转中文
+                const map = {
+                  ",": "，",
+                  ".": "。",
+                  "?": "？",
+                  "!": "！",
+                  ":": "：",
+                  ";": "；",
+                  "(": "（",
+                  ")": "）",
+                  '"': "”",
+                  "'": "’",
+                };
+                // 简单的字符映射
+                text = text.replace(/[,.?\!:;()"'`]/g, (m) => map[m] || m);
+                // 修复：如果不小心把数字里的小数点替换了 (如 3.14 -> 3。14)，可以用更复杂的正则回退，或者简单处理
+                // 这里为了演示简单逻辑，暂不处理复杂的数字保护
+                break;
+            }
+          });
+
+          this.contentElement.textContent = text;
+
+          // 触发回调
+          if (this.options.onChange) this.options.onChange(text);
+        }
+      }
+
+      // 初始化组件
+      const frame = new TextFrame(document.getElementById("my-text-frame"), {
+        onChange: (val) =>
+          console.log("内容已更新:", val.substring(0, 20) + "..."),
+      });
+    </script>
+  </body>
+</html>

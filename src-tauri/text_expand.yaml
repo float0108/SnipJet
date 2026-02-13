@@ -1,0 +1,25 @@
+# 文本扩展规则配置文件
+# 格式：
+# rules:
+#   - key: 触发词
+#     content: 替换文本
+#     group: 分组
+#     description: 描述
+#     date: 创建日期
+
+rules:
+  - key: ":te"
+    content: "textexpand"
+    group: "default"
+    description: "示例扩展规则"
+    date: "2026-02-12"
+  - key: ":hello"
+    content: "Hello, World!"
+    group: "greeting"
+    description: "问候语"
+    date: "2026-02-12"
+  - key: ":time"
+    content: "当前时间："
+    group: "system"
+    description: "插入当前时间"
+    date: "2026-02-12"

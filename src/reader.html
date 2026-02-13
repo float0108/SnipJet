@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnipJet - 内容查看器</title>
+    <link rel="stylesheet" href="./common/style.css" />
+    <link rel="stylesheet" href="./views/reader/reader.css" />
+    <link rel="stylesheet" href="./components/frames/text-frame.css" />
+    <link rel="stylesheet" href="./components/frames/preview-frame.css" />
+    <link rel="stylesheet" href="./common/icon.css" />
+    <script type="module" src="./views/reader/reader.js"></script>
+  </head>
+  <body class="reader-body">
+    <div class="reader-container">
+      <div class="header">
+        <div class="header-top">
+          <h1>剪贴板内容</h1>
+          <div class="header-actions">
+            <div id="view-toggle" class="view-toggle" style="display: none">
+              <button
+                class="toggle-btn active"
+                data-mode="render"
+                onclick="switchMode('render')"
+              >
+                预览
+              </button>
+              <button
+                class="toggle-btn"
+                data-mode="text"
+                onclick="switchMode('text')"
+              >
+                纯文本
+              </button>
+              <button
+                class="toggle-btn"
+                data-mode="source"
+                onclick="switchMode('source')"
+              >
+                源码
+              </button>
+            </div>
+            <button class="window-close-btn" onclick="closeWindow()">
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="meta">
+          <span class="type" id="meta-type"></span>
+          <span class="divider">|</span>
+          <span class="size" id="meta-size"></span>
+          <span class="divider">|</span>
+          <span class="time" id="meta-time"></span>
+        </div>
+      </div>
+
+      <div id="content-container" class="content-container">
+        <!-- 文本框架组件 - 纯文本模式 -->
+        <div
+          id="text-fallback"
+          class="text-frame mode-text ghost-scrollbar"
+          style="display: none"
+        >
+          <div
+            class="text-content"
+            contenteditable="true"
+            onblur="saveTextContent(this)"
+          ></div>
+        </div>
+
+        <iframe
+          id="html-frame"
+          class="content-frame"
+          style="display: none"
+          sandbox="allow-same-origin allow-scripts"
+        ></iframe>
+
+        <!-- 文本框架组件 - 源码模式 -->
+        <div
+          id="source-view"
+          class="text-frame mode-source ghost-scrollbar"
+          contenteditable="true"
+          style="display: none"
+        >
+          <div class="text-content"></div>
+        </div>
+      </div>
+
+      <div class="bottom-buttons">
+        <div class="navigation-buttons">
+          <button class="nav-btn prev-btn" onclick="navigateToPrevious()">
+            <span class="icon icon-prev"></span>
+            上一个
+          </button>
+          <button class="nav-btn next-btn" onclick="navigateToNext()">
+            下一个
+            <span class="icon icon-next"></span>
+          </button>
+        </div>
+        <div class="button-group">
+          <button class="action-btn favorite-btn" onclick="addToFavorites()">
+            <span class="icon icon-favorite-solid"></span>
+            添加到收藏
+          </button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

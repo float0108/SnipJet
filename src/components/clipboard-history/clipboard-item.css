@@ -1,0 +1,161 @@
+/* --- 卡片主体 --- */
+.clipboard-item {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    /* 稍微减小圆角，更干练 */
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* 统一内部间距 */
+    cursor: pointer;
+    position: relative;
+    /* 为绝对定位做参照 */
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    /* 移除 min-height，允许更紧凑 */
+    font-family: var(--font-family);
+    font-size: 14px;
+}
+
+.clipboard-item:hover {
+    background: var(--bg-surface);
+    /* 保持背景，或者非常淡的 hover */
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    /* 更柔和的投影 */
+    transform: translateY(-2px);
+    z-index: 10;
+}
+
+/* --- 内容区域 (核心) --- */
+.item-body {
+    flex: 1;
+    width: 100%;
+}
+
+.item-preview {
+    font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+    font-size: 13px;
+    /* 保持可读性 */
+    line-height: 1.5;
+    color: var(--text-primary);
+    font-family: var(--font-family);
+
+    /* 文本截断优化 */
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+
+    /* 根据需要调整行数 */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+/* 针对图片内容的特殊处理 (如果有) */
+.item-preview img {
+    max-height: 120px;
+    width: auto;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+/* --- 底部元数据栏 (整合了原来的 Header 和 Footer) --- */
+.item-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+/* 类型标签 - 胶囊样式 */
+.badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.3px;
+    background: var(--bg-hover);
+    /* 默认灰色背景，不抢眼 */
+    color: var(--text-secondary);
+    font-family: var(--font-family);
+
+}
+
+/* 特定类型的颜色微调，但不要太刺眼 */
+.type-html {
+    color: #0284c7;
+    background: rgba(2, 132, 199, 0.08);
+}
+
+.type-image {
+    color: #9333ea;
+    background: rgba(147, 51, 234, 0.08);
+}
+
+.type-text {
+    font-family: var(--font-family);
+
+    /* 保持默认或微调 */
+}
+
+/* 时间信息 */
+.timestamp {
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-family);
+
+    /* 数字等宽，对齐更整齐 */
+}
+
+/* --- 悬浮操作栏 (绝对定位) --- */
+.item-actions-overlay {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+
+    /* 默认隐藏 */
+    opacity: 0;
+    transform: scale(0.95);
+    transition: all 0.2s ease;
+
+    /* 增加背景模糊或渐变，防止文字干扰 */
+    background: var(--bg-surface);
+    padding: 2px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.clipboard-item:hover .item-actions-overlay {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.card-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.card-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.card-btn.btn-delete:hover {
+    background: #fee2e2;
+    color: #ef4444;
+}

@@ -1,0 +1,56 @@
+/* =========================================
+   预览框架组件样式 (Preview Frame Component)
+   ========================================= */
+
+/* --- 1. 基础容器 --- */
+.content-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  background-color: #ffffff;
+  /* iframe 内部通常强制为白色，防止深色模式下网页看不清 */
+  overflow: hidden;
+  /* 隐藏iframe本身的滚动条，使用内部body的滚动条 */
+}
+
+/* 确保iframe内部的body元素有正确的幽灵滚动条样式 */
+.content-frame body {
+  overflow-y: overlay !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+}
+
+.content-frame body::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.content-frame body::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.content-frame body::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
+  border-radius: 3px !important;
+}
+
+.content-frame body:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent !important;
+}
+
+.content-frame body:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.5) !important;
+}
+
+.content-frame body:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.8) !important;
+}
+
+/* 深色模式下，如果 iframe 内容支持深色，可以把背景设为透明 */
+@media (prefers-color-scheme: dark) {
+  .content-frame {
+    /* 视情况开启，有些网页如果不设置背景色默认是透明的，在深色背景下可能文字不可见 */
+    /* background-color: var(--bg-surface); */
+  }
+}
