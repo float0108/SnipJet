@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnipJet - 剪贴板监控</title>
+    <link rel="stylesheet" href="./common/style.css" />
+    <link rel="stylesheet" href="./views/main/index.css" />
+    <link rel="stylesheet" href="./common/icon.css" />
+  </head>
+  <body class="index-body">
+    <!-- 合并后的工具栏 -->
+    <div class="toolbar" data-tauri-drag-region>
+      <div class="toolbar-group toolbar-left">
+        <button class="toolbar-btn" title="复制最新">
+          <span class="icon icon-copy"></span>
+        </button>
+        <button class="toolbar-btn" title="查看收藏">
+          <span class="icon icon-favorite"></span>
+        </button>
+        <button class="toolbar-btn" title="文本扩展">
+          <span class="icon icon-expand"></span>
+        </button>
+      </div>
+      <div class="toolbar-group toolbar-right">
+        <button class="toolbar-btn" title="搜索">
+          <span class="icon icon-search"></span>
+        </button>
+        <button id="pin-btn" class="toolbar-btn" title="固定">
+          <span class="icon icon-pin"></span>
+        </button>
+        <button id="settings-btn" class="toolbar-btn" title="设置">
+          <span class="icon icon-settings"></span>
+        </button>
+        <button id="close-btn" class="toolbar-btn" title="关闭">
+          <span class="icon icon-close"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="container ghost-scrollbar">
+      <div id="clipboard-history">
+        <div class="status-text">加载中...</div>
+      </div>
+      <div id="status" class="status-text" style="margin-top: 0">
+        初始化完成
+      </div>
+    </div>
+
+    <script type="module" src="./views/main/main.js"></script>
+  </body>
+</html>

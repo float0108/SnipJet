@@ -1,0 +1,248 @@
+/* 全局重置与基础字体 */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-container {
+  display: flex;
+  height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  /* 全局字体变小 */
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+/* --- 侧边栏 --- */
+.sidebar {
+  width: var(--sidebar-width);
+  background-color: #f9fafb;
+  /* 稍微深一点的背景区分 */
+  border-right: 1px solid var(--border-color);
+  padding: 10px 0;
+  flex-shrink: 0;
+}
+
+.sidebar-item {
+  padding: 12px 16px;
+  /* 更紧凑的内边距 */
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.sidebar-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-item.active {
+  background-color: rgba(59, 130, 246, 0.08);
+  border-left-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* --- 内容区域 --- */
+.content {
+  flex: 1;
+  padding: 0 24px;
+  /* 两侧留白 */
+  overflow-y: auto;
+}
+
+/* 顶部标题栏 */
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  padding: 16px 0 12px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+  z-index: 10;
+}
+
+.section-title {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.window-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  display: flex;
+}
+
+.window-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* --- 设置项 (核心紧凑化) --- */
+.setting-item {
+  display: flex;
+  /* 左右布局 */
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  /* 减少垂直间距 */
+  border-bottom: 1px solid #f3f4f6;
+  /* 极淡的分割线 */
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+/* 左侧：标签和描述 */
+.setting-info {
+  flex: 1;
+  padding-right: 20px;
+}
+
+.setting-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.setting-description {
+  font-size: 11px;
+  /* 描述文字更小 */
+  color: var(--text-tertiary);
+  line-height: 1.2;
+}
+
+/* 右侧：输入控件区域 */
+.setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 输入框通用样式 */
+.shortcut-input,
+.select-input,
+.number-input {
+  padding: 4px 8px;
+  /* 极小的内边距 */
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  background: white;
+  color: var(--text-primary);
+  height: 28px;
+  /* 固定高度 */
+  transition: all 0.2s;
+}
+
+.shortcut-input {
+  width: 140px;
+  text-align: center;
+}
+
+.select-input {
+  width: 120px;
+}
+
+.number-input {
+  width: 60px;
+}
+
+.shortcut-input:focus,
+.select-input:focus,
+.shortcut-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.shortcut-input.recording {
+  border-color: var(--primary-color);
+  background-color: rgba(59, 130, 246, 0.05);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* 按钮 */
+.clear-btn {
+  padding: 4px 10px;
+  height: 28px;
+  background-color: transparent;
+  color: #ef4444;
+  border: 1px solid #fee2e2;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.clear-btn:hover {
+  background-color: #fef2f2;
+  border-color: #fecaca;
+}
+
+/* --- 开关 (Toggle) 紧凑版 --- */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  /* 缩小宽度 */
+  height: 20px;
+  /* 缩小高度 */
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #e5e7eb;
+  transition: .3s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  /* 圆点缩小 */
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+input:checked+.toggle-slider {
+  background-color: var(--primary-color);
+}
+
+input:checked+.toggle-slider:before {
+  transform: translateX(16px);
+}
+
+/* 调整位移 */
