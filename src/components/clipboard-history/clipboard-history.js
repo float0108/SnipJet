@@ -1,5 +1,5 @@
 // 剪贴板历史记录组件
-import {parseClipboardItem} from "../../services/content-parser.js";
+import {parseClipboardItem} from "../../utils/content-parser.js";
 import {renderClipboardItem} from "./clipboard-item.js";
 
 // 确保加载样式文件

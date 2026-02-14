@@ -12,8 +12,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use clipboard_rs::{Clipboard, ClipboardContext};
 use enigo::{Enigo, Key, KeyboardControllable};
-use log::{error, info};
-use tauri::{Manager, State, WebviewWindow};
+use log::{debug, error, info};
+use tauri::{Manager, State};
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE};
@@ -30,6 +30,26 @@ pub fn get_clipboard_history(
 #[tauri::command]
 pub fn clear_history(history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>) {
     history.lock().unwrap().clear();
+}
+
+#[tauri::command]
+pub fn delete_clipboard_item(
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    id: String,
+) -> Result<(), String> {
+    let mut history_lock = history.lock().unwrap();
+    let initial_len = history_lock.len();
+
+    // 从历史记录中移除指定ID的条目
+    history_lock.retain(|item| item.id != id);
+
+    if history_lock.len() < initial_len {
+        info!("Deleted clipboard item with id: {}", id);
+        Ok(())
+    } else {
+        error!("Failed to delete clipboard item: id not found - {}", id);
+        Err(format!("Clipboard item not found: {}", id))
+    }
 }
 
 #[tauri::command]
@@ -82,7 +102,6 @@ pub async fn paste_to_active_window(
     }
 
     // 5. 模拟组合键 (增强版)
-    println!("[DEBUG] 启动按键模拟线程 (Ctrl+V)...");
     let paste_handle = thread::spawn(move || {
         let mut enigo = Enigo::new();
 
@@ -91,7 +110,6 @@ pub async fn paste_to_active_window(
 
         #[cfg(target_os = "macos")]
         {
-            println!("[DEBUG] 操作系统: macOS - 发送 CMD + V");
             // 按下 Command
             enigo.key_down(Key::Meta);
             thread::sleep(Duration::from_millis(50)); // 给系统一点反应时间
@@ -106,21 +124,18 @@ pub async fn paste_to_active_window(
 
         #[cfg(not(target_os = "macos"))]
         {
-            println!("[DEBUG] 操作系统: Windows/Linux - 发送 Ctrl + V");
             // 按下 Control
             enigo.key_down(Key::Control);
-            thread::sleep(Duration::from_millis(100)); // Windows 可能需要更长的按键响应时间
+            thread::sleep(Duration::from_millis(50)); // Windows 可能需要更长的按键响应时间
 
             // 点击 V
             // 如果 Layout('v') 不工作，有些环境可能需要 Key::Raw 或其他方式
             enigo.key_click(Key::Layout('v'));
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(50));
 
             // 松开 Control
             enigo.key_up(Key::Control);
         }
-
-        println!("[DEBUG] 按键序列发送完毕");
     });
 
     // 等待按键线程结束
@@ -129,8 +144,6 @@ pub async fn paste_to_active_window(
         return Err("按键模拟失败".to_string());
     }
 
-    println!("[DEBUG] 粘贴流程结束");
-    println!("--------------------------------------------------");
     Ok(())
 }
 
@@ -185,15 +198,7 @@ pub async fn update_window_pin_state(is_pinned: bool) -> Result<(), String> {
     let mut pin_state_lock = WINDOW_PIN_STATE.lock().unwrap();
     *pin_state_lock = is_pinned;
     info!("Updated global window pin state to: {}", is_pinned);
-
     // 从全局变量获取app_handle
-    let app_handle_lock = APP_HANDLE.lock().unwrap();
-    if let Some(app_handle) = &*app_handle_lock {
-        // 无论是否pin状态，都应用"不抢焦点"样式
-        apply_no_activate_style();
-        info!("No-activate style applied to window");
-    }
-
     Ok(())
 }
 
@@ -228,7 +233,6 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
 
 #[tauri::command]
 pub async fn print_message(message: String) -> Result<(), String> {
-    info!("Message from frontend: {}", message);
     println!("Frontend message: {}", message);
     Ok(())
 }

@@ -1,0 +1,33 @@
+[[permission]]
+identifier = "allow-print-message"
+description = "允许前端调用自定义的日志打印命令"
+
+# 关键改动：commands 后面要接 .allow
+commands.allow = [
+    "print_message"
+]
+
+[[permission]]
+identifier = "allow-update-window-pin-state"
+description = "允许前端更新窗口固定状态"
+
+# 关键改动：commands 后面要接 .allow
+commands.allow = [
+    "update_window_pin_state"
+]
+
+[[permission]]
+identifier = "allow-clipboard-operations"
+description = "允许前端执行剪贴板操作"
+
+# 关键改动：commands 后面要接 .allow
+commands.allow = [
+    "get_clipboard_history",
+    "clear_history",
+    "delete_clipboard_item",
+    "paste_to_active_window",
+    "html_to_text",
+    "copy_to_clipboard_no_history",
+    "update_global_last_hash",
+    "apply_no_activate_style"
+]

@@ -68,10 +68,19 @@ impl ClipboardHandler for ClipboardManager {
         if let Ok(html) = self.ctx.get_html() {
             if !html.trim().is_empty() {
                 let hash = Self::generate_hash(html.as_bytes());
-                let global_last_hash = LAST_HASH.lock().unwrap();
-                if hash != self.last_hash && hash != *global_last_hash {
+                // 只在需要时获取锁，并且尽快释放
+                let is_new_hash = {
+                    let global_last_hash = LAST_HASH.lock().unwrap();
+                    hash != self.last_hash && hash != *global_last_hash
+                };
+                if is_new_hash {
                     // 立即更新 last_hash，防止竞态条件
                     self.last_hash = hash.clone();
+                    // 更新全局 last_hash
+                    {
+                        let mut global_last_hash = LAST_HASH.lock().unwrap();
+                        *global_last_hash = hash.clone();
+                    }
                     // models.rs 会自动处理预览，去掉标签显示 "[HTML] xxx"
                     let item = ClipboardItem::new_html(&html, &hash);
                     self.process_new_item(item);
@@ -84,10 +93,18 @@ impl ClipboardHandler for ClipboardManager {
         if let Ok(rtf) = self.ctx.get_rich_text() {
             if !rtf.trim().is_empty() {
                 let hash = Self::generate_hash(rtf.as_bytes());
-                let global_last_hash = LAST_HASH.lock().unwrap();
-                if hash != self.last_hash && hash != *global_last_hash {
+                let is_new_hash = {
+                    let global_last_hash = LAST_HASH.lock().unwrap();
+                    hash != self.last_hash && hash != *global_last_hash
+                };
+                if is_new_hash {
                     // 立即更新 last_hash，防止竞态条件
                     self.last_hash = hash.clone();
+                    // 更新全局 last_hash
+                    {
+                        let mut global_last_hash = LAST_HASH.lock().unwrap();
+                        *global_last_hash = hash.clone();
+                    }
                     let item = ClipboardItem::new_rtf(&rtf, &hash);
                     self.process_new_item(item);
                     return;
@@ -102,10 +119,18 @@ impl ClipboardHandler for ClipboardManager {
                 let joined_paths = files.join("|");
                 let hash = Self::generate_hash(joined_paths.as_bytes());
 
-                let global_last_hash = LAST_HASH.lock().unwrap();
-                if hash != self.last_hash && hash != *global_last_hash {
+                let is_new_hash = {
+                    let global_last_hash = LAST_HASH.lock().unwrap();
+                    hash != self.last_hash && hash != *global_last_hash
+                };
+                if is_new_hash {
                     // 立即更新 last_hash，防止竞态条件
                     self.last_hash = hash.clone();
+                    // 更新全局 last_hash
+                    {
+                        let mut global_last_hash = LAST_HASH.lock().unwrap();
+                        *global_last_hash = hash.clone();
+                    }
                     let item = ClipboardItem::new_files(files, &hash);
                     self.process_new_item(item);
                     return;
@@ -117,10 +142,18 @@ impl ClipboardHandler for ClipboardManager {
         if let Ok(text) = self.ctx.get_text() {
             if !text.trim().is_empty() {
                 let hash = Self::generate_hash(text.as_bytes());
-                let global_last_hash = LAST_HASH.lock().unwrap();
-                if hash != self.last_hash && hash != *global_last_hash {
+                let is_new_hash = {
+                    let global_last_hash = LAST_HASH.lock().unwrap();
+                    hash != self.last_hash && hash != *global_last_hash
+                };
+                if is_new_hash {
                     // 立即更新 last_hash，防止竞态条件
                     self.last_hash = hash.clone();
+                    // 更新全局 last_hash
+                    {
+                        let mut global_last_hash = LAST_HASH.lock().unwrap();
+                        *global_last_hash = hash.clone();
+                    }
                     let item = ClipboardItem::new_text(&text, &hash);
                     self.process_new_item(item);
                     return;
@@ -133,10 +166,18 @@ impl ClipboardHandler for ClipboardManager {
         if self.ctx.get_image().is_ok() {
             let hash = Self::generate_hash(b"[image]");
 
-            let global_last_hash = LAST_HASH.lock().unwrap();
-            if hash != self.last_hash && hash != *global_last_hash {
+            let is_new_hash = {
+                let global_last_hash = LAST_HASH.lock().unwrap();
+                hash != self.last_hash && hash != *global_last_hash
+            };
+            if is_new_hash {
                 // 立即更新 last_hash，防止竞态条件
                 self.last_hash = hash.clone();
+                // 更新全局 last_hash
+                {
+                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    *global_last_hash = hash.clone();
+                }
 
                 // 创建图片条目
                 let item = ClipboardItem::new_image("[image]", &hash, None, None);
