@@ -8,9 +8,14 @@ import {
   loadRealData,
   listenToClipboardUpdate,
 } from "../../services/clipboard-service.js";
-import {html2text} from "../../services/formatter.js";
+import {html2text} from "../../utils/formatter.js";
 import {initTitlebarButtons} from "./titlebar.js";
 import {handleNavigation} from "./navigation.js";
+import {
+  renderEmptyState,
+  ensureEmptyStateStyles,
+} from "../../components/empty-state/empty-state.js";
+import {log, debug, error, event} from "../../utils/logger.js";
 
 // 确保函数被暴露到全局作用域
 if (typeof window !== "undefined") {
@@ -29,21 +34,21 @@ if (typeof window !== "undefined") {
               content: decodeURIComponent(content),
               format: format,
             });
-            console.log("内容已复制到剪贴板（无历史更新）");
+            await log("内容已复制到剪贴板（无历史更新）");
           } catch (e) {
-            console.error("后端调用失败:", e);
+            await error("后端调用失败:", e);
             // 后端API调用失败，使用前端fallback
             await navigator.clipboard.writeText(decodeURIComponent(content));
-            console.log("内容已复制到剪贴板（前端fallback）");
+            await log("内容已复制到剪贴板（前端fallback）");
           }
         } else {
           // 后端API不可用，使用前端fallback
           await navigator.clipboard.writeText(decodeURIComponent(content));
-          console.log("内容已复制到剪贴板（前端fallback）");
+          await log("内容已复制到剪贴板（前端fallback）");
         }
       }
     } catch (error) {
-      console.error("复制失败:", error);
+      await error("复制失败:", error);
     }
   };
 
@@ -60,32 +65,32 @@ if (typeof window !== "undefined") {
               content: decodeURIComponent(content),
               format: format,
             });
-            console.log("内容已复制到剪贴板（无历史更新），准备模拟粘贴");
+            await log("内容已复制到剪贴板（无历史更新），准备模拟粘贴");
           } catch (e) {
-            console.error("后端复制命令执行失败:", e);
+            await error("后端复制命令执行失败:", e);
             // 后端API不可用，使用前端fallback
             await navigator.clipboard.writeText(decodeURIComponent(content));
-            console.log("内容已复制到剪贴板（前端fallback），准备模拟粘贴");
+            await log("内容已复制到剪贴板（前端fallback），准备模拟粘贴");
           }
 
           // 尝试使用后端的paste_to_active_window命令
           try {
-            console.log("调用后端粘贴命令...");
+            await log("调用后端粘贴命令...");
             await invoke("paste_to_active_window", {
               content: decodeURIComponent(content),
               format: format,
               isPinned: true, // 默认置顶，使用驼峰命名法与后端期望保持一致
             });
-            console.log("后端粘贴命令执行成功");
+            await log("后端粘贴命令执行成功");
             return;
           } catch (tauriError) {
-            console.error("后端粘贴命令执行失败:", tauriError);
+            await error("后端粘贴命令执行失败:", tauriError);
             // 后端命令失败，使用前端模拟作为 fallback
           }
         } else {
           // 后端API不可用，使用前端fallback
           await navigator.clipboard.writeText(decodeURIComponent(content));
-          console.log("内容已复制到剪贴板（前端fallback），准备模拟粘贴");
+          await log("内容已复制到剪贴板（前端fallback），准备模拟粘贴");
         }
 
         // 前端模拟作为 fallback
@@ -105,13 +110,13 @@ if (typeof window !== "undefined") {
         const activeElement = document.activeElement;
         if (activeElement) {
           activeElement.dispatchEvent(pasteEvent);
-          console.log("模拟粘贴事件已发送");
+          await log("模拟粘贴事件已发送");
         } else {
-          console.log("没有活动元素，无法发送粘贴事件");
+          await log("没有活动元素，无法发送粘贴事件");
         }
       }
     } catch (error) {
-      console.error("模拟粘贴失败:", error);
+      await error("模拟粘贴失败:", error);
     }
   };
 
@@ -194,9 +199,37 @@ if (typeof window !== "undefined") {
   };
 
   // 删除剪贴板项
-  window.deleteClipboardItem = function (id) {
+  window.deleteClipboardItem = async function (id) {
     console.log("删除剪贴板项:", id);
-    // 这里可以添加删除逻辑
+    try {
+      // 调用后端删除命令
+      if (invoke) {
+        await invoke("delete_clipboard_item", {
+          id: id,
+        });
+        console.log("后端删除命令执行成功");
+      }
+
+      // 从 UI 中移除该元素
+      const elementId = `item-${id}`;
+      const element = document.getElementById(elementId);
+      if (element) {
+        element.remove();
+        console.log("元素已从 UI 中移除");
+      }
+
+      // 检查是否还有其他元素
+      const remainingItems = document.querySelectorAll(".clipboard-item");
+      if (remainingItems.length === 0) {
+        // 如果没有剩余元素，显示空状态
+        const container = document.getElementById("clipboard-history");
+        if (container) {
+          container.innerHTML = renderEmptyState();
+        }
+      }
+    } catch (error) {
+      console.error("删除剪贴板项失败:", error);
+    }
   };
 }
 
@@ -210,7 +243,6 @@ if (window.location.hostname !== "localhost") {
  * 初始化应用
  */
 async function init() {
-  console.log("开始初始化应用");
   const container = document.getElementById("clipboard-history");
   const statusElement = document.getElementById("status");
 
@@ -219,36 +251,11 @@ async function init() {
     statusElement: !!statusElement,
   });
 
-  if (!container) {
-    console.error("找不到剪贴板历史容器元素");
-    return;
-  }
+  // 确保加载空状态样式
+  ensureEmptyStateStyles();
 
-  // 初始显示加载状态
-  container.innerHTML = `
-    <div class="loading-state">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">加载中</div>
-      <div class="loading-description">正在获取剪贴板历史</div>
-    </div>
-    
-    <!-- 骨架屏效果 -->
-    <div>
-      <div>
-        <div></div>
-        <div></div>
-      </div>
-      <div></div>
-    </div>
-    
-    <div>
-      <div>
-        <div></div>
-        <div></div>
-      </div>
-      <div></div>
-    </div>
-  `;
+  // 初始不显示加载状态，直接显示空状态
+  container.innerHTML = renderEmptyState();
   updateStatus(statusElement, "初始化中...");
 
   // 初始加载历史记录

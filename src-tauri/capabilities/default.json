@@ -22,7 +22,11 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "core:window:allow-start-dragging",
+    "core:window:allow-show",
+    "core:window:allow-is-visible",
     "fs:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all",
 
     {
       "identifier": "fs:allow-write-text-file",
@@ -39,6 +43,9 @@
     {
       "identifier": "fs:allow-mkdir",
       "allow": [{"path": "$APPCONFIG"}, {"path": "$APPCONFIG/*"}]
-    }
+    },
+    "allow-print-message",
+    "allow-update-window-pin-state",
+    "allow-clipboard-operations"
   ]
 }

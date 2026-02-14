@@ -1,137 +1,137 @@
-// 快捷键服务
+import {log, error as logError, debug} from "../utils/logger.js";
+import {toggleWindowVisibility} from "./window-service.js";
 
-// 加载设置文件
-async function loadSettings() {
-  try {
-    if (window.__TAURI__ && window.__TAURI__.fs) {
-      const {readTextFile, exists, BaseDirectory} = window.__TAURI__.fs;
+// 默认硬编码设置
+const DEFAULT_SETTINGS = {
+  shortcuts: {
+    toggle_interface: "Win+V",
+    function_paste: "Ctrl+Shift+V",
+    quick_paste_mode: "ctrl",
+  },
+};
 
-      // 检查设置文件是否存在
-      if (await exists("settings.json", {baseDir: BaseDirectory.AppConfig})) {
-        // 从应用配置目录加载设置文件
-        const content = await readTextFile("settings.json", {
-          baseDir: BaseDirectory.AppConfig,
-        });
-        return JSON.parse(content);
-      }
-    } else {
-      // 在非Tauri环境中，尝试从前端目录加载
-      const response = await fetch("/config/settings.json");
-      if (response.ok) {
-        return await response.json();
-      }
-    }
-  } catch (error) {
-    console.error("加载设置失败:", error);
-  }
-
-  // 返回默认设置
-  return {
-    shortcuts: {
-      toggle_interface: "Win+V",
-      function_paste: "",
-      quick_paste_mode: "ctrl",
-    },
-  };
-}
-
-// 解析快捷键字符串为键组合对象
-function parseShortcut(shortcut) {
-  if (!shortcut) return null;
-
-  const parts = shortcut.split("+");
-  const key = parts.pop();
-
-  return {
-    ctrl: parts.includes("Ctrl"),
-    alt: parts.includes("Alt"),
-    shift: parts.includes("Shift"),
-    meta: parts.includes("Command"),
-    key: key.toLowerCase(),
-  };
-}
-
-// 检查键盘事件是否匹配快捷键
-function isShortcutMatch(event, shortcut) {
-  if (!shortcut) return false;
-
-  const parsedShortcut = parseShortcut(shortcut);
-  if (!parsedShortcut) return false;
-
+/**
+ * 核心验证逻辑：确保设置格式正确
+ */
+function validateSettings(settings) {
   return (
-    event.ctrlKey === parsedShortcut.ctrl &&
-    event.altKey === parsedShortcut.alt &&
-    event.shiftKey === parsedShortcut.shift &&
-    event.metaKey === parsedShortcut.meta &&
-    event.key.toLowerCase() === parsedShortcut.key
+    settings?.shortcuts?.toggle_interface && settings?.shortcuts?.function_paste
   );
 }
 
-// 切换窗口可见性
-async function toggleWindowVisibility() {
-  try {
-    // 调用后端 print_message 接口，打印快捷键触发信息
-    if (window.__TAURI__ && window.__TAURI__.invoke) {
-      await window.__TAURI__.invoke("print_message", {
-        message: "快捷键触发：切换窗口可见性",
-      });
-      console.log("后端打印命令执行成功");
+/**
+ * 尝试从不同来源读取文件内容
+ */
+async function fetchRawSettings() {
+  // 1. 尝试 Tauri 文件系统
+  if (window.__TAURI__?.fs) {
+    const {readTextFile, exists, BaseDirectory} = window.__TAURI__.fs;
+    const filename = "settings.json";
+    if (await exists(filename, {baseDir: BaseDirectory.AppConfig})) {
+      return await readTextFile(filename, {baseDir: BaseDirectory.AppConfig});
     }
-
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.window &&
-      window.__TAURI__.window.getCurrentWindow
-    ) {
-      const appWindow = window.__TAURI__.window.getCurrentWindow();
-
-      // 检查窗口是否可见
-      const isVisible = await appWindow.isVisible();
-
-      if (isVisible) {
-        await appWindow.hide();
-        console.log("窗口已隐藏");
-      } else {
-        await appWindow.show();
-        await appWindow.setFocus();
-        console.log("窗口已显示并获得焦点");
-      }
-    }
-  } catch (error) {
-    console.error("切换窗口可见性失败:", error);
   }
+
+  // 2. 尝试前端目录 (Web Fallback)
+  const response = await fetch("/config/settings.json").catch(() => null);
+  if (response?.ok) {
+    return await response.text();
+  }
+
+  return null;
 }
 
-// 初始化全局快捷键监听
-async function initGlobalShortcuts() {
+/**
+ * 加载设置文件 - 优化后逻辑更扁平
+ */
+async function loadSettings() {
   try {
+    const rawContent = await fetchRawSettings();
+    if (rawContent) {
+      const parsed = JSON.parse(rawContent);
+      if (validateSettings(parsed)) {
+        await debug("配置文件加载并验证成功");
+        return parsed;
+      }
+      await logError("配置文件格式不完整，将使用部分或全部默认值");
+    }
+  } catch (err) {
+    await logError("加载/解析设置失败:", err);
+  }
+
+  return DEFAULT_SETTINGS;
+}
+
+/**
+ * 转换快捷键格式 (针对 Tauri GlobalShortcut)
+ */
+function convertShortcutFormat(shortcut) {
+  if (!shortcut) return "";
+  // 统一替换 Win 为 Super，并处理可能的空格或大小写不一
+  return shortcut.trim().replace(/Win/i, "Super");
+}
+
+/**
+ * 处理纯文本粘贴逻辑
+ */
+async function handlePlainTextPaste() {
+  await log("快捷键触发：纯文本粘贴");
+  // 逻辑实现...
+}
+
+/**
+ * 初始化全局快捷键监听
+ */
+export async function initGlobalShortcuts() {
+  const shortcutApi = window.__TAURI__?.globalShortcut;
+  if (!shortcutApi) {
+    await logError("Tauri globalShortcut API 不可用，请检查 permissions");
+    return;
+  }
+
+  try {
+    const {register, unregisterAll} = shortcutApi;
+
+    // 1. 清理旧注册 (确保权限已开启)
+    await unregisterAll().catch((e) =>
+      debug("注销旧快捷键失败(可能无旧注册): " + e),
+    );
+
+    // 2. 获取设置
     const settings = await loadSettings();
-    const toggleShortcut = settings.shortcuts?.toggle_interface || "Ctrl+Shift+V";
+    const {toggle_interface, function_paste} = settings.shortcuts;
 
-    console.log("初始化全局快捷键监听，切换界面快捷键:", toggleShortcut);
+    // 3. 注册项配置化 (避免重复代码)
+    const registrations = [
+      {
+        key: toggle_interface,
+        action: toggleWindowVisibility,
+        label: "显示/隐藏",
+      },
+      {
+        key: function_paste,
+        action: handlePlainTextPaste,
+        label: "纯文本粘贴",
+      },
+    ];
 
-    // 监听全局键盘事件
-    document.addEventListener("keydown", async function (event) {
-      // 检查是否匹配切换界面快捷键
-      if (isShortcutMatch(event, toggleShortcut)) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        console.log("触发切换界面快捷键");
-        await toggleWindowVisibility();
+    for (const item of registrations) {
+      const finalKey = convertShortcutFormat(item.key);
+      if (!finalKey) {
+        await logError(`${item.label} 快捷键为空，跳过注册`);
+        continue;
       }
-    });
 
-    console.log("全局快捷键监听初始化完成");
-  } catch (error) {
-    console.error("初始化全局快捷键监听失败:", error);
+      await register(finalKey, async () => {
+        await debug(`触发 [${item.label}] 快捷键: ${finalKey}`);
+        await item.action();
+      });
+      await debug(`注册成功 [${item.label}]: ${finalKey}`);
+    }
+  } catch (err) {
+    await logError("全局快捷键初始化严重失败:", err);
   }
 }
 
-export {
-  loadSettings,
-  parseShortcut,
-  isShortcutMatch,
-  initGlobalShortcuts,
-  toggleWindowVisibility,
-};
+// 导出保留原样
+export {loadSettings, convertShortcutFormat};

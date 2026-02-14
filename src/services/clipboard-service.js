@@ -1,7 +1,7 @@
 // 剪贴板服务
 
 import {getClipboardHistory, testTauriConnection, listen} from "./tauri-api.js";
-import {parseClipboardItem} from "./content-parser.js";
+import {parseClipboardItem} from "../utils/content-parser.js";
 import {renderClipboardItem} from "../components/clipboard-history/clipboard-item.js";
 import {renderHistory, createMockHistory} from "../components/clipboard-history/clipboard-history.js";
 
@@ -115,6 +115,13 @@ function updateUIWithNewItem(newItem, container, statusElement) {
   if (loadingElement) {
     container.removeChild(loadingElement);
     console.log("Removed loading state element");
+  }
+
+  // 检查并移除空状态元素
+  const emptyElement = container.querySelector(".empty-state");
+  if (emptyElement) {
+    container.removeChild(emptyElement);
+    console.log("Removed empty state element");
   }
 
   // 解析剪贴板项目数据

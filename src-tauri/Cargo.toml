@@ -47,13 +47,15 @@ serde_yaml = "0.9"    # 用于解析YAML文件
 nanohtml2text = "0.1"
 tauri-plugin-fs = "2.4.5"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+tauri-plugin-global-shortcut = "2.3.1"
 
 # 仅在Windows平台下添加windows依赖
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
-    "Win32_Graphics_Gdi", # 用于获取鼠标位置和屏幕坐标计算
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [[bin]]

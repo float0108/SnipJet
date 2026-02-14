@@ -1,6 +1,10 @@
 // window-service.js
 const {WebviewWindow} = window.__TAURI__.webviewWindow;
 const {getCurrentWindow} = window.__TAURI__.window;
+import {log, error} from "../utils/logger.js";
+
+// 防抖动控制变量
+let isTogglingWindow = false;
 
 // 1. 归一化 Key (保持不变)
 function getNormalizedKey(label) {
@@ -164,5 +168,67 @@ export async function openReaderWindow(element) {
   } catch (error) {
     console.error("打开窗口异常:", error);
     alert("无法打开新窗口");
+  }
+}
+
+/**
+ * 切换当前窗口可见性
+ */
+export async function toggleWindowVisibility() {
+  // 防抖动检查
+  if (isTogglingWindow) {
+    return;
+  }
+
+  try {
+    // 设置防抖动标志
+    isTogglingWindow = true;
+
+    await log("快捷键触发：切换窗口可见性");
+
+    if (window.__TAURI__ && window.__TAURI__.window) {
+      const {getCurrentWindow} = window.__TAURI__.window;
+      const appWindow = getCurrentWindow();
+
+      // 尝试获取窗口可见性状态
+      let isVisible;
+      try {
+        isVisible = await appWindow.isVisible();
+      } catch (visibilityError) {
+        await error("获取窗口可见性状态失败:", visibilityError);
+        // 尝试直接切换，不依赖可见性状态
+        try {
+          // 先尝试隐藏
+          await appWindow.hide();
+          // 短暂延迟后尝试显示
+          setTimeout(async () => {
+            await appWindow.show();
+            // 重置防抖动标志
+            isTogglingWindow = false;
+          }, 100);
+        } catch (toggleError) {
+          await error("直接切换窗口状态失败:", toggleError);
+          // 重置防抖动标志
+          isTogglingWindow = false;
+        }
+        return;
+      }
+
+      if (isVisible) {
+        await appWindow.hide();
+      } else {
+        await appWindow.show();
+      }
+    } else {
+      await error("Tauri window API 不可用");
+    }
+  } catch (error) {
+    await error("切换窗口可见性失败:", error);
+  } finally {
+    // 操作完成后重置防抖动标志
+    // 添加小延迟，确保操作完全完成
+    setTimeout(() => {
+      isTogglingWindow = false;
+    }, 200);
   }
 }

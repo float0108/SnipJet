@@ -4,7 +4,7 @@ let currentMode = "render"; // 'render' or 'source'
 let refreshEventListener = null;
 
 // 导入格式化工具
-import {html2text} from "../../services/formatter.js";
+import {html2text} from "../../utils/formatter.js";
 
 // Toast 提示函数
 function showToast(message, type = "info") {

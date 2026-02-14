@@ -5,18 +5,20 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use clipboard_rs::ClipboardWatcher;
-use log::info;
+use log::{debug, error, info};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager,
+    Manager,
 };
 
 use tauri_plugin_fs;
+use tauri_plugin_global_shortcut;
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::APP_HANDLE;
 use crate::common::models::ClipboardItem;
+use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
 
 mod clipboard_manager;
@@ -41,6 +43,7 @@ where
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(history)
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -50,6 +53,19 @@ where
                 let mut app_handle_lock = APP_HANDLE.lock().unwrap();
                 *app_handle_lock = Some(app_handle.clone());
                 info!("App handle stored to global variable");
+            }
+
+            // 启动全局鼠标监听器，用于检测点击外部窗口
+            start_global_click_listener(app_handle.clone());
+            info!("Global click listener started");
+
+            // 确保主窗口始终置顶
+            if let Some(window) = app_handle.get_webview_window("main") {
+                if let Err(e) = window.set_always_on_top(true) {
+                    error!("Failed to set main window always on top: {:?}", e);
+                } else {
+                    info!("Main window always on top set to true");
+                }
             }
 
             // 剪贴板监听独立线程
@@ -114,6 +130,7 @@ where
         .invoke_handler(tauri::generate_handler!(
             commands::get_clipboard_history,
             commands::clear_history,
+            commands::delete_clipboard_item,
             commands::paste_to_active_window,
             commands::html_to_text,
             commands::copy_to_clipboard_no_history,
