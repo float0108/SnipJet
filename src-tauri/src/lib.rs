@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use clipboard_rs::ClipboardWatcher;
-use log::{debug, error, info};
+use log::{error, info};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -18,6 +18,7 @@ use tauri_plugin_global_shortcut;
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::APP_HANDLE;
 use crate::common::models::ClipboardItem;
+use crate::core::data_store::{start_auto_save, load_all_data, save_all_data, AUTO_SAVE_INTERVAL_SECS};
 use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
 
@@ -44,7 +45,7 @@ where
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(history)
+        .manage(history.clone())
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
@@ -59,6 +60,21 @@ where
             start_global_click_listener(app_handle.clone());
             info!("Global click listener started");
 
+            // 加载持久化数据
+            match load_all_data(&app_handle) {
+                Ok((loaded_history, _settings, _text_expand_rules)) => {
+                    info!("Loaded {} history items from storage", loaded_history.len());
+                    // 将加载的数据存入history
+                    {
+                        let mut history_lock = history_for_setup.lock().unwrap();
+                        *history_lock = loaded_history;
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to load data: {}, starting with empty history", e);
+                }
+            };
+
             // 确保主窗口始终置顶
             if let Some(window) = app_handle.get_webview_window("main") {
                 if let Err(e) = window.set_always_on_top(true) {
@@ -68,9 +84,15 @@ where
                 }
             }
 
+            // 启动自动保存任务
+            start_auto_save(app_handle.clone(), history_for_setup.clone(), AUTO_SAVE_INTERVAL_SECS);
+            info!("Auto-save task started with {} second interval", AUTO_SAVE_INTERVAL_SECS);
+
             // 剪贴板监听独立线程
+            let history_for_clipboard = history_for_setup.clone();
+            let history_for_tray = history_for_setup.clone();
             thread::spawn(move || {
-                let manager = ClipboardManager::new(app_handle, history_for_setup);
+                let manager = ClipboardManager::new(app_handle.clone(), history_for_clipboard);
 
                 // 注意：clipboard-rs 的 Watcher 需要在特定线程模型下运行
                 // 这里的实现适用于大多数平台，但在某些严格 UI 线程要求的平台可能需要调整
@@ -112,9 +134,13 @@ where
                         _ => {}
                     },
                 )
-                .on_menu_event(|app: &tauri::AppHandle<tauri::Wry>, event| {
+                .on_menu_event(move |app: &tauri::AppHandle<tauri::Wry>, event| {
                     match event.id.as_ref() {
                         "quit" => {
+                            // 保存数据后再退出
+                            if let Err(e) = save_all_data(app, history_for_tray.clone()) {
+                                error!("Failed to save data on exit: {}", e);
+                            }
                             app.exit(0);
                         }
                         _ => {}
@@ -137,7 +163,12 @@ where
             commands::update_global_last_hash,
             commands::apply_no_activate_style,
             commands::update_window_pin_state,
-            commands::print_message
+            commands::print_message,
+            commands::get_mouse_position,
+            commands::save_clipboard_history,
+            commands::load_clipboard_history_command,
+            commands::save_settings,
+            commands::load_settings_command
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

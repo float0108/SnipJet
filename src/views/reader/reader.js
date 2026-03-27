@@ -4,7 +4,11 @@ let currentMode = "render"; // 'render' or 'source'
 let refreshEventListener = null;
 
 // 导入格式化工具
-import {html2text} from "../../utils/formatter.js";
+import { html2text } from "../../utils/formatter.js";
+// 导入 Tauri v2 API
+import { invoke } from '@tauri-apps/api/core';
+import { emit, listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 // Toast 提示函数
 function showToast(message, type = "info") {
@@ -139,12 +143,12 @@ function init() {
               margin: 0;
               padding: 0;
             }
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-              padding: 16px; 
-              word-break: break-word; 
-              color: #333; 
-              line-height: 1.5; 
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              padding: 16px;
+              word-break: break-word;
+              color: #333;
+              line-height: 1.5;
               overflow-y: overlay !important;
               scrollbar-width: thin !important;
               scrollbar-color: transparent transparent !important;
@@ -182,12 +186,7 @@ function init() {
       // 调用后端的html_to_text API获取纯文本
       async function getPlainTextFromBackend(html) {
         try {
-          if (window.__TAURI__ && window.__TAURI__.invoke) {
-            return await window.__TAURI__.invoke("html_to_text", {html});
-          } else {
-            // 后端API不可用，使用前端fallback
-            return html2text(html);
-          }
+          return await invoke("html_to_text", { html });
         } catch (error) {
           console.error("调用后端html_to_text API失败:", error);
           // 出错时使用前端fallback
@@ -276,28 +275,10 @@ async function copyContent() {
 }
 
 // 添加到收藏
-function addToFavorites() {
+async function addToFavorites() {
   try {
-    if (window.__TAURI__ && window.__TAURI__.invoke) {
-      // 调用后端添加到收藏的API
-      window.__TAURI__
-        .invoke("add_to_favorites", {
-          content: currentContent,
-        })
-        .then(() => {
-          // 显示成功提示
-          showToast("已添加到收藏", "success");
-        })
-        .catch((error) => {
-          console.error("添加到收藏失败:", error);
-          // 显示失败提示
-          showToast("添加到收藏失败，请重试", "error");
-        });
-    } else {
-      // 前端模拟
-      console.log("添加到收藏:", currentContent);
-      showToast("已添加到收藏", "success");
-    }
+    await invoke("add_to_favorites", { content: currentContent });
+    showToast("已添加到收藏", "success");
   } catch (error) {
     console.error("添加到收藏失败:", error);
     showToast("添加到收藏失败，请重试", "error");
@@ -305,65 +286,51 @@ function addToFavorites() {
 }
 
 // 关闭窗口
-function closeWindow() {
+async function closeWindow() {
   try {
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.window &&
-      window.__TAURI__.window.getCurrentWindow
-    ) {
-      // 使用正确的 Tauri API 关闭窗口
-      const appWindow = window.__TAURI__.window.getCurrentWindow();
-      appWindow.close();
-    }
+    const appWindow = getCurrentWebviewWindow();
+    await appWindow.close();
   } catch (error) {
     // 忽略错误，因为在沙箱环境中可能会受限
   }
 }
 
 // 初始化窗口拖动功能
-function initDragWindow() {
+async function initDragWindow() {
   console.log("初始化窗口拖动功能");
   try {
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.window &&
-      window.__TAURI__.window.getCurrentWindow
-    ) {
-      console.log("Tauri窗口API可用");
-      const appWindow = window.__TAURI__.window.getCurrentWindow();
-      console.log("获取到窗口实例:", appWindow);
+    const appWindow = getCurrentWebviewWindow();
+    console.log("获取到窗口实例:", appWindow);
 
-      // 尝试选择不同的元素
-      const header = document.querySelector(".header");
-      console.log("获取到header元素:", header);
+    // 尝试选择不同的元素
+    const header = document.querySelector(".header");
+    console.log("获取到header元素:", header);
 
-      if (header) {
-        console.log("添加鼠标按下事件监听器");
-        header.addEventListener("mousedown", (e) => {
-          console.log("鼠标按下事件:", e.target);
-          // 只有在标题栏区域点击才开始拖动，排除按钮区域
-          if (
-            !e.target.closest(".header-actions") &&
-            !e.target.closest(".view-toggle")
-          ) {
-            console.log("开始拖动");
-            // 尝试使用 Tauri 提供的 startDragging 方法
-            if (appWindow.startDragging) {
-              console.log("使用 startDragging 方法");
-              appWindow.startDragging().catch((error) => {
-                console.error("startDragging 失败:", error);
-                // 如果 startDragging 失败，尝试手动拖动
-                manualDrag(appWindow, e);
-              });
-            } else {
-              console.log("使用手动拖动方法");
-              // 如果没有 startDragging 方法，使用手动拖动
+    if (header) {
+      console.log("添加鼠标按下事件监听器");
+      header.addEventListener("mousedown", (e) => {
+        console.log("鼠标按下事件:", e.target);
+        // 只有在标题栏区域点击才开始拖动，排除按钮区域
+        if (
+          !e.target.closest(".header-actions") &&
+          !e.target.closest(".view-toggle")
+        ) {
+          console.log("开始拖动");
+          // 尝试使用 Tauri 提供的 startDragging 方法
+          if (appWindow.startDragging) {
+            console.log("使用 startDragging 方法");
+            appWindow.startDragging().catch((error) => {
+              console.error("startDragging 失败:", error);
+              // 如果 startDragging 失败，尝试手动拖动
               manualDrag(appWindow, e);
-            }
+            });
+          } else {
+            console.log("使用手动拖动方法");
+            // 如果没有 startDragging 方法，使用手动拖动
+            manualDrag(appWindow, e);
           }
-        });
-      }
+        }
+      });
     }
   } catch (error) {
     console.error("初始化窗口拖动功能失败:", error);
@@ -419,26 +386,17 @@ function manualDrag(appWindow, e) {
 }
 
 // 导航到上一个剪贴板项
-function navigateToPrevious() {
+async function navigateToPrevious() {
   try {
     const currentId = new URLSearchParams(window.location.search).get("id");
     console.log("点击上一个按钮，当前ID:", currentId);
 
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.event &&
-      window.__TAURI__.event.emit
-    ) {
-      // 发送导航事件到主应用
-      window.__TAURI__.event.emit("navigate-clipboard", {
-        direction: "next",
-        currentId: currentId,
-      });
-      console.log("发送导航到上一个剪贴板项的事件");
-    } else {
-      // 前端模拟
-      console.log("导航到上一个剪贴板项");
-    }
+    // 发送导航事件到主应用
+    await emit("navigate-clipboard", {
+      direction: "next",
+      currentId: currentId,
+    });
+    console.log("发送导航到上一个剪贴板项的事件");
   } catch (error) {
     console.error("导航失败:", error);
     showToast("导航失败，请重试", "error");
@@ -446,26 +404,17 @@ function navigateToPrevious() {
 }
 
 // 导航到下一个剪贴板项
-function navigateToNext() {
+async function navigateToNext() {
   try {
     const currentId = new URLSearchParams(window.location.search).get("id");
     console.log("点击下一个按钮，当前ID:", currentId);
 
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.event &&
-      window.__TAURI__.event.emit
-    ) {
-      // 发送导航事件到主应用
-      window.__TAURI__.event.emit("navigate-clipboard", {
-        direction: "previous",
-        currentId: currentId,
-      });
-      console.log("发送导航到下一个剪贴板项的事件");
-    } else {
-      // 前端模拟
-      console.log("导航到下一个剪贴板项");
-    }
+    // 发送导航事件到主应用
+    await emit("navigate-clipboard", {
+      direction: "previous",
+      currentId: currentId,
+    });
+    console.log("发送导航到下一个剪贴板项的事件");
   } catch (error) {
     console.error("导航失败:", error);
     showToast("导航失败，请重试", "error");
@@ -473,7 +422,7 @@ function navigateToNext() {
 }
 
 // 初始化事件监听器
-function initEventListeners() {
+async function initEventListeners() {
   console.log("初始化事件监听器");
 
   // 移除旧的事件监听器
@@ -487,38 +436,29 @@ function initEventListeners() {
   }
 
   // 监听主应用发送的刷新事件，使用固定的事件名称
-  if (
-    window.__TAURI__ &&
-    window.__TAURI__.event &&
-    window.__TAURI__.event.listen
-  ) {
-    window.__TAURI__.event
-      .listen("refresh-reader", (event) => {
-        console.log("收到刷新事件:", event);
-        if (event && event.payload) {
-          const {error, id, cacheKey, format, timestamp} = event.payload;
-          if (error) {
-            // 显示错误提示
-            showToast(error, "error");
-          } else {
-            // 刷新页面内容
-            refreshContent(id, cacheKey, format, timestamp);
-          }
+  try {
+    refreshEventListener = await listen("refresh-reader", (event) => {
+      console.log("收到刷新事件:", event);
+      if (event && event.payload) {
+        const { error, id, cacheKey, format, timestamp } = event.payload;
+        if (error) {
+          // 显示错误提示
+          showToast(error, "error");
+        } else {
+          // 刷新页面内容
+          refreshContent(id, cacheKey, format, timestamp);
         }
-      })
-      .then((unlistenFn) => {
-        refreshEventListener = unlistenFn;
-        console.log("注册了刷新事件监听器");
-      })
-      .catch((error) => {
-        console.error("注册事件监听器失败:", error);
-      });
+      }
+    });
+    console.log("注册了刷新事件监听器");
+  } catch (error) {
+    console.error("注册事件监听器失败:", error);
   }
 }
 
 // 刷新页面内容
 function refreshContent(id, cacheKey, format, timestamp) {
-  console.log("刷新页面内容:", {id, cacheKey, format, timestamp});
+  console.log("刷新页面内容:", { id, cacheKey, format, timestamp });
 
   // 更新URL参数
   const params = new URLSearchParams(window.location.search);
@@ -540,10 +480,7 @@ function refreshContent(id, cacheKey, format, timestamp) {
  */
 async function setupWindowResizeHandler() {
   try {
-    if (!window.__TAURI__) return;
-
-    const {getCurrentWindow} = window.__TAURI__.window;
-    const appWindow = getCurrentWindow();
+    const appWindow = getCurrentWebviewWindow();
     const label = appWindow.label;
 
     // 1. 获取屏幕缩放因子 (关键步骤)
@@ -571,33 +508,31 @@ async function setupWindowResizeHandler() {
         const w = Math.round(logicalWidth);
         const h = Math.round(logicalHeight);
 
-        const sizeObj = {width: w, height: h};
+        const sizeObj = { width: w, height: h };
         localStorage.setItem(storageKey, JSON.stringify(sizeObj));
         // console.log(`尺寸已保存 (逻辑像素): ${w}x${h}`);
       }, 500);
     };
 
     // 2. 监听 Resize
-    await appWindow.onResized(({payload: size}) => {
-      // 兼容 Tauri 不同版本的 payload
-      // 有些版本直接返回 size，有些是在 payload 里
-      const rawSize = size || {};
+    await appWindow.onResized((event) => {
+      const size = event.payload || event;
 
       // 优先寻找 payload 中的逻辑像素 (Tauri v2 部分事件直接提供)
-      if (rawSize.logical) {
-        saveSize(rawSize.logical.width, rawSize.logical.height);
+      if (size.logical) {
+        saveSize(size.logical.width, size.logical.height);
         return;
       }
 
       // 否则使用物理像素进行换算
       let physW, physH;
-      if (rawSize.physical) {
-        physW = rawSize.physical.width;
-        physH = rawSize.physical.height;
+      if (size.physical) {
+        physW = size.physical.width;
+        physH = size.physical.height;
       } else {
         // 假设直接是物理像素 (Tauri v1 常见情况)
-        physW = rawSize.width;
-        physH = rawSize.height;
+        physW = size.width;
+        physH = size.height;
       }
 
       if (physW && physH) {
@@ -614,6 +549,7 @@ async function setupWindowResizeHandler() {
     console.error("设置窗口监听失败:", e);
   }
 }
+
 // 初始化页面
 async function initialize() {
   console.log("🚀 Reader 窗口开始初始化...");
@@ -623,10 +559,10 @@ async function initialize() {
     init();
 
     // 2. 初始化事件监听 (刷新等)
-    initEventListeners();
+    await initEventListeners();
 
     // 3. 初始化拖拽 (自定义标题栏)
-    initDragWindow();
+    await initDragWindow();
 
     // 4. 初始化窗口尺寸监听 (关键)
     console.log("调用 setupWindowResizeHandler...");
@@ -660,4 +596,3 @@ if (document.readyState === "loading") {
 } else {
   initialize();
 }
-// window.onload = initialize; // 建议用 DOMContentLoaded 更快

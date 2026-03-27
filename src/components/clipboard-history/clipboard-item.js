@@ -47,9 +47,12 @@ export function renderClipboardItem(item) {
   };
 
   const safeData = {
-    content: escapeHtml(item.encodedContent),
-    format: escapeHtml(item.format),
-    timestamp: escapeHtml(item.encodedTimestamp),
+    // encodedContent 已经是 URI 编码的，只包含安全字符，不需要 HTML 转义
+    content: item.encodedContent,
+    // format 是内部枚举值 (html/plain/rtf)，只包含字母，无需转义
+    // 转义会破坏 === "html" 的判断
+    format: item.format || "plain",
+    timestamp: item.encodedTimestamp,
     preview: escapeHtml((item.preview || "").trim()),
     label: escapeHtml(item.formatLabel),
     wordCount: item.wordCount ? `${item.wordCount} 字` : "", // 有字数才显示

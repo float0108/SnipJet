@@ -1,159 +1,109 @@
 // 全局设置对象
+import * as fs from '@tauri-apps/plugin-fs';
+
 export let settings = {};
+
+// 默认设置
+function getDefaultSettings() {
+  return {
+    shortcuts: {
+      toggle_interface: "",
+      function_paste: "",
+      quick_paste_mode: "ctrl",
+    },
+    interface: {
+      theme: "light",
+      language: "cn",
+      auto_hide: true,
+      preview_size: "small",
+      max_history_items: 100,
+    },
+    copy: {
+      strip_formatting: false,
+      auto_copy: true,
+      copy_on_select: false,
+    },
+    software: {
+      startup_launch: true,
+      check_updates: true,
+    },
+  };
+}
 
 // 加载设置
 export async function loadSettings() {
   try {
-    if (window.__TAURI__ && window.__TAURI__.fs) {
-      const {readTextFile, exists, BaseDirectory} = window.__TAURI__.fs;
+    console.log("尝试加载设置文件");
 
-      console.log("尝试加载设置文件");
-
-      // 检查设置文件是否存在
-      if (await exists("settings.json", {baseDir: BaseDirectory.AppConfig})) {
-        // 从应用配置目录加载设置文件
-        const content = await readTextFile("settings.json", {
-          baseDir: BaseDirectory.AppConfig,
-        });
-        settings = JSON.parse(content);
-        console.log("设置加载成功:", settings);
-      } else {
-        console.log("设置文件不存在，使用默认设置");
-        // 使用默认设置
-        settings = {
-          shortcuts: {
-            toggle_interface: "",
-            function_paste: "",
-            quick_paste_mode: "ctrl",
-          },
-          interface: {
-            theme: "light",
-            language: "cn",
-            auto_hide: true,
-            preview_size: "small",
-            max_history_items: 100,
-          },
-          copy: {
-            strip_formatting: false,
-            auto_copy: true,
-            copy_on_select: false,
-          },
-          software: {
-            startup_launch: true,
-            check_updates: true,
-          },
-        };
-      }
+    // 检查设置文件是否存在
+    if (await fs.exists("settings.json", { baseDir: fs.BaseDirectory.AppConfig })) {
+      // 从应用配置目录加载设置文件
+      const content = await fs.readTextFile("settings.json", {
+        baseDir: fs.BaseDirectory.AppConfig,
+      });
+      settings = JSON.parse(content);
+      console.log("设置加载成功:", settings);
     } else {
-      // 在非Tauri环境中，尝试从前端目录加载
+      console.log("设置文件不存在，使用默认设置");
+      settings = getDefaultSettings();
+    }
+  } catch (error) {
+    console.error("加载设置时出错:", error);
+    // 尝试从前端目录加载 (非Tauri环境)
+    try {
       const response = await fetch("/config/settings.json");
       if (response.ok) {
         settings = await response.json();
         console.log("设置加载成功 (非Tauri):", settings);
-      } else {
-        console.error("加载设置失败:", response.status);
-        // 使用默认设置
-        settings = {
-          shortcuts: {
-            toggle_interface: "",
-            function_paste: "",
-            quick_paste_mode: "ctrl",
-          },
-          interface: {
-            theme: "light",
-            language: "cn",
-            auto_hide: true,
-            preview_size: "small",
-            max_history_items: 100,
-          },
-          copy: {
-            strip_formatting: false,
-            auto_copy: true,
-            copy_on_select: false,
-          },
-          software: {
-            startup_launch: true,
-            check_updates: true,
-          },
-        };
+        return;
       }
+    } catch (e) {
+      // 忽略错误
     }
-  } catch (error) {
-    console.error("加载设置时出错:", error);
-    // 使用默认设置
-    settings = {
-      shortcuts: {
-        toggle_interface: "",
-        function_paste: "",
-        quick_paste_mode: "ctrl",
-      },
-      interface: {
-        theme: "light",
-        language: "cn",
-        auto_hide: true,
-        preview_size: "small",
-        max_history_items: 100,
-      },
-      copy: {
-        strip_formatting: false,
-        auto_copy: true,
-        copy_on_select: false,
-      },
-      software: {
-        startup_launch: true,
-        check_updates: true,
-      },
-    };
+    settings = getDefaultSettings();
   }
 }
 
 // 保存设置
 export async function saveSettings() {
   try {
-    // 使用@tauri-apps/plugin-fs插件将设置保存到文件
-    if (window.__TAURI__ && window.__TAURI__.fs) {
-      const {writeTextFile, mkdir, exists, BaseDirectory} = window.__TAURI__.fs;
-
-      // 确保应用配置目录存在
-      try {
-        // 检查目录是否存在
-        const dirExists = await exists("", {
-          baseDir: BaseDirectory.AppConfig,
-        });
-        console.log("应用配置目录存在:", dirExists);
-
-        // 如果目录不存在，创建它
-        if (!dirExists) {
-          try {
-            await mkdir("", {
-              baseDir: BaseDirectory.AppConfig,
-              recursive: true,
-            });
-            console.log("应用配置目录创建成功");
-          } catch (mkdirError) {
-            console.warn("创建目录时出错:", mkdirError);
-          }
-        }
-      } catch (dirError) {
-        console.warn("检查目录时出错:", dirError);
-      }
-
-      // 在应用配置目录下写入设置文件
-      await writeTextFile("settings.json", JSON.stringify(settings, null, 2), {
-        baseDir: BaseDirectory.AppConfig,
+    // 确保应用配置目录存在
+    try {
+      const dirExists = await fs.exists("", {
+        baseDir: fs.BaseDirectory.AppConfig,
       });
-      console.log("设置保存成功:", settings);
-    } else {
-      // 在非Tauri环境中，仅打印日志
-      console.log("保存设置:", settings);
+      console.log("应用配置目录存在:", dirExists);
+
+      // 如果目录不存在，创建它
+      if (!dirExists) {
+        try {
+          await fs.mkdir("", {
+            baseDir: fs.BaseDirectory.AppConfig,
+            recursive: true,
+          });
+          console.log("应用配置目录创建成功");
+        } catch (mkdirError) {
+          console.warn("创建目录时出错:", mkdirError);
+        }
+      }
+    } catch (dirError) {
+      console.warn("检查目录时出错:", dirError);
     }
 
+    // 在应用配置目录下写入设置文件
+    await fs.writeTextFile("settings.json", JSON.stringify(settings, null, 2), {
+      baseDir: fs.BaseDirectory.AppConfig,
+    });
+    console.log("设置保存成功:", settings);
+
     // 显示保存成功通知
-    import("./ui.js").then(({showNotification}) => {
+    import("./ui.js").then(({ showNotification }) => {
       showNotification("设置已保存");
     });
   } catch (error) {
     console.error("保存设置时出错:", error);
+    // 在非Tauri环境中，仅打印日志
+    console.log("保存设置:", settings);
   }
 }
 

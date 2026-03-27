@@ -1,4 +1,6 @@
 // 显示通知
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+
 export function showNotification(message) {
   // 创建通知元素
   const notification = document.createElement("div");
@@ -18,18 +20,12 @@ export function showNotification(message) {
 export async function closeWindow() {
   try {
     // 保存设置
-    const {saveSettings} = await import("./handlers.js");
+    const { saveSettings } = await import("./handlers.js");
     await saveSettings();
 
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.window &&
-      window.__TAURI__.window.getCurrentWindow
-    ) {
-      // 使用正确的 Tauri API 关闭窗口
-      const appWindow = window.__TAURI__.window.getCurrentWindow();
-      appWindow.close();
-    }
+    // 使用正确的 Tauri API 关闭窗口
+    const appWindow = getCurrentWebviewWindow();
+    await appWindow.close();
   } catch (error) {
     // 忽略错误，因为在沙箱环境中可能会受限
   }

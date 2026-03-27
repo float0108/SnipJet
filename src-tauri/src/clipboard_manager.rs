@@ -5,7 +5,7 @@ use log::{error, info};
 use tauri::{AppHandle, Emitter};
 use xxhash_rust::xxh3;
 
-use crate::common::globals::LAST_HASH;
+use crate::common::globals::{LAST_HASH, should_ignore_clipboard};
 use crate::common::models::ClipboardItem;
 
 pub struct ClipboardManager {
@@ -64,6 +64,11 @@ impl ClipboardManager {
 
 impl ClipboardHandler for ClipboardManager {
     fn on_clipboard_change(&mut self) {
+        // 检查是否应该忽略剪贴板变化（粘贴操作后的短暂禁用）
+        if should_ignore_clipboard() {
+            return;
+        }
+
         // --- 优先级 1: HTML ---
         if let Ok(html) = self.ctx.get_html() {
             if !html.trim().is_empty() {

@@ -1,7 +1,8 @@
 // window-service.js
-const {WebviewWindow} = window.__TAURI__.webviewWindow;
-const {getCurrentWindow} = window.__TAURI__.window;
-import {log, error} from "../utils/logger.js";
+import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { cursorPosition, monitorFromPoint } from '@tauri-apps/api/window';
+import { PhysicalPosition } from '@tauri-apps/api/dpi';
+import { log, error } from "../utils/logger.js";
 
 // 防抖动控制变量
 let isTogglingWindow = false;
@@ -44,7 +45,7 @@ function saveWindowSize(label, width, height) {
  * 请在 reader.html (子窗口) 的 js 中调用此函数
  */
 export async function initWindowResizeListener() {
-  const appWindow = getCurrentWindow();
+  const appWindow = getCurrentWebviewWindow();
   const label = appWindow.label;
   const persistentKey = getNormalizedKey(label);
 
@@ -103,8 +104,8 @@ export async function createWindow(label, options) {
  */
 export async function closeCurrentWindow() {
   try {
-    console.log("getCurrentWindow 是否可用:", !!getCurrentWindow);
-    const appWindow = getCurrentWindow();
+    console.log("getCurrentWebviewWindow 是否可用:", !!getCurrentWebviewWindow);
+    const appWindow = getCurrentWebviewWindow();
     console.log("获取当前窗口成功:", appWindow);
     await appWindow.close();
     console.log("窗口关闭成功");
@@ -172,7 +173,123 @@ export async function openReaderWindow(element) {
 }
 
 /**
+ * 获取鼠标位置
+ * @returns {Promise<{x: number, y: number}>}
+ */
+async function getMousePosition() {
+  try {
+    const position = await cursorPosition();
+    return { x: position.x, y: position.y };
+  } catch (err) {
+    await error("获取鼠标位置失败:", err);
+    // 返回屏幕中心作为降级方案
+    return { x: window.screen.width / 2 - 160, y: window.screen.height / 2 - 300 };
+  }
+}
+
+/**
+ * 计算窗口显示位置，确保不溢出屏幕
+ * 支持多显示器环境，根据鼠标所在屏幕计算
+ * @param {number} mouseX - 鼠标 X 坐标
+ * @param {number} mouseY - 鼠标 Y 坐标
+ * @param {number} windowWidth - 窗口宽度
+ * @param {number} windowHeight - 窗口高度
+ * @param {number} offset - 距离鼠标的偏移量
+ * @returns {Promise<{x: number, y: number}>}
+ */
+async function calculateWindowPosition(
+  mouseX,
+  mouseY,
+  windowWidth,
+  windowHeight,
+  offset = 10
+) {
+  // 获取鼠标所在的显示器信息
+  let monitor = null;
+  try {
+    monitor = await monitorFromPoint(mouseX, mouseY);
+  } catch (e) {
+    // 降级方案：使用主显示器
+    console.warn("无法获取鼠标所在显示器，使用主显示器", e);
+  }
+
+  // 获取屏幕边界
+  let screenLeft = 0;
+  let screenTop = 0;
+  let screenWidth = window.screen.width;
+  let screenHeight = window.screen.height;
+
+  if (monitor) {
+    screenLeft = monitor.position.x;
+    screenTop = monitor.position.y;
+    screenWidth = monitor.size.width;
+    screenHeight = monitor.size.height;
+  }
+
+  const screenRight = screenLeft + screenWidth;
+  const screenBottom = screenTop + screenHeight;
+
+  // 计算相对屏幕的鼠标位置
+  const relativeMouseX = mouseX;
+  const relativeMouseY = mouseY;
+
+  let x = relativeMouseX + offset;
+  let y = relativeMouseY + offset;
+
+  // 优先顺序：右下 -> 左下 -> 右上 -> 左上
+
+  // 检查右边界溢出（相对于屏幕）
+  const overflowRight = x + windowWidth > screenRight;
+  // 检查下边界溢出（相对于屏幕）
+  const overflowBottom = y + windowHeight > screenBottom;
+  // 检查左边界溢出（相对于屏幕）
+  const overflowLeft = relativeMouseX - windowWidth - offset < screenLeft;
+  // 检查上边界溢出（相对于屏幕）
+  const overflowTop = relativeMouseY - windowHeight - offset < screenTop;
+
+  if (!overflowRight && !overflowBottom) {
+    // 默认：右下
+    x = relativeMouseX + offset;
+    y = relativeMouseY + offset;
+  } else if (overflowRight && !overflowBottom) {
+    // 左下：超出右边界但未超出下边界
+    x = relativeMouseX - windowWidth - offset;
+    y = relativeMouseY + offset;
+  } else if (!overflowRight && overflowBottom) {
+    // 右上：未超出右边界但超出下边界
+    x = relativeMouseX + offset;
+    y = relativeMouseY - windowHeight - offset;
+  } else if (overflowRight && overflowBottom) {
+    // 左上：既超出右边界又超出下边界
+    x = relativeMouseX - windowWidth - offset;
+    y = relativeMouseY - windowHeight - offset;
+  }
+
+  // 最终边界保护：确保窗口不会完全移出屏幕
+  x = Math.max(screenLeft, Math.min(x, screenRight - windowWidth));
+  y = Math.max(screenTop, Math.min(y, screenBottom - windowHeight));
+
+  return { x, y };
+}
+
+/**
+ * 设置窗口是否可激活（是否抢焦点）
+ * @param {boolean} focusable - true 表示可激活（抢焦点），false 表示不可激活
+ * @returns {Promise<void>}
+ */
+export async function setWindowFocusable(focusable) {
+  try {
+    const appWindow = getCurrentWebviewWindow();
+    await appWindow.setFocusable(focusable);
+    await log(`窗口焦点状态已设置: ${focusable ? "可激活" : "不可激活"}`);
+  } catch (err) {
+    await error("设置窗口焦点状态失败:", err);
+  }
+}
+
+/**
  * 切换当前窗口可见性
+ * 显示时窗口位置跟随鼠标
  */
 export async function toggleWindowVisibility() {
   // 防抖动检查
@@ -186,44 +303,58 @@ export async function toggleWindowVisibility() {
 
     await log("快捷键触发：切换窗口可见性");
 
-    if (window.__TAURI__ && window.__TAURI__.window) {
-      const {getCurrentWindow} = window.__TAURI__.window;
-      const appWindow = getCurrentWindow();
+    const appWindow = getCurrentWebviewWindow();
 
-      // 尝试获取窗口可见性状态
-      let isVisible;
+    // 尝试获取窗口可见性状态
+    let isVisible;
+    try {
+      isVisible = await appWindow.isVisible();
+    } catch (visibilityError) {
+      await error("获取窗口可见性状态失败:", visibilityError);
+      // 尝试直接切换，不依赖可见性状态
       try {
-        isVisible = await appWindow.isVisible();
-      } catch (visibilityError) {
-        await error("获取窗口可见性状态失败:", visibilityError);
-        // 尝试直接切换，不依赖可见性状态
-        try {
-          // 先尝试隐藏
-          await appWindow.hide();
-          // 短暂延迟后尝试显示
-          setTimeout(async () => {
-            await appWindow.show();
-            // 重置防抖动标志
-            isTogglingWindow = false;
-          }, 100);
-        } catch (toggleError) {
-          await error("直接切换窗口状态失败:", toggleError);
+        // 先尝试隐藏
+        await appWindow.hide();
+        // 短暂延迟后尝试显示
+        setTimeout(async () => {
+          await appWindow.show();
           // 重置防抖动标志
           isTogglingWindow = false;
-        }
-        return;
+        }, 100);
+      } catch (toggleError) {
+        await error("直接切换窗口状态失败:", toggleError);
+        // 重置防抖动标志
+        isTogglingWindow = false;
       }
-
-      if (isVisible) {
-        await appWindow.hide();
-      } else {
-        await appWindow.show();
-      }
-    } else {
-      await error("Tauri window API 不可用");
+      return;
     }
-  } catch (error) {
-    await error("切换窗口可见性失败:", error);
+
+    if (isVisible) {
+      await appWindow.hide();
+    } else {
+      // 获取鼠标位置并移动窗口
+      const mousePos = await getMousePosition();
+
+      // 获取窗口尺寸
+      const windowSize = await appWindow.outerSize();
+
+      // 计算窗口位置，处理四个方向的溢出（支持多显示器）
+      const position = await calculateWindowPosition(
+        mousePos.x,
+        mousePos.y,
+        windowSize.width,
+        windowSize.height
+      );
+
+      // 设置窗口为不可激活（不抢焦点）
+      await appWindow.setFocusable(false);
+
+      // 设置窗口位置
+      await appWindow.setPosition(new PhysicalPosition(position.x, position.y));
+      await appWindow.show();
+    }
+  } catch (err) {
+    await error("切换窗口可见性失败:", err);
   } finally {
     // 操作完成后重置防抖动标志
     // 添加小延迟，确保操作完全完成
