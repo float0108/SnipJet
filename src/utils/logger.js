@@ -2,24 +2,18 @@
  * 后端日志工具
  * 封装了对后端 print_message 命令的调用
  */
+import { invoke } from '@tauri-apps/api/core';
 
 /**
  * 打印日志到后端
  * @param {string} message - 日志消息
  */
 export async function log(message) {
-  // 适配 Tauri v2 的路径
-  const invoke = window.__TAURI__?.invoke || window.__TAURI__?.core?.invoke;
-
-  if (invoke) {
-    try {
-      await invoke("print_message", {message});
-    } catch (err) {
-      console.error("后端日志调用崩溃:", err); // 这里打印具体的报错原因
-      console.log(`[Fallback] ${message}`);
-    }
-  } else {
-    console.log(`[No Tauri] ${message}`);
+  try {
+    await invoke("print_message", { message });
+  } catch (err) {
+    console.error("后端日志调用崩溃:", err);
+    console.log(`[Fallback] ${message}`);
   }
 }
 
@@ -36,9 +30,9 @@ export async function debug(message) {
  * @param {string} message - 错误消息
  * @param {Error} [error] - 错误对象
  */
-export async function error(message, error = null) {
-  if (error) {
-    await log(`[Error] ${message}: ${error}`);
+export async function error(message, err = null) {
+  if (err) {
+    await log(`[Error] ${message}: ${err}`);
   } else {
     await log(`[Error] ${message}`);
   }
@@ -57,9 +51,9 @@ export async function event(message) {
  * @param {string} message - 致命错误消息
  * @param {Error} [error] - 错误对象
  */
-export async function fatal(message, error = null) {
-  if (error) {
-    await log(`[Fatal] ${message}: ${error}`);
+export async function fatal(message, err = null) {
+  if (err) {
+    await log(`[Fatal] ${message}: ${err}`);
   } else {
     await log(`[Fatal] ${message}`);
   }

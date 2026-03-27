@@ -7,17 +7,20 @@ use std::time::Duration;
 use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
+    GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
 };
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::POINT;
 
 use clipboard_rs::{Clipboard, ClipboardContext};
 use enigo::{Enigo, Key, KeyboardControllable};
-use log::{debug, error, info};
+use log::{error, info};
 use tauri::{Manager, State};
 
 use crate::clipboard_manager::ClipboardManager;
-use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE};
+use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE, set_clipboard_ignore_for};
 use crate::common::models::ClipboardItem;
+use crate::core::data_store::DataStore;
 
 // 引入你的其他依赖，例如 ClipboardManager, LAST_HASH 等
 #[tauri::command]
@@ -128,9 +131,8 @@ pub async fn paste_to_active_window(
             enigo.key_down(Key::Control);
             thread::sleep(Duration::from_millis(50)); // Windows 可能需要更长的按键响应时间
 
-            // 点击 V
-            // 如果 Layout('v') 不工作，有些环境可能需要 Key::Raw 或其他方式
-            enigo.key_click(Key::Layout('v'));
+            // 点击 V (使用 Raw keycode 0x56 = 'V' key，避免大小写问题)
+            enigo.key_click(Key::Raw(0x56));
             thread::sleep(Duration::from_millis(50));
 
             // 松开 Control
@@ -143,6 +145,10 @@ pub async fn paste_to_active_window(
         eprintln!("[ERROR] 按键模拟线程崩溃 (Panic)");
         return Err("按键模拟失败".to_string());
     }
+
+    // 粘贴完成后，设置剪贴板忽略时间（防止 Word/WPS 自动转换格式后触发新记录）
+    // 忽略 1000ms，确保 Word 生成的 RTF 不会被误记录
+    set_clipboard_ignore_for(1000);
 
     Ok(())
 }
@@ -228,6 +234,9 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
         }
     }
 
+    // 复制完成后，设置剪贴板忽略时间（防止某些应用自动转换格式后触发新记录）
+    set_clipboard_ignore_for(500);
+
     Ok(())
 }
 
@@ -235,4 +244,85 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
 pub async fn print_message(message: String) -> Result<(), String> {
     println!("Frontend message: {}", message);
     Ok(())
+}
+
+/// 获取当前鼠标位置（屏幕坐标）
+#[tauri::command]
+pub async fn get_mouse_position() -> Result<(i32, i32), String> {
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            let mut point = POINT { x: 0, y: 0 };
+            if GetCursorPos(&mut point).is_ok() {
+                Ok((point.x, point.y))
+            } else {
+                Err("无法获取鼠标位置".to_string())
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 非 Windows 平台返回一个默认值或错误
+        Err("当前平台不支持获取鼠标位置".to_string())
+    }
+}
+
+// --- 数据持久化命令 ---
+
+/// 保存剪贴板历史到文件
+#[tauri::command]
+pub async fn save_clipboard_history(
+    app_handle: tauri::AppHandle,
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+) -> Result<(), String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let history_data = {
+        let history_lock = history.lock().unwrap();
+        history_lock.clone()
+    };
+    data_store.save_clipboard_history(&history_data)?;
+    info!("Clipboard history saved on demand ({} items)", history_data.len());
+    Ok(())
+}
+
+/// 从文件加载剪贴板历史
+#[tauri::command]
+pub async fn load_clipboard_history_command(
+    app_handle: tauri::AppHandle,
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+) -> Result<Vec<ClipboardItem>, String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let loaded_history = data_store.load_clipboard_history()?;
+
+    // 更新内存中的历史记录
+    {
+        let mut history_lock = history.lock().unwrap();
+        *history_lock = loaded_history.clone();
+    }
+
+    info!("Clipboard history loaded on demand ({} items)", loaded_history.len());
+    Ok(loaded_history)
+}
+
+/// 保存设置到文件
+#[tauri::command]
+pub async fn save_settings(
+    app_handle: tauri::AppHandle,
+    settings: serde_json::Value,
+) -> Result<(), String> {
+    let data_store = DataStore::new(&app_handle)?;
+    data_store.save_settings(&settings)?;
+    info!("Settings saved successfully");
+    Ok(())
+}
+
+/// 从文件加载设置
+#[tauri::command]
+pub async fn load_settings_command(
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let settings = data_store.load_settings()?;
+    info!("Settings loaded successfully");
+    Ok(settings)
 }

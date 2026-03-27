@@ -1,7 +1,7 @@
 {
   "shortcuts": {
     "toggle_interface": "Win+V",
-    "function_paste": "Ctrl+Shift+V",
+    "function_paste": "F2",
     "quick_paste_mode": "ctrl"
   },
   "interface": {

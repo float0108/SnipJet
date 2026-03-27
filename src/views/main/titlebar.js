@@ -1,35 +1,48 @@
-// 全局变量
-let isPinned = true; // 默认处于 Pin 状态
-let appWindow = null;
+// 创建可共享的 pin 状态管理器
+export const pinState = {
+  _isPinned: true,
+  _listeners: [],
+
+  get isPinned() {
+    return this._isPinned;
+  },
+
+  set isPinned(value) {
+    this._isPinned = value;
+    this._listeners.forEach(fn => fn(value));
+  },
+
+  subscribe(fn) {
+    this._listeners.push(fn);
+    return () => {
+      const index = this._listeners.indexOf(fn);
+      if (index > -1) this._listeners.splice(index, 1);
+    };
+  }
+};
 
 // 导入窗口服务
-import {createWindow} from "../../services/window-service.js";
+import { createWindow } from "../../services/window-service.js";
 // 导入日志工具
-import {log, error} from "../../utils/logger.js";
+import { log, error } from "../../utils/logger.js";
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { invoke } from '@tauri-apps/api/core';
 
 /**
  * 获取 Tauri 窗口实例的快捷方法
  */
 function getWin() {
-  if (appWindow) return appWindow;
-  appWindow =
-    window.__TAURI__?.window?.getCurrentWindow?.() ||
-    window.__TAURI__?.appWindow;
-  return appWindow;
+  return getCurrentWebviewWindow();
 }
 
 /**
  * 同步 Pin 状态到后端
  */
 async function syncPinState(pinned) {
-  const tauri = window.__TAURI__;
-  const invoke = tauri?.core?.invoke || tauri?.invoke;
-  if (invoke) {
-    try {
-      await invoke("update_window_pin_state", {isPinned: pinned});
-    } catch (e) {
-      await error("同步后端失败:", e);
-    }
+  try {
+    await invoke("update_window_pin_state", { isPinned: pinned });
+  } catch (e) {
+    await error("同步后端失败:", e);
   }
 }
 
@@ -44,19 +57,18 @@ export async function initTitlebarButtons() {
 
   // 1. 固定按钮逻辑：仅改变 UI 状态和后端同步，不操作窗口置顶
   if (pinBtn) {
-    pinBtn.classList.toggle("pinned", isPinned); // 同步初始 UI
-    await syncPinState(isPinned);
+    pinBtn.classList.toggle("pinned", pinState.isPinned); // 同步初始 UI
+    await syncPinState(pinState.isPinned);
 
     pinBtn.addEventListener("click", async () => {
-      isPinned = !isPinned;
-      pinBtn.classList.toggle("pinned", isPinned);
-      await syncPinState(isPinned);
+      pinState.isPinned = !pinState.isPinned;
+      pinBtn.classList.toggle("pinned", pinState.isPinned);
+      await syncPinState(pinState.isPinned);
     });
   }
 
   // 2. 关闭按钮逻辑
   closeBtn?.addEventListener("click", async () => {
-    if (!win) return;
     try {
       await win.hide();
     } catch (err) {
@@ -95,4 +107,5 @@ export async function openSettingsWindow() {
   }
 }
 
-export {isPinned, appWindow};
+// 为了兼容性保留旧导出（指向 pinState 的当前值）
+export const isPinned = pinState.isPinned;
