@@ -2,14 +2,14 @@
 
 import {listen, invoke} from "../../services/tauri-api.js";
 import {openReaderWindow} from "../../services/window-service.js";
-import {initGlobalShortcuts} from "../../services/shortcut-service.js";
+import {initGlobalShortcuts, handlePasteAftermath} from "../../services/shortcut-service.js";
 import {
   updateStatus,
   loadRealData,
   listenToClipboardUpdate,
 } from "../../services/clipboard-service.js";
 import {html2text} from "../../utils/formatter.js";
-import {initTitlebarButtons} from "./titlebar.js";
+import {initTitlebarButtons, pinState} from "./titlebar.js";
 import {handleNavigation} from "./navigation.js";
 import {
   renderEmptyState,
@@ -79,10 +79,9 @@ if (typeof window !== "undefined") {
             await invoke("paste_to_active_window", {
               content: decodeURIComponent(content),
               format: format,
-              isPinned: true, // 默认置顶，使用驼峰命名法与后端期望保持一致
+              isPinned: pinState.isPinned, // 使用当前 pin 状态
             });
             await log("后端粘贴命令执行成功");
-            return;
           } catch (tauriError) {
             await error("后端粘贴命令执行失败:", tauriError);
             // 后端命令失败，使用前端模拟作为 fallback
@@ -114,6 +113,9 @@ if (typeof window !== "undefined") {
         } else {
           await log("没有活动元素，无法发送粘贴事件");
         }
+
+        // 粘贴后处理（隐藏窗口等）
+        await handlePasteAftermath();
       }
     } catch (error) {
       await error("模拟粘贴失败:", error);
@@ -157,10 +159,9 @@ if (typeof window !== "undefined") {
             await invoke("paste_to_active_window", {
               content: plainText,
               format: "plain",
-              isPinned: true, // 默认置顶，使用驼峰命名法与后端期望保持一致
+              isPinned: pinState.isPinned, // 使用当前 pin 状态
             });
             console.log("后端粘贴命令执行成功");
-            return;
           } catch (tauriError) {
             console.error("后端粘贴命令执行失败:", tauriError);
             // 后端命令失败，使用前端模拟作为 fallback
@@ -192,6 +193,9 @@ if (typeof window !== "undefined") {
         } else {
           console.log("没有活动元素，无法发送粘贴事件");
         }
+
+        // 粘贴后处理（隐藏窗口等）
+        await handlePasteAftermath();
       }
     } catch (error) {
       console.error("粘贴纯文本失败:", error);

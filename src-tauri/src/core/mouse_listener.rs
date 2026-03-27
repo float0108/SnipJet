@@ -1,8 +1,8 @@
 use crate::common::globals::WINDOW_PIN_STATE; // 只需要 Pin 状态
-use log::{debug, error, info};
+use log::info;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, Manager};
 
 // 引入 Windows API
 #[cfg(target_os = "windows")]

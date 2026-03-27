@@ -1,4 +1,5 @@
 // 导航功能
+import { emit } from '@tauri-apps/api/event';
 
 /**
  * 处理导航事件
@@ -9,8 +10,8 @@
  */
 async function handleNavigation(payload, container) {
   try {
-    const {direction, currentId} = payload;
-    console.log("处理导航事件:", {direction, currentId});
+    const { direction, currentId } = payload;
+    console.log("处理导航事件:", { direction, currentId });
 
     // 获取所有剪贴板项
     const items = container.querySelectorAll(".clipboard-item");
@@ -46,61 +47,43 @@ async function handleNavigation(payload, container) {
       const timestamp = targetItem.getAttribute("data-timestamp");
       const targetId = targetItem.id.replace("item-", "");
 
-      console.log("目标项目数据:", {content, format, timestamp, targetId});
+      console.log("目标项目数据:", { content, format, timestamp, targetId });
 
       // 使用 localStorage 传递大数据内容，避免 URL 长度限制
       const storageKey = `transfer-${targetId}`;
       localStorage.setItem(storageKey, content);
 
       // 发送事件给当前reader窗口，通知其刷新内容
-      if (
-        window.__TAURI__ &&
-        window.__TAURI__.event &&
-        window.__TAURI__.event.emit
-      ) {
-        console.log("准备发送刷新事件");
-        window.__TAURI__.event.emit("refresh-reader", {
-          id: targetId,
-          cacheKey: storageKey,
-          format: format,
-          timestamp: timestamp,
-        });
-        console.log("发送刷新reader窗口的事件成功");
-      } else {
-        console.error("无法发送刷新事件，Tauri事件API不可用");
-      }
+      console.log("准备发送刷新事件");
+      await emit("refresh-reader", {
+        id: targetId,
+        cacheKey: storageKey,
+        format: format,
+        timestamp: timestamp,
+      });
+      console.log("发送刷新reader窗口的事件成功");
     } else {
       console.log("没有更多项目可以导航");
 
       // 发送事件给当前reader窗口，通知其没有更多项目
-      if (
-        window.__TAURI__ &&
-        window.__TAURI__.event &&
-        window.__TAURI__.event.emit
-      ) {
-        window.__TAURI__.event.emit("refresh-reader", {
-          error: "没有更多项目可以导航",
-        });
-        console.log("发送没有更多项目的事件");
-      }
+      await emit("refresh-reader", {
+        error: "没有更多项目可以导航",
+      });
+      console.log("发送没有更多项目的事件");
     }
-  } catch (error) {
-    console.error("处理导航事件失败:", error);
+  } catch (err) {
+    console.error("处理导航事件失败:", err);
 
     // 发送事件给当前reader窗口，通知其导航失败
-    if (
-      window.__TAURI__ &&
-      window.__TAURI__.event &&
-      window.__TAURI__.event.emit
-    ) {
-      window.__TAURI__.event.emit("refresh-reader", {
+    try {
+      await emit("refresh-reader", {
         error: "导航失败，请重试",
       });
       console.log("发送导航失败的事件");
+    } catch (e) {
+      console.error("发送事件失败:", e);
     }
   }
 }
 
-export {
-  handleNavigation,
-};
+export { handleNavigation };
