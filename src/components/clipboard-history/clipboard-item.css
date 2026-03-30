@@ -159,3 +159,32 @@
     background: #fee2e2;
     color: #ef4444;
 }
+
+/* 收藏按钮样式 */
+.card-btn.btn-favorite {
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.card-btn.btn-favorite:hover {
+    background: rgba(234, 179, 8, 0.1);
+    color: #eab308;
+}
+
+.card-btn.btn-favorite.active {
+    color: #eab308;
+}
+
+.card-btn.btn-favorite.active:hover {
+    background: rgba(234, 179, 8, 0.2);
+}
+
+/* 收藏状态的卡片样式 */
+.clipboard-item.is-favorite {
+    border-color: rgba(234, 179, 8, 0.3);
+}
+
+.clipboard-item.is-favorite:hover {
+    border-color: #eab308;
+    box-shadow: 0 4px 12px rgba(234, 179, 8, 0.1);
+}

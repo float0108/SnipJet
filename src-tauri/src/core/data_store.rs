@@ -111,8 +111,80 @@ impl DataStore {
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read history file: {}", e))?;
 
-        let history: Vec<ClipboardItem> = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse history file: {}", e))?;
+        // 尝试解析历史记录，如果失败则尝试以兼容模式解析（处理旧数据格式）
+        let history: Vec<ClipboardItem> = match serde_json::from_str(&content) {
+            Ok(items) => items,
+            Err(e) => {
+                error!("Failed to parse history file with standard format: {}", e);
+                // 尝试以 Value 格式解析，然后手动迁移旧数据
+                let raw_value: Result<serde_json::Value, _> = serde_json::from_str(&content);
+                match raw_value {
+                    Ok(values) => {
+                        if let Some(array) = values.as_array() {
+                            let migrated: Vec<ClipboardItem> = array
+                                .iter()
+                                .filter_map(|v| {
+                                    // 手动构建 ClipboardItem，处理缺失的字段
+                                    let id = v.get("id")?.as_str()?.to_string();
+                                    let content = v.get("content")?.as_str()?.to_string();
+                                    let preview = v.get("preview")?.as_str()?.to_string();
+                                    let timestamp = v.get("timestamp")?.as_i64()?;
+                                    let word_count = v.get("word_count")?.as_u64()? as usize;
+
+                                    // 解析 format 字段
+                                    let format_str = v.get("format")?.as_str()?;
+                                    let format = match format_str {
+                                        "html" => crate::common::models::ClipboardFormat::Html,
+                                        "rtf" => crate::common::models::ClipboardFormat::Rtf,
+                                        "image" => crate::common::models::ClipboardFormat::Image,
+                                        "files" => crate::common::models::ClipboardFormat::Files,
+                                        _ => crate::common::models::ClipboardFormat::Plain,
+                                    };
+
+                                    // 解析 metadata（可选）
+                                    let metadata = v.get("metadata")
+                                        .and_then(|m| m.as_object())
+                                        .map(|obj| {
+                                            obj.iter()
+                                                .filter_map(|(k, v)| {
+                                                    v.as_str().map(|s| (k.clone(), s.to_string()))
+                                                })
+                                                .collect()
+                                        })
+                                        .unwrap_or_default();
+
+                                    // 解析 is_favorite（可选，默认为 false）
+                                    let is_favorite = v.get("is_favorite")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+
+                                    Some(ClipboardItem {
+                                        id,
+                                        format,
+                                        content,
+                                        preview,
+                                        timestamp,
+                                        word_count,
+                                        metadata,
+                                        is_favorite,
+                                    })
+                                })
+                                .collect();
+
+                            info!("Successfully migrated {} items from old data format", migrated.len());
+                            migrated
+                        } else {
+                            error!("History file is not a valid array");
+                            Vec::new()
+                        }
+                    }
+                    Err(e2) => {
+                        error!("Failed to parse history file even as raw JSON: {}", e2);
+                        return Err(format!("History file is corrupted: {} (raw parse: {})", e, e2));
+                    }
+                }
+            }
+        };
 
         // 更新最后保存的历史记录
         let mut last_saved = self.last_saved_history.lock().unwrap();
@@ -220,10 +292,13 @@ impl DataStore {
         if last_saved.len() != current.len() {
             return true;
         }
-        // 简单比较：检查 ID 是否相同
-        let last_ids: Vec<_> = last_saved.iter().map(|i| &i.id).collect();
-        let current_ids: Vec<_> = current.iter().map(|i| &i.id).collect();
-        last_ids != current_ids
+        // 比较每个项目的 ID 和 is_favorite 状态
+        for (last, curr) in last_saved.iter().zip(current.iter()) {
+            if last.id != curr.id || last.is_favorite != curr.is_favorite {
+                return true;
+            }
+        }
+        false
     }
 
     /// 默认设置

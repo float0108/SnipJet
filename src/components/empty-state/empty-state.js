@@ -2,16 +2,23 @@
 
 /**
  * 渲染空状态
+ * @param {string} customText - 自定义空状态文本
+ * @param {string} customDescription - 自定义空状态描述
  * @returns {string} 空状态的HTML字符串
  */
-export function renderEmptyState() {
+export function renderEmptyState(customText, customDescription) {
+  const text = customText || "暂无剪贴板内容";
+  const description = customDescription !== undefined
+    ? customDescription
+    : "复制内容后将显示在这里";
+
   return `
     <div class="empty-state">
       <div class="empty-icon">
         <div class="icon icon-empty" style="width: 48px; height: 48px; opacity: 0.5;"></div>
       </div>
-      <div class="empty-text">暂无剪贴板内容</div>
-      <div class="empty-description">复制内容后将显示在这里</div>
+      <div class="empty-text">${text}</div>
+      ${description ? `<div class="empty-description">${description}</div>` : ""}
     </div>
   `;
 }

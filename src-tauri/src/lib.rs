@@ -27,6 +27,25 @@ mod commands;
 mod common;
 mod core;
 
+/// 加载 PNG 图标文件并转换为 Tauri Image
+fn load_icon(path: &std::path::Path) -> Result<tauri::image::Image<'static>, Box<dyn std::error::Error>> {
+    let img = image::open(path)?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Ok(tauri::image::Image::new_owned(rgba.into_raw(), width, height))
+}
+
+/// 嵌入的默认图标数据
+const DEFAULT_ICON_BYTES: &[u8] = include_bytes!("../icons/32x32.png");
+
+/// 加载默认图标（从嵌入数据）
+fn load_default_icon() -> Result<tauri::image::Image<'static>, Box<dyn std::error::Error>> {
+    let img = image::load_from_memory(DEFAULT_ICON_BYTES)?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Ok(tauri::image::Image::new_owned(rgba.into_raw(), width, height))
+}
+
 // --- Main Entry ---
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -109,12 +128,34 @@ where
             // 启动文本扩展监听
             text_expander.start();
 
-            // 创建托盘图标
+            // 创建托盘图标 - 使用 32x32 图标以确保在 Windows 上显示清晰
             let quit = MenuItem::with_id(app, "quit", "退出程序", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit])?;
 
+            // 加载 32x32 图标用于托盘（优先使用嵌入的图标）
+            let tray_icon = match load_default_icon() {
+                Ok(icon) => icon,
+                Err(e) => {
+                    log::warn!("Failed to load embedded icon: {}", e);
+                    // 尝试从资源目录加载
+                    match app.path().resolve("icons/32x32.png", tauri::path::BaseDirectory::Resource) {
+                        Ok(path) => match load_icon(&path) {
+                            Ok(icon) => icon,
+                            Err(e) => {
+                                log::error!("Failed to load icon from path: {}", e);
+                                tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("Failed to resolve icon path: {}", e);
+                            tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+                        }
+                    }
+                }
+            };
+
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(
@@ -157,6 +198,8 @@ where
             commands::get_clipboard_history,
             commands::clear_history,
             commands::delete_clipboard_item,
+            commands::toggle_favorite,
+            commands::get_favorite_items,
             commands::paste_to_active_window,
             commands::html_to_text,
             commands::copy_to_clipboard_no_history,
