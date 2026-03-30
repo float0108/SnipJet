@@ -23,9 +23,20 @@ export async function invoke(command, args = {}) {
  */
 export async function getClipboardHistory() {
   try {
-    return await tauriInvoke("get_clipboard_history");
+    console.log("[getClipboardHistory] 正在获取剪贴板历史...");
+    const result = await tauriInvoke("get_clipboard_history");
+    console.log("[getClipboardHistory] 获取成功，记录数:", result?.length || 0);
+    if (result && result.length > 0) {
+      console.log("[getClipboardHistory] 第一条记录示例:", {
+        id: result[0].id,
+        format: result[0].format,
+        preview: result[0].preview?.substring(0, 50),
+        is_favorite: result[0].is_favorite
+      });
+    }
+    return result;
   } catch (error) {
-    console.error("获取剪贴板历史失败:", error);
+    console.error("[getClipboardHistory] 获取剪贴板历史失败:", error);
     return [];
   }
 }
@@ -36,10 +47,12 @@ export async function getClipboardHistory() {
  */
 export async function testTauriConnection() {
   try {
+    console.log("[testTauriConnection] 测试连接...");
     const result = await tauriInvoke("get_clipboard_history");
+    console.log("[testTauriConnection] 连接成功，结果类型:", typeof result, Array.isArray(result) ? "是数组" : "不是数组");
     return Array.isArray(result);
   } catch (error) {
-    console.error("Tauri连接测试失败:", error);
+    console.error("[testTauriConnection] 连接测试失败:", error);
     return false;
   }
 }

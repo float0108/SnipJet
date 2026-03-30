@@ -43,7 +43,8 @@
   color: var(--text-primary);
 }
 
-.toolbar-btn svg {
+.toolbar-btn svg,
+.toolbar-btn .icon-svg {
   width: 16px;
   height: 16px;
 }
@@ -56,6 +57,79 @@
 
 .toolbar-btn.pinned:hover {
   background-color: rgba(59, 130, 246, 0.2);
+}
+
+/* 收藏按钮激活状态 */
+.toolbar-btn.favorites-active {
+  color: #eab308;
+  background-color: rgba(234, 179, 8, 0.1);
+}
+
+.toolbar-btn.favorites-active:hover {
+  background-color: rgba(234, 179, 8, 0.2);
+}
+
+/* 搜索框样式 */
+.search-box {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  padding: 2px 8px;
+  height: 28px;
+  animation: search-slide-in 0.2s ease;
+}
+
+.search-box.active {
+  display: flex;
+}
+
+@keyframes search-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 120px;
+  padding: 0 4px;
+}
+
+.search-box input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.search-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-close:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.search-close svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* --- 主内容容器 --- */

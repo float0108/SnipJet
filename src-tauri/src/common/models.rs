@@ -29,6 +29,8 @@ pub struct ClipboardItem {
     pub timestamp: i64,
     pub word_count: usize,
     pub metadata: HashMap<String, String>,
+    #[serde(default)]
+    pub is_favorite: bool,
 }
 
 impl ClipboardItem {
@@ -51,6 +53,7 @@ impl ClipboardItem {
             timestamp: Utc::now().timestamp_millis(),
             word_count,
             metadata: HashMap::new(),
+            is_favorite: false,
         }
     }
 

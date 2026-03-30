@@ -56,6 +56,37 @@ pub fn delete_clipboard_item(
 }
 
 #[tauri::command]
+pub fn toggle_favorite(
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    id: String,
+) -> Result<bool, String> {
+    let mut history_lock = history.lock().unwrap();
+
+    // 查找并切换收藏状态
+    if let Some(item) = history_lock.iter_mut().find(|item| item.id == id) {
+        item.is_favorite = !item.is_favorite;
+        let new_state = item.is_favorite;
+        info!("Toggled favorite for item {}: {}", id, new_state);
+        Ok(new_state)
+    } else {
+        error!("Failed to toggle favorite: id not found - {}", id);
+        Err(format!("Clipboard item not found: {}", id))
+    }
+}
+
+#[tauri::command]
+pub fn get_favorite_items(
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+) -> Vec<ClipboardItem> {
+    let history_lock = history.lock().unwrap();
+    history_lock
+        .iter()
+        .filter(|item| item.is_favorite)
+        .cloned()
+        .collect()
+}
+
+#[tauri::command]
 pub async fn paste_to_active_window(
     window: tauri::WebviewWindow,
     content: String,
