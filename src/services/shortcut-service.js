@@ -238,7 +238,6 @@ function createDebouncedAction(fn, delay, timerRef, label) {
   return async function(...args) {
     // 如果正在执行中或处于冷却期，忽略此次触发
     if (timerRef.executing || timerRef.current) {
-      await debug(`[${label}] 防抖：忽略重复触发（执行中或冷却期）`);
       return;
     }
 
@@ -246,14 +245,12 @@ function createDebouncedAction(fn, delay, timerRef, label) {
     timerRef.executing = true;
 
     try {
-      await debug(`[${label}] 首次触发，立即执行`);
       await fn.apply(this, args);
     } finally {
       // 执行完成后，设置冷却期计时器
       timerRef.current = setTimeout(async () => {
         timerRef.current = null;
         timerRef.executing = false;
-        await debug(`[${label}] 防抖结束，准备接受下一次触发`);
       }, delay);
     }
   };
@@ -309,7 +306,6 @@ export async function initGlobalShortcuts() {
       }
 
       await globalShortcut.register(finalKey, async () => {
-        await debug(`触发 [${item.label}] 快捷键: ${finalKey}`);
         await item.action();
       });
       await debug(`注册成功 [${item.label}]: ${finalKey}`);

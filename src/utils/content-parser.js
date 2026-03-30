@@ -7,12 +7,15 @@
  * @returns {string} - 显示标签
  */
 export function getFormatLabel(format) {
+  // 后端返回 "text"，前端统一使用 "text"
   const labels = {
-    plain: "纯文本",
+    text: "纯文本",      // 后端 ClipboardFormat::Plain 序列化为 "text"
+    plain: "纯文本",     // 兼容旧数据
     html: "HTML",
     rtf: "富文本",
     image: "图片",
     files: "文件",
+    custom: "自定义",
   };
   return labels[format] || format;
 }
@@ -25,16 +28,20 @@ export function getFormatLabel(format) {
 export function parseClipboardItem(item) {
   if (!item) return null;
 
+  // 后端返回的 format 可能是 "text" (Plain), "html", "rtf", "image", "files"
+  const format = item.format || "text";
+
   return {
     id: item.id,
-    format: item.format || "plain",
+    format: format,
     content: item.content,
     preview: item.preview,
     timestamp: item.timestamp,
     wordCount: item.word_count || 0,
-    formatLabel: getFormatLabel(item.format || "plain"),
-    encodedContent: encodeURIComponent(item.content),
-    encodedTimestamp: encodeURIComponent(item.timestamp),
+    formatLabel: getFormatLabel(format),
+    encodedContent: encodeURIComponent(item.content || ""),
+    encodedTimestamp: encodeURIComponent(item.timestamp || ""),
+    isFavorite: item.is_favorite || false,
   };
 }
 

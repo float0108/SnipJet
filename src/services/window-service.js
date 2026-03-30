@@ -301,8 +301,6 @@ export async function toggleWindowVisibility() {
     // 设置防抖动标志
     isTogglingWindow = true;
 
-    await log("快捷键触发：切换窗口可见性");
-
     const appWindow = getCurrentWebviewWindow();
 
     // 尝试获取窗口可见性状态

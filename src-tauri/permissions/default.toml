@@ -25,9 +25,16 @@ commands.allow = [
     "get_clipboard_history",
     "clear_history",
     "delete_clipboard_item",
+    "toggle_favorite",
+    "get_favorite_items",
     "paste_to_active_window",
     "html_to_text",
     "copy_to_clipboard_no_history",
     "update_global_last_hash",
-    "apply_no_activate_style"
+    "apply_no_activate_style",
+    "get_mouse_position",
+    "save_clipboard_history",
+    "load_clipboard_history_command",
+    "save_settings",
+    "load_settings_command"
 ]

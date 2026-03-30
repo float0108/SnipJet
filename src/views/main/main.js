@@ -9,12 +9,13 @@ import {
   listenToClipboardUpdate,
 } from "../../services/clipboard-service.js";
 import {html2text} from "../../utils/formatter.js";
-import {initTitlebarButtons, pinState} from "./titlebar.js";
+import {initTitlebarButtons, pinState, filterState} from "./titlebar.js";
 import {handleNavigation} from "./navigation.js";
 import {
   renderEmptyState,
   ensureEmptyStateStyles,
 } from "../../components/empty-state/empty-state.js";
+import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
 import {log, debug, error, event} from "../../utils/logger.js";
 
 // 确保函数被暴露到全局作用域
@@ -235,6 +236,186 @@ if (typeof window !== "undefined") {
       console.error("删除剪贴板项失败:", error);
     }
   };
+
+  // 切换收藏状态
+  window.toggleFavorite = async function (id) {
+    console.log("[toggleFavorite] 切换收藏状态:", id);
+    console.log("[toggleFavorite] 当前 allClipboardItems 数量:", allClipboardItems.length);
+
+    try {
+      if (invoke) {
+        const newState = await invoke("toggle_favorite", { id });
+        console.log("[toggleFavorite] 后端返回新状态:", newState);
+
+        // 更新 allClipboardItems 中的对应项目
+        const itemIndex = allClipboardItems.findIndex(item => item.id === id);
+        if (itemIndex !== -1) {
+          allClipboardItems[itemIndex].is_favorite = newState;
+          console.log("[toggleFavorite] 已更新 allClipboardItems:", id, "索引:", itemIndex, "新状态:", newState);
+          console.log("[toggleFavorite] 更新后的项目:", allClipboardItems[itemIndex]);
+        } else {
+          console.warn("[toggleFavorite] 未在 allClipboardItems 中找到项目:", id);
+          console.log("[toggleFavorite] 所有项目 ID:", allClipboardItems.map(i => i.id));
+        }
+
+        // 立即保存数据到文件，确保收藏状态不会丢失
+        try {
+          await invoke("save_clipboard_history");
+          console.log("[toggleFavorite] 已保存数据到文件");
+        } catch (saveError) {
+          console.error("[toggleFavorite] 保存数据失败:", saveError);
+        }
+
+        // 更新 UI
+        const elementId = `item-${id}`;
+        const element = document.getElementById(elementId);
+        if (element) {
+          // 更新收藏按钮状态
+          const favoriteBtn = element.querySelector(".btn-favorite");
+          if (favoriteBtn) {
+            favoriteBtn.classList.toggle("active", newState);
+            favoriteBtn.title = newState ? "取消收藏" : "收藏";
+            // 更新图标
+            favoriteBtn.innerHTML = newState
+              ? `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`
+              : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`;
+          }
+
+          // 更新卡片收藏状态
+          element.classList.toggle("is-favorite", newState);
+
+          // 如果在收藏模式下，且取消收藏，则重新应用筛选
+          if (window.filterState && window.filterState.showFavoritesOnly && !newState) {
+            console.log("[toggleFavorite] 在收藏模式下取消收藏，重新应用筛选");
+            const container = document.getElementById("clipboard-history");
+            const statusElement = document.getElementById("status");
+            if (container) {
+              applyFilters(container, statusElement);
+            }
+          }
+        } else {
+          console.warn("[toggleFavorite] 未找到 UI 元素:", elementId);
+        }
+      }
+    } catch (error) {
+      console.error("[toggleFavorite] 切换收藏状态失败:", error);
+    }
+  };
+}
+
+// 全局状态引用
+window.filterState = filterState;
+
+// 当前显示的所有剪贴板项（用于筛选）
+let allClipboardItems = [];
+
+// 获取当前筛选后的项目
+function getFilteredItems() {
+  // 确保 allClipboardItems 是数组
+  if (!Array.isArray(allClipboardItems)) {
+    console.warn("[getFilteredItems] allClipboardItems 不是数组:", allClipboardItems);
+    return [];
+  }
+
+  let items = [...allClipboardItems];
+
+  // 收藏筛选 - 使用布尔值转换确保兼容性
+  if (filterState.showFavoritesOnly) {
+    console.log("[getFilteredItems] 启用收藏筛选，检查项目...");
+    items = items.filter(item => {
+      // 处理可能缺失的 is_favorite 字段（旧数据兼容）
+      // 后端返回 is_favorite (snake_case)
+      const isFavorite = item.is_favorite === true;
+      console.log("[getFilteredItems] 项目:", item.id, "is_favorite:", item.is_favorite, "结果:", isFavorite);
+      return isFavorite;
+    });
+    console.log("[getFilteredItems] 收藏筛选后数量:", items.length);
+  }
+
+  // 搜索筛选
+  const searchQuery = filterState.searchQuery.toLowerCase().trim();
+  if (searchQuery) {
+    items = items.filter(item => {
+      const content = (item.content || "").toLowerCase();
+      const preview = (item.preview || "").toLowerCase();
+      return content.includes(searchQuery) || preview.includes(searchQuery);
+    });
+  }
+
+  return items;
+}
+
+// 应用筛选并重新渲染
+async function applyFilters(container, statusElement) {
+  if (!container) {
+    console.error("[applyFilters] 容器元素不存在");
+    return;
+  }
+
+  const filteredItems = getFilteredItems();
+  console.log("[applyFilters] 应用筛选:", {
+    favoritesOnly: filterState.showFavoritesOnly,
+    searchQuery: filterState.searchQuery,
+    total: allClipboardItems.length,
+    filtered: filteredItems.length,
+    firstItemIsFavorite: allClipboardItems.length > 0 ? allClipboardItems[0].is_favorite : 'N/A'
+  });
+  console.log("[applyFilters] filteredItems 详细:", filteredItems.slice(0, 3));
+
+  if (filteredItems.length > 0) {
+    // 使用原始的渲染函数渲染筛选后的项目
+    console.log("[applyFilters] 开始渲染", filteredItems.length, "个项目");
+    renderHistory(filteredItems, container, statusElement);
+    console.log("[applyFilters] 渲染完成，container.innerHTML 长度:", container.innerHTML.length);
+  } else if (allClipboardItems.length === 0) {
+    // 如果没有任何数据，显示默认空状态
+    console.log("[applyFilters] 没有数据，显示默认空状态");
+    container.innerHTML = renderEmptyState("暂无剪贴板内容", "复制内容后将显示在这里");
+  } else {
+    // 有数据但筛选结果为空
+    let emptyText = "没有找到匹配的内容";
+    let emptyDescription = "";
+
+    if (filterState.showFavoritesOnly && filterState.searchQuery) {
+      emptyText = "未找到匹配的收藏内容";
+    } else if (filterState.showFavoritesOnly) {
+      emptyText = "暂无收藏内容";
+      emptyDescription = "点击卡片上的爱心图标收藏内容";
+    }
+
+    console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
+    container.innerHTML = renderEmptyState(emptyText, emptyDescription);
+  }
+}
+
+// 更新所有项目数据
+function updateAllItems(history) {
+  console.log("[updateAllItems] 更新数据:", history ? history.length : 0, "条记录");
+  if (Array.isArray(history)) {
+    allClipboardItems = history;
+    console.log("[updateAllItems] 数据示例 (第一条):", history.length > 0 ? {
+      id: history[0].id,
+      is_favorite: history[0].is_favorite,
+      preview: history[0].preview?.substring(0, 50)
+    } : "无数据");
+
+    // 检查所有项目的 is_favorite 字段
+    const favoriteCount = history.filter(item => item.is_favorite === true).length;
+    console.log("[updateAllItems] 收藏项目数量:", favoriteCount, "/", history.length);
+  } else {
+    console.warn("[updateAllItems] 传入的不是数组:", history);
+    allClipboardItems = [];
+  }
+}
+
+// 监听筛选状态变化
+function initFilterListener(container, statusElement) {
+  console.log("[initFilterListener] 初始化筛选监听器");
+  filterState.subscribe((state) => {
+    console.log("[initFilterListener] 筛选状态变化:", state);
+    console.log("[initFilterListener] 当前 allClipboardItems 数量:", allClipboardItems.length);
+    applyFilters(container, statusElement);
+  });
 }
 
 // 禁用右键菜单
@@ -262,9 +443,16 @@ async function init() {
   container.innerHTML = renderEmptyState();
   updateStatus(statusElement, "初始化中...");
 
+  // 初始化筛选监听器
+  initFilterListener(container, statusElement);
+  console.log("筛选监听器已初始化");
+
   // 初始加载历史记录
   console.log("开始加载初始数据");
-  await loadRealData(container, statusElement);
+  await loadRealData(container, statusElement, (history) => {
+    updateAllItems(history);
+    applyFilters(container, statusElement);
+  });
   console.log("初始数据加载完成");
 
   // 初始化自定义标题栏按钮事件
@@ -278,7 +466,21 @@ async function init() {
   // 监听剪贴板更新事件
   console.log("开始设置事件监听");
   try {
-    await listenToClipboardUpdate(container, statusElement);
+    await listenToClipboardUpdate(container, statusElement, (newItem) => {
+      // 添加到所有项目列表的开头
+      allClipboardItems.unshift(newItem);
+      // 应用筛选（如果当前显示的是收藏列表或搜索结果，可能需要决定是否显示新项目）
+      const shouldShowNewItem =
+        !filterState.showFavoritesOnly &&
+        (!filterState.searchQuery ||
+         newItem.content?.toLowerCase().includes(filterState.searchQuery.toLowerCase()) ||
+         newItem.preview?.toLowerCase().includes(filterState.searchQuery.toLowerCase()));
+
+      if (shouldShowNewItem) {
+        // 如果新项目应该显示在当前视图中，则重新渲染
+        applyFilters(container, statusElement);
+      }
+    });
     console.log("剪贴板更新事件监听已启动");
   } catch (error) {
     console.error("事件监听失败:", error);
