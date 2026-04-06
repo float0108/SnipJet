@@ -215,6 +215,13 @@ if (typeof window !== "undefined") {
         console.log("后端删除命令执行成功");
       }
 
+      // 从 allClipboardItems 数组中移除该项目
+      const itemIndex = allClipboardItems.findIndex(item => item.id === id);
+      if (itemIndex !== -1) {
+        allClipboardItems.splice(itemIndex, 1);
+        console.log("已从 allClipboardItems 中移除项目，剩余:", allClipboardItems.length);
+      }
+
       // 从 UI 中移除该元素
       const elementId = `item-${id}`;
       const element = document.getElementById(elementId);

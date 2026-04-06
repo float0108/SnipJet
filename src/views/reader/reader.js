@@ -80,7 +80,7 @@ function switchMode(mode) {
 }
 
 // 初始化页面
-function init() {
+async function init() {
   const params = getUrlParams();
   console.log("初始化参数:", params);
 
@@ -89,7 +89,19 @@ function init() {
   const realContent = localStorage.getItem(cacheKey) || params.content;
 
   if (realContent) {
-    currentContent = realContent; // 保存到全局以便复制
+    // 解码内容（先解码，后续都使用解码后的内容）
+    let decodedContent = realContent;
+    try {
+      // 有些内容可能被多次编码，根据实际情况调整
+      if (realContent.includes("%") && !realContent.includes("<html")) {
+        decodedContent = decodeURIComponent(realContent);
+      }
+    } catch (e) {
+      console.warn("解码可能失败，使用原内容", e);
+    }
+
+    // 保存解码后的内容到全局以便复制
+    currentContent = decodedContent;
 
     // 1. 更新元数据
     document.getElementById("meta-type").textContent = (
@@ -102,7 +114,7 @@ function init() {
     }
     // 简略计算大小 (字符数)
     document.getElementById("meta-size").textContent =
-      `${realContent.length} chars`;
+      `${decodedContent.length} chars`;
 
     // 2. 准备 DOM 元素
     const htmlFrame = document.getElementById("html-frame");
@@ -110,39 +122,35 @@ function init() {
     const sourceView = document.getElementById("source-view");
     const viewToggle = document.getElementById("view-toggle");
 
-    // 解码内容
-    let decodedContent = realContent;
-    try {
-      // 有些内容可能被多次编码，根据实际情况调整
-      if (realContent.includes("%") && !realContent.includes("<html")) {
-        decodedContent = decodeURIComponent(realContent);
-      }
-    } catch (e) {
-      console.warn("解码可能失败，使用原内容", e);
-    }
-
     // 3. 根据格式渲染
-    if (params.format === "html") {
-      // --- HTML 处理逻辑 ---
+    console.log("[Reader] 格式类型:", params.format, "内容长度:", decodedContent.length);
+    if (params.format === "html" || params.format === "markdown") {
+      // --- HTML/Markdown 处理逻辑 ---
 
       // A. 显示切换开关
       viewToggle.style.display = "flex";
 
+      // 对于 markdown，需要转换为 HTML 再渲染
+      let contentToRender = decodedContent;
+      if (params.format === "markdown") {
+        console.log("[Reader] 检测到 Markdown 格式，准备转换...");
+        console.log("[Reader] 解码后内容预览:", decodedContent.substring(0, 200));
+        try {
+          contentToRender = await invoke("markdown_to_html_command", { markdown: decodedContent });
+          console.log("[Reader] Markdown 转换结果预览:", contentToRender.substring(0, 200));
+        } catch (e) {
+          console.error("[Reader] markdown_to_html_command 失败:", e);
+        }
+      }
+
       // B. 填充渲染视图 (iframe)
-      // 注入一些基础 CSS 让 iframe 里的内容不至于太丑（比如默认无衬线字体）
       const styledHtml = `
         <!DOCTYPE html>
         <html>
         <head>
           <style>
-            * {
-              box-sizing: border-box;
-            }
-            html, body {
-              height: 100%;
-              margin: 0;
-              padding: 0;
-            }
+            * { box-sizing: border-box; }
+            html, body { height: 100%; margin: 0; padding: 0; }
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               padding: 16px;
@@ -153,55 +161,40 @@ function init() {
               scrollbar-width: thin !important;
               scrollbar-color: transparent transparent !important;
             }
-            body::-webkit-scrollbar {
-              width: 6px !important;
-              height: 6px !important;
-            }
-            body::-webkit-scrollbar-track {
-              background: transparent !important;
-            }
-            body::-webkit-scrollbar-thumb {
-              background-color: transparent !important;
-              border-radius: 3px !important;
-            }
-            body:hover {
-              scrollbar-color: rgba(148, 163, 184, 0.5) transparent !important;
-            }
-            body:hover::-webkit-scrollbar-thumb {
-              background-color: rgba(148, 163, 184, 0.5) !important;
-            }
-            body:hover::-webkit-scrollbar-thumb:hover {
-              background-color: rgba(148, 163, 184, 0.8) !important;
-            }
+            body::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
+            body::-webkit-scrollbar-track { background: transparent !important; }
+            body::-webkit-scrollbar-thumb { background-color: transparent !important; border-radius: 3px !important; }
+            body:hover { scrollbar-color: rgba(148, 163, 184, 0.5) transparent !important; }
+            body:hover::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.5) !important; }
+            body:hover::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, 0.8) !important; }
             img { max-width: 100%; height: auto; }
             pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
           </style>
         </head>
-        <body>${decodedContent}</body>
+        <body>${contentToRender}</body>
         </html>
       `;
       htmlFrame.srcdoc = styledHtml;
 
       // C. 填充纯文本视图
-      // 调用后端的html_to_text API获取纯文本
-      async function getPlainTextFromBackend(html) {
+      // markdown 直接显示原始文本，html 需要转换为纯文本
+      if (params.format === "markdown") {
+        const textContent = textFallback.querySelector(".text-content");
+        textContent.textContent = decodedContent;
+      } else {
+        // HTML 需要转换为纯文本
         try {
-          return await invoke("html_to_text", { html });
+          const plainText = await invoke("html_to_text", { html: decodedContent });
+          const textContent = textFallback.querySelector(".text-content");
+          textContent.textContent = plainText;
         } catch (error) {
           console.error("调用后端html_to_text API失败:", error);
-          // 出错时使用前端fallback
-          return html2text(html);
+          const textContent = textFallback.querySelector(".text-content");
+          textContent.textContent = html2text(decodedContent);
         }
       }
 
-      // 获取纯文本并填充
-      getPlainTextFromBackend(decodedContent).then((plainText) => {
-        const textContent = textFallback.querySelector(".text-content");
-        textContent.textContent = plainText;
-      });
-
       // D. 填充源码视图 (Text)
-      // 使用 textContent 防止 XSS 并在文本框中显示
       const sourceContent = sourceView.querySelector(".text-content");
       sourceContent.textContent = decodedContent;
 

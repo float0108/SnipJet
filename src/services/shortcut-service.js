@@ -1,9 +1,7 @@
 import { log, error as logError, debug } from "../utils/logger.js";
 import { toggleWindowVisibility } from "./window-service.js";
-import { getClipboardHistory } from "./tauri-api.js";
+import { getClipboardHistory, listen } from "./tauri-api.js";
 import { pinState } from "../views/main/titlebar.js";
-import * as fs from '@tauri-apps/plugin-fs';
-import * as globalShortcut from '@tauri-apps/plugin-global-shortcut';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -35,14 +33,15 @@ function validateSettings(settings) {
  * 尝试从不同来源读取文件内容
  */
 async function fetchRawSettings() {
-  // 1. 尝试 Tauri 文件系统
+  // 1. 尝试 Tauri 文件系统（通过 invoke 调用后端）
   try {
-    const filename = "settings.json";
-    if (await fs.exists(filename, { baseDir: fs.BaseDirectory.AppConfig })) {
-      return await fs.readTextFile(filename, { baseDir: fs.BaseDirectory.AppConfig });
+    const content = await invoke("load_settings_command");
+    if (content) {
+      return JSON.stringify(content);
     }
   } catch (e) {
     // Tauri 文件系统不可用，继续尝试其他方式
+    await debug("后端加载设置失败，尝试其他方式: " + e);
   }
 
   // 2. 尝试前端目录 (Web Fallback)
@@ -261,43 +260,57 @@ function createDebouncedAction(fn, delay, timerRef, label) {
  */
 export async function initGlobalShortcuts() {
   try {
-    // 1. 清理旧注册
-    await globalShortcut.unregisterAll().catch((e) =>
-      debug("注销旧快捷键失败(可能无旧注册): " + e)
-    );
-
-    // 2. 获取设置
+    // 1. 获取设置
     const settings = await loadSettings();
     const { toggle_interface, function_paste } = settings.shortcuts;
 
-    // 3. 创建防抖计时器引用
+    // 2. 创建防抖计时器引用
     const plainTextTimerRef = { current: null, executing: false };
     const toggleWindowTimerRef = { current: null, executing: false };
 
-    // 4. 注册项配置化（使用防抖动包装）
+    // 3. 定义快捷键动作映射
+    const actionMap = {
+      "显示/隐藏": createDebouncedAction(
+        toggleWindowVisibility,
+        DEBOUNCE_MS,
+        toggleWindowTimerRef,
+        "显示/隐藏"
+      ),
+      "纯文本粘贴": createDebouncedAction(
+        handlePlainTextPaste,
+        PLAIN_TEXT_DEBOUNCE_MS,
+        plainTextTimerRef,
+        "纯文本粘贴"
+      ),
+    };
+
+    // 4. 注册项配置化
     const registrations = [
-      {
-        key: toggle_interface,
-        action: createDebouncedAction(
-          toggleWindowVisibility,
-          DEBOUNCE_MS,
-          toggleWindowTimerRef,
-          "显示/隐藏"
-        ),
-        label: "显示/隐藏",
-      },
-      {
-        key: function_paste,
-        action: createDebouncedAction(
-          handlePlainTextPaste,
-          PLAIN_TEXT_DEBOUNCE_MS,
-          plainTextTimerRef,
-          "纯文本粘贴"
-        ),
-        label: "纯文本粘贴",
-      },
+      { key: toggle_interface, label: "显示/隐藏" },
+      { key: function_paste, label: "纯文本粘贴" },
     ];
 
+    // 5. 设置事件监听器（在注册快捷键之前）
+    for (const item of registrations) {
+      const action = actionMap[item.label];
+      if (!action) {
+        await logError(`未找到动作处理器: ${item.label}`);
+        continue;
+      }
+
+      try {
+        // 监听后端发送的快捷键事件
+        await listen(`shortcut-${item.label}`, async () => {
+          await debug(`收到快捷键事件: ${item.label}`);
+          await action();
+        });
+        await debug(`事件监听已设置 [${item.label}]`);
+      } catch (e) {
+        await logError(`设置事件监听失败 [${item.label}]`, e);
+      }
+    }
+
+    // 6. 通过后端注册快捷键
     for (const item of registrations) {
       const finalKey = convertShortcutFormat(item.key);
       if (!finalKey) {
@@ -305,10 +318,16 @@ export async function initGlobalShortcuts() {
         continue;
       }
 
-      await globalShortcut.register(finalKey, async () => {
-        await item.action();
-      });
-      await debug(`注册成功 [${item.label}]: ${finalKey}`);
+      try {
+        // 通过 invoke 调用后端注册快捷键
+        await invoke("register_global_shortcut", {
+          shortcut: finalKey,
+          action: item.label
+        });
+        await debug(`注册成功 [${item.label}]: ${finalKey}`);
+      } catch (e) {
+        await logError(`注册快捷键失败 [${item.label}]: ${finalKey}`, e);
+      }
     }
   } catch (err) {
     await logError("全局快捷键初始化严重失败:", err);
