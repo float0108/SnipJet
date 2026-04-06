@@ -15,10 +15,12 @@ use windows::Win32::Foundation::POINT;
 use clipboard_rs::{Clipboard, ClipboardContext};
 use enigo::{Enigo, Key, KeyboardControllable};
 use log::{error, info};
-use tauri::{Manager, State};
+use tauri::{Manager, State, AppHandle};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE, set_clipboard_ignore_for};
+use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::DataStore;
 
@@ -88,10 +90,10 @@ pub fn get_favorite_items(
 
 #[tauri::command]
 pub async fn paste_to_active_window(
-    window: tauri::WebviewWindow,
+    _window: tauri::WebviewWindow,
     content: String,
     format: String,
-    is_pinned: bool,
+    _is_pinned: bool,
 ) -> Result<(), String> {
     // 1. 计算 Hash
     let hash = ClipboardManager::generate_hash(content.as_bytes());
@@ -103,7 +105,12 @@ pub async fn paste_to_active_window(
 
     // 2. 写入剪贴板 (在新线程执行)
     let format_clone = format.clone();
-    let content_clone = content.clone();
+    // 对于 markdown 格式，需要将原始文本转换为 HTML
+    let content_for_clipboard = if format == "markdown" {
+        markdown_to_html(&content).unwrap_or(content.clone())
+    } else {
+        content.clone()
+    };
 
     let clipboard_handle = thread::spawn(move || -> Result<(), String> {
         // 创建上下文
@@ -113,9 +120,9 @@ pub async fn paste_to_active_window(
         })?;
 
         let res = match format_clone.as_str() {
-            "html" => ctx.set_html(content_clone),
-            "rtf" => ctx.set_rich_text(content_clone),
-            _ => ctx.set_text(content_clone),
+            "html" | "markdown" => ctx.set_html(content_for_clipboard),
+            "rtf" => ctx.set_rich_text(content_for_clipboard),
+            _ => ctx.set_text(content_for_clipboard),
         };
 
         match res {
@@ -190,6 +197,29 @@ pub async fn html_to_text(html: String) -> String {
 }
 
 #[tauri::command]
+pub async fn markdown_to_html_command(markdown: String) -> String {
+    // 直接尝试解析 markdown，如果解析器生成有效 HTML 则返回
+    // 否则返回 fallback
+    let doc = crate::core::markdown_parser::parse(&markdown);
+    let generator = crate::generators::html_generator::HtmlGenerator;
+    let html = generator.generate(&doc);
+
+    // 检查生成的 HTML 是否有效（包含实际的 HTML 标签）
+    if html.contains('<') && html.contains('>') {
+        html
+    } else {
+        // Fallback: 将原始内容用 <p> 包裹
+        format!("<p>{}</p>", html_escape(&markdown))
+    }
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+#[tauri::command]
 pub async fn update_global_last_hash(hash: String) -> Result<(), String> {
     // 更新全局的LAST_HASH变量
     let mut last_hash_lock = LAST_HASH.lock().unwrap();
@@ -247,19 +277,26 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
     let mut last_hash_lock = LAST_HASH.lock().unwrap();
     *last_hash_lock = hash.clone();
 
+    // 对于 markdown 格式，需要将原始文本转换为 HTML
+    let content_for_clipboard = if format == "markdown" {
+        markdown_to_html(&content).unwrap_or(content.clone())
+    } else {
+        content
+    };
+
     // 直接复制内容到剪贴板
     let ctx = ClipboardContext::new()
         .map_err(|e| format!("Failed to init clipboard context: {:?}", e))?;
 
     // 根据格式复制内容
     match format.as_str() {
-        "html" => {
-            ctx.set_html(content)
+        "html" | "markdown" => {
+            ctx.set_html(content_for_clipboard)
                 .map_err(|e| format!("Failed to set clipboard html: {:?}", e))?;
             info!("Copied HTML content to clipboard without history update");
         }
         _ => {
-            ctx.set_text(content)
+            ctx.set_text(content_for_clipboard)
                 .map_err(|e| format!("Failed to set clipboard text: {:?}", e))?;
             info!("Copied text content to clipboard without history update");
         }
@@ -356,4 +393,77 @@ pub async fn load_settings_command(
     let settings = data_store.load_settings()?;
     info!("Settings loaded successfully");
     Ok(settings)
+}
+
+// --- 全局快捷键命令 ---
+
+/// 注册全局快捷键
+/// 注意：实际的快捷键处理在 lib.rs 的 setup 中统一设置
+#[tauri::command]
+pub async fn register_global_shortcut(
+    app_handle: AppHandle,
+    shortcut: String,
+    action: String,
+) -> Result<(), String> {
+    use crate::common::globals::SHORTCUT_ACTION_MAP;
+
+    info!("Registering global shortcut: {} for action: {}", shortcut, action);
+
+    // 解析快捷键字符串
+    let shortcut_parsed: Shortcut = shortcut.parse()
+        .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))?;
+
+    // 获取全局快捷键管理器
+    let global_shortcut = app_handle.global_shortcut();
+
+    // 检查快捷键是否已注册，如果是则先注销
+    if global_shortcut.is_registered(shortcut_parsed) {
+        info!("Shortcut {} is already registered, unregistering first", shortcut);
+        global_shortcut.unregister(shortcut_parsed)
+            .map_err(|e| format!("Failed to unregister existing shortcut: {:?}", e))?;
+    }
+
+    // 注册新的快捷键（不设置回调，回调在setup中统一处理）
+    global_shortcut.register(shortcut_parsed)
+        .map_err(|e| format!("Failed to register shortcut: {:?}", e))?;
+
+    // 存储快捷键到动作的映射
+    {
+        let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
+        map.insert(shortcut.clone(), action.clone());
+    }
+
+    info!("Successfully registered global shortcut: {} for action: {}", shortcut, action);
+    Ok(())
+}
+
+/// 注销全局快捷键
+#[tauri::command]
+pub async fn unregister_global_shortcut(
+    app_handle: AppHandle,
+    shortcut: String,
+) -> Result<(), String> {
+    use crate::common::globals::SHORTCUT_ACTION_MAP;
+
+    info!("Unregistering global shortcut: {}", shortcut);
+
+    let shortcut_parsed: Shortcut = shortcut.parse()
+        .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))?;
+
+    let global_shortcut = app_handle.global_shortcut();
+
+    if global_shortcut.is_registered(shortcut_parsed) {
+        global_shortcut.unregister(shortcut_parsed)
+            .map_err(|e| format!("Failed to unregister shortcut: {:?}", e))?;
+
+        // 从映射表中移除
+        let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
+        map.remove(&shortcut);
+
+        info!("Successfully unregistered shortcut: {}", shortcut);
+    } else {
+        info!("Shortcut {} was not registered", shortcut);
+    }
+
+    Ok(())
 }

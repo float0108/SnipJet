@@ -48,6 +48,8 @@ nanohtml2text = "0.1"
 tauri-plugin-fs = "2.4.5"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 tauri-plugin-global-shortcut = "2.3.1"
+docx-rs = "0.4"
+pulldown-cmark = "0.9"
 
 # 仅在Windows平台下添加windows依赖
 [target.'cfg(windows)'.dependencies]

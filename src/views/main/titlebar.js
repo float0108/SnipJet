@@ -102,6 +102,7 @@ export async function initTitlebarButtons() {
   const searchBox = document.getElementById("search-box");
   const searchInput = document.getElementById("search-input");
   const searchClose = document.getElementById("search-close");
+  const expanderBtn = document.querySelector("button[title='文本扩展']");
 
   // 1. 固定按钮逻辑：仅改变 UI 状态和后端同步，不操作窗口置顶
   if (pinBtn) {
@@ -167,7 +168,23 @@ export async function initTitlebarButtons() {
     console.warn("[titlebar] 未找到收藏按钮 #favorites-btn");
   }
 
-  // 5. 搜索按钮
+  // 5. 文本扩展按钮
+  if (expanderBtn) {
+    console.log("[titlebar] 绑定文本扩展按钮事件");
+    expanderBtn.addEventListener("click", async () => {
+      console.log("[titlebar] 文本扩展按钮被点击");
+      try {
+        await openExpanderWindow();
+      } catch (e) {
+        console.error("[titlebar] 打开文本扩展窗口出错:", e);
+        await error(e);
+      }
+    });
+  } else {
+    console.warn("[titlebar] 未找到文本扩展按钮");
+  }
+
+  // 6. 搜索按钮
   if (searchBtn && searchBox && searchInput) {
     console.log("[titlebar] 绑定搜索按钮事件");
 
@@ -229,9 +246,37 @@ export async function openSettingsWindow() {
   }
 }
 
+/**
+ * 打开文本扩展窗口
+ */
+export async function openExpanderWindow() {
+  console.log("[titlebar] 打开文本扩展窗口被调用");
+  try {
+    console.log("[titlebar] createWindow 类型:", typeof createWindow);
+    if (typeof createWindow === "function") {
+      console.log("[titlebar] 开始创建文本扩展窗口...");
+      await createWindow("expander-window", {
+        url: "./expander.html",
+        title: "SnipJet 文本扩展",
+        width: 700,
+        height: 500,
+        center: true,
+        decorations: false,
+      });
+      console.log("[titlebar] 文本扩展窗口创建成功");
+    } else {
+      console.error("[titlebar] createWindow 不是函数!");
+    }
+  } catch (err) {
+    console.error("[titlebar] 创建文本扩展窗口失败:", err);
+    await error("创建文本扩展窗口失败:", err);
+  }
+}
+
 // 暴露到全局以便调试
 if (typeof window !== "undefined") {
   window.openSettingsWindow = openSettingsWindow;
+  window.openExpanderWindow = openExpanderWindow;
 }
 
 // 为了兼容性保留旧导出（指向 pinState 的当前值）

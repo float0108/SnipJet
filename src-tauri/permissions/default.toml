@@ -29,6 +29,7 @@ commands.allow = [
     "get_favorite_items",
     "paste_to_active_window",
     "html_to_text",
+    "markdown_to_html_command",
     "copy_to_clipboard_no_history",
     "update_global_last_hash",
     "apply_no_activate_style",
@@ -37,4 +38,20 @@ commands.allow = [
     "load_clipboard_history_command",
     "save_settings",
     "load_settings_command"
+]
+
+[[permission]]
+identifier = "allow-register-global-shortcut"
+description = "允许前端注册全局快捷键"
+
+commands.allow = [
+    "register_global_shortcut"
+]
+
+[[permission]]
+identifier = "allow-unregister-global-shortcut"
+description = "允许前端注销全局快捷键"
+
+commands.allow = [
+    "unregister_global_shortcut"
 ]

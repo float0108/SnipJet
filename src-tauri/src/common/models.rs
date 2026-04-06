@@ -10,6 +10,8 @@ pub enum ClipboardFormat {
     Plain,
     #[serde(rename = "html")]
     Html,
+    #[serde(rename = "markdown")]
+    Markdown,
     #[serde(rename = "rtf")]
     Rtf,
     #[serde(rename = "image")]
@@ -85,6 +87,20 @@ impl ClipboardItem {
             hash,
             ClipboardFormat::Html,
             content.to_string(),
+            preview,
+            word_count,
+        )
+    }
+
+    pub fn new_markdown(original_text: &str, hash: &str) -> Self {
+        // 直接存储原始 markdown 文本，预览也是原始文本
+        let preview = Self::make_text_preview(original_text);
+        let word_count = original_text.chars().count();
+
+        Self::base(
+            hash,
+            ClipboardFormat::Markdown,
+            original_text.to_string(),
             preview,
             word_count,
         )

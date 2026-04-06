@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use clipboard_rs::ClipboardWatcher;
-use log::{error, info};
+use log::{error, info, warn};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -16,16 +16,18 @@ use tauri_plugin_fs;
 use tauri_plugin_global_shortcut;
 
 use crate::clipboard_manager::ClipboardManager;
-use crate::common::globals::APP_HANDLE;
+use crate::common::globals::{APP_HANDLE, SHORTCUT_ACTION_MAP};
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::{start_auto_save, load_all_data, save_all_data, AUTO_SAVE_INTERVAL_SECS};
 use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
+use tauri::{Emitter, Listener};
 
 mod clipboard_manager;
 mod commands;
 mod common;
 mod core;
+mod generators;
 
 /// 加载 PNG 图标文件并转换为 Tauri Image
 fn load_icon(path: &std::path::Path) -> Result<tauri::image::Image<'static>, Box<dyn std::error::Error>> {
@@ -107,11 +109,37 @@ where
             start_auto_save(app_handle.clone(), history_for_setup.clone(), AUTO_SAVE_INTERVAL_SECS);
             info!("Auto-save task started with {} second interval", AUTO_SAVE_INTERVAL_SECS);
 
+            // 设置全局快捷键事件监听（必须在剪贴板线程之前设置，避免app_handle被移动）
+            let app_handle_for_shortcut = app_handle.clone();
+            app_handle.listen("global-shortcut", move |event: tauri::Event| {
+                // 解析事件payload获取快捷键字符串
+                let payload: String = event.payload().to_string();
+                let shortcut_str = payload.trim_matches('"');
+                info!("Global shortcut triggered: {}", shortcut_str);
+
+                // 查找对应的动作
+                let action = {
+                    let map = SHORTCUT_ACTION_MAP.lock().unwrap();
+                    map.get(shortcut_str).cloned()
+                };
+
+                if let Some(action_name) = action {
+                    info!("Emitting shortcut event: shortcut-{}", action_name);
+                    if let Err(e) = app_handle_for_shortcut.emit(&format!("shortcut-{}", action_name), ()) {
+                        error!("Failed to emit shortcut event: {:?}", e);
+                    }
+                } else {
+                    warn!("No action mapped for shortcut: {}", shortcut_str);
+                }
+            });
+            info!("Global shortcut event listener registered");
+
             // 剪贴板监听独立线程
             let history_for_clipboard = history_for_setup.clone();
             let history_for_tray = history_for_setup.clone();
+            let app_handle_for_clipboard = app_handle.clone();
             thread::spawn(move || {
-                let manager = ClipboardManager::new(app_handle.clone(), history_for_clipboard);
+                let manager = ClipboardManager::new(app_handle_for_clipboard, history_for_clipboard);
 
                 // 注意：clipboard-rs 的 Watcher 需要在特定线程模型下运行
                 // 这里的实现适用于大多数平台，但在某些严格 UI 线程要求的平台可能需要调整
@@ -202,6 +230,7 @@ where
             commands::get_favorite_items,
             commands::paste_to_active_window,
             commands::html_to_text,
+            commands::markdown_to_html_command,
             commands::copy_to_clipboard_no_history,
             commands::update_global_last_hash,
             commands::apply_no_activate_style,
@@ -211,7 +240,9 @@ where
             commands::save_clipboard_history,
             commands::load_clipboard_history_command,
             commands::save_settings,
-            commands::load_settings_command
+            commands::load_settings_command,
+            commands::register_global_shortcut,
+            commands::unregister_global_shortcut
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
