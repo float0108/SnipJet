@@ -50,6 +50,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 tauri-plugin-global-shortcut = "2.3.1"
 docx-rs = "0.4"
 pulldown-cmark = "0.9"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # 仅在Windows平台下添加windows依赖
 [target.'cfg(windows)'.dependencies]
