@@ -5,6 +5,8 @@ import { log, error } from "../../utils/logger.js";
 
 // 规则列表
 let rules = [];
+// 当前筛选的分组
+let currentGroup = "";
 
 /**
  * 初始化
@@ -13,7 +15,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   console.log("[expander] 初始化文本扩展管理器");
 
   // 绑定关闭按钮
-  const closeBtn = document.getElementById("close-button");
+  const closeBtn = document.getElementById("close-btn");
   if (closeBtn) {
     closeBtn.addEventListener("click", closeWindow);
   }
@@ -28,6 +30,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   const saveBtn = document.getElementById("save-rules-btn");
   if (saveBtn) {
     saveBtn.addEventListener("click", saveRules);
+  }
+
+  // 绑定分组筛选
+  const groupFilter = document.getElementById("group-filter");
+  if (groupFilter) {
+    groupFilter.addEventListener("change", (e) => {
+      currentGroup = e.target.value;
+      renderRules();
+    });
+  }
+
+  // 绑定帮助按钮
+  const helpBtn = document.getElementById("help-btn");
+  const helpDropdown = document.getElementById("help-dropdown");
+  if (helpBtn && helpDropdown) {
+    helpBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      helpDropdown.classList.toggle("show");
+    });
+
+    // 点击其他地方关闭
+    document.addEventListener("click", () => {
+      helpDropdown.classList.remove("show");
+    });
+
+    helpDropdown.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
   }
 
   // 加载现有规则
@@ -72,14 +102,56 @@ async function loadRules() {
         content: new Date().toLocaleTimeString(),
         group: "常用",
         description: "当前时间"
+      },
+      {
+        key: ":mail",
+        content: "example@email.com",
+        group: "个人信息",
+        description: "邮箱地址"
+      },
+      {
+        key: ":addr",
+        content: "北京市朝阳区xxx街道",
+        group: "个人信息",
+        description: "地址"
       }
     ];
 
+    updateGroupFilter();
     renderRules();
     console.log("[expander] 加载了", rules.length, "条规则");
   } catch (err) {
     console.error("[expander] 加载规则失败:", err);
     await error("加载规则失败:", err);
+  }
+}
+
+/**
+ * 更新分组筛选器
+ */
+function updateGroupFilter() {
+  const filterSelect = document.getElementById("group-filter");
+  if (!filterSelect) return;
+
+  // 获取所有分组
+  const groups = [...new Set(rules.map(r => r.group || "default"))];
+
+  // 保存当前选中值
+  const currentValue = filterSelect.value;
+
+  // 更新选项
+  filterSelect.innerHTML = `<option value="">全部分组 (${rules.length})</option>`;
+  groups.forEach(group => {
+    const count = rules.filter(r => (r.group || "default") === group).length;
+    const option = document.createElement("option");
+    option.value = group;
+    option.textContent = `${group} (${count})`;
+    filterSelect.appendChild(option);
+  });
+
+  // 恢复选中值
+  if (groups.includes(currentGroup)) {
+    filterSelect.value = currentGroup;
   }
 }
 
@@ -90,57 +162,97 @@ function renderRules() {
   const container = document.getElementById("rules-list");
   if (!container) return;
 
-  if (rules.length === 0) {
+  // 筛选规则
+  const filteredRules = currentGroup
+    ? rules.filter(r => (r.group || "default") === currentGroup)
+    : rules;
+
+  // 更新计数
+  updateRuleCount(filteredRules.length, rules.length);
+
+  if (filteredRules.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="icon">📝</div>
-        <div>暂无文本扩展规则</div>
-        <div style="font-size: 12px; margin-top: 8px;">点击"添加规则"创建新规则</div>
+        <div class="empty-icon">📝</div>
+        <div class="empty-text">${currentGroup ? "该分组暂无规则" : "暂无文本扩展规则"}</div>
+        <div class="empty-hint">点击工具栏的 + 按钮创建新规则</div>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = rules.map((rule, index) => `
-    <div class="rule-item" data-index="${index}">
-      <input
-        type="text"
-        class="rule-input key-input"
-        placeholder="触发词，如 :te"
-        value="${escapeHtml(rule.key)}"
-        data-field="key"
-        data-index="${index}"
-      />
-      <input
-        type="text"
-        class="rule-input"
-        placeholder="扩展内容"
-        value="${escapeHtml(rule.content)}"
-        data-field="content"
-        data-index="${index}"
-      />
-      <input
-        type="text"
-        class="rule-input"
-        placeholder="分组"
-        value="${escapeHtml(rule.group || '')}"
-        data-field="group"
-        data-index="${index}"
-        style="width: 100px;"
-      />
-      <button class="delete-btn" data-index="${index}">删除</button>
+  container.innerHTML = filteredRules.map((rule) => {
+    const originalIndex = rules.indexOf(rule);
+    return `
+    <div class="rule-item" data-index="${originalIndex}">
+      <div class="rule-trigger">
+        <input
+          type="text"
+          class="rule-trigger-input"
+          placeholder=":te"
+          value="${escapeHtml(rule.key)}"
+          data-field="key"
+          data-index="${originalIndex}"
+        />
+      </div>
+      <span class="rule-arrow">→</span>
+      <div class="rule-content-wrapper">
+        <input
+          type="text"
+          class="rule-content-input"
+          placeholder="扩展内容..."
+          value="${escapeHtml(rule.content)}"
+          data-field="content"
+          data-index="${originalIndex}"
+        />
+      </div>
+      <div class="rule-group-tag">
+        <span class="group-label" data-index="${originalIndex}" title="点击编辑分组">${escapeHtml(rule.group || "default")}</span>
+      </div>
+      <button class="delete-btn" data-index="${originalIndex}" title="删除">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      </button>
     </div>
-  `).join('');
+  `}).join('');
 
-  // 绑定输入事件
-  container.querySelectorAll('.rule-input').forEach(input => {
+  // 绑定事件
+  bindRuleEvents();
+}
+
+/**
+ * 绑定规则事件
+ */
+function bindRuleEvents() {
+  const container = document.getElementById("rules-list");
+
+  // 输入事件
+  container.querySelectorAll('.rule-trigger-input, .rule-content-input').forEach(input => {
     input.addEventListener('input', handleInputChange);
   });
 
-  // 绑定删除按钮
+  // 分组标签点击编辑
+  container.querySelectorAll('.group-label').forEach(label => {
+    label.addEventListener('click', handleGroupClick);
+  });
+
+  // 删除按钮
   container.querySelectorAll('.delete-btn').forEach(btn => {
     btn.addEventListener('click', handleDelete);
   });
+}
+
+/**
+ * 更新规则计数
+ */
+function updateRuleCount(filtered, total) {
+  const countEl = document.getElementById("rule-count");
+  if (countEl) {
+    if (currentGroup) {
+      countEl.textContent = `${filtered}/${total} 条规则`;
+    } else {
+      countEl.textContent = `${total} 条规则`;
+    }
+  }
 }
 
 /**
@@ -153,19 +265,62 @@ function handleInputChange(e) {
 
   if (rules[index]) {
     rules[index][field] = value;
-    console.log(`[expander] 规则 ${index} 的 ${field} 更新为:`, value);
   }
+}
+
+/**
+ * 处理分组点击 - 转为编辑模式
+ */
+function handleGroupClick(e) {
+  const index = parseInt(e.target.dataset.index);
+  const rule = rules[index];
+  if (!rule) return;
+
+  const container = e.target.parentElement;
+  const currentValue = rule.group || "default";
+
+  // 替换为输入框
+  container.innerHTML = `
+    <input
+      type="text"
+      class="group-input"
+      placeholder="分组名"
+      value="${escapeHtml(currentValue)}"
+      data-field="group"
+      data-index="${index}"
+    />
+  `;
+
+  const input = container.querySelector('.group-input');
+  input.focus();
+  input.select();
+
+  // 保存并恢复
+  const saveAndRestore = () => {
+    const newValue = input.value.trim() || "default";
+    rules[index].group = newValue;
+    updateGroupFilter();
+    renderRules();
+  };
+
+  input.addEventListener('blur', saveAndRestore);
+  input.addEventListener('keydown', (ke) => {
+    if (ke.key === 'Enter') {
+      ke.preventDefault();
+      saveAndRestore();
+    }
+  });
 }
 
 /**
  * 处理删除
  */
 function handleDelete(e) {
-  const index = parseInt(e.target.dataset.index);
+  const index = parseInt(e.currentTarget.dataset.index);
   if (confirm('确定要删除这条规则吗？')) {
     rules.splice(index, 1);
+    updateGroupFilter();
     renderRules();
-    console.log("[expander] 删除规则", index);
   }
 }
 
@@ -173,21 +328,23 @@ function handleDelete(e) {
  * 添加新规则
  */
 function addRule() {
+  const newGroup = currentGroup || "default";
   rules.push({
     key: "",
     content: "",
-    group: "default",
+    group: newGroup,
     description: ""
   });
+  updateGroupFilter();
   renderRules();
 
   // 聚焦到新规则的触发词输入框
-  const inputs = document.querySelectorAll('.rule-input.key-input');
-  if (inputs.length > 0) {
-    inputs[inputs.length - 1].focus();
-  }
-
-  console.log("[expander] 添加新规则");
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('.rule-trigger-input');
+    if (inputs.length > 0) {
+      inputs[inputs.length - 1].focus();
+    }
+  }, 10);
 }
 
 /**
@@ -215,8 +372,6 @@ async function saveRules() {
     const yamlContent = generateYaml(validRules);
 
     // 保存到文件
-    // 注意：这里需要通过 Tauri 命令保存文件
-    // 暂时使用下载方式
     const blob = new Blob([yamlContent], { type: 'text/yaml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

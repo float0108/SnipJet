@@ -13,21 +13,21 @@ export function updateShortcutInputs() {
     console.log("更新快捷键输入框，当前设置:", settings.shortcuts);
 
     // 更新显示/隐藏界面快捷键
-    const toggleInput = document.getElementById("toggle-interface-shortcut");
+    const toggleInput = document.getElementById("toggle-interface");
     if (toggleInput) {
-      toggleInput.value = settings.shortcuts.toggle_interface || "";
+      toggleInput.value = settings.shortcuts?.toggle_interface || "";
     }
 
     // 更新功能粘贴快捷键
-    const functionInput = document.getElementById("function-paste-shortcut");
+    const functionInput = document.getElementById("function-paste");
     if (functionInput) {
-      functionInput.value = settings.shortcuts.function_paste || "";
+      functionInput.value = settings.shortcuts?.function_paste || "";
     }
 
     // 更新快捷粘贴快捷键模式
-    const quickModeSelect = document.getElementById("quick-paste-shortcut");
+    const quickModeSelect = document.getElementById("quick-paste-mode");
     if (quickModeSelect) {
-      quickModeSelect.value = settings.shortcuts.quick_paste_mode || "ctrl";
+      quickModeSelect.value = settings.shortcuts?.quick_paste_mode || "ctrl";
     }
   });
 }
@@ -59,7 +59,7 @@ export function initShortcuts() {
         import("./handlers.js").then(({settings}) => {
           // 将短横线格式的ID转换为下划线格式的key
           const key = this.id.replace(/-/g, "_");
-          this.value = settings.shortcuts[key] || "";
+          this.value = settings.shortcuts?.[key] || "";
           this.placeholder = "按下快捷键...";
           this.classList.remove("recording");
         });
@@ -96,7 +96,7 @@ export function initShortcuts() {
       // 特殊键名美化
       if (key === " ") keyName = "Space";
       if (key === "Enter") keyName = "Enter";
-      if (key === "Escape") keyName = "Esc";
+      if (e.key === "Escape") keyName = "Esc";
       if (key === "Tab") keyName = "Tab";
       if (key.startsWith("Arrow")) keyName = key.replace("Arrow", "");
 
@@ -104,6 +104,10 @@ export function initShortcuts() {
 
       // 防重检查
       const {settings} = await getHandlers();
+
+      // 确保 shortcuts 对象存在
+      if (!settings.shortcuts) settings.shortcuts = {};
+
       let isDuplicate = false;
       for (const [func, shortcut] of Object.entries(settings.shortcuts)) {
         if (
@@ -128,41 +132,40 @@ export function initShortcuts() {
       const inputElement = currentInput;
       inputElement.value = finalShortcut;
 
-      // 保存逻辑
-      const {saveSettings} = await getHandlers();
-      const configKey = inputElement.id.replace(/-/g, "_"); // 假设 ID 与配置 key 对应
+      // 更新设置对象（只更新内存，不保存文件）
+      const configKey = inputElement.id.replace(/-/g, "_");
       settings.shortcuts[configKey] = finalShortcut;
 
-      await saveSettings();
+      console.log("快捷键已更新到内存:", configKey, "=", finalShortcut);
 
       // 录制完成，解除锁定
       inputElement.blur();
     }
   });
 
-  // 快捷粘贴模式的监听保持原样即可，但建议也使用 getHandlers 缓存
-  const quickPasteSelect = document.getElementById("quick-paste-shortcut");
+  // 快捷粘贴模式的变化监听
+  const quickPasteSelect = document.getElementById("quick-paste-mode");
   quickPasteSelect?.addEventListener("change", async function () {
-    const {settings, saveSettings} = await getHandlers();
+    const {settings} = await getHandlers();
+    if (!settings.shortcuts) settings.shortcuts = {};
     settings.shortcuts.quick_paste_mode = this.value;
-    await saveSettings();
+    console.log("快捷粘贴模式已更新到内存:", this.value);
   });
 }
 
-// 清空快捷键
+// 清空快捷键（只更新内存，不保存文件）
 export async function clearShortcut(inputId) {
   const input = document.getElementById(inputId);
   input.value = "";
 
-  // 更新设置对象并保存
+  // 更新设置对象
   try {
-    const {settings, saveSettings} = await import("./handlers.js");
+    const {settings} = await import("./handlers.js");
     // 将短横线格式的ID转换为下划线格式的key
     const key = inputId.replace(/-/g, "_");
+    if (!settings.shortcuts) settings.shortcuts = {};
     settings.shortcuts[key] = "";
-
-    // 保存设置
-    await saveSettings();
+    console.log("快捷键已清空:", key);
   } catch (error) {
     console.error("清空快捷键时出错:", error);
   }

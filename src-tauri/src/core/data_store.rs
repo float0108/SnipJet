@@ -197,6 +197,7 @@ impl DataStore {
     /// 保存设置到文件
     pub fn save_settings(&self, settings: &serde_json::Value) -> Result<(), String> {
         let path = self.get_settings_path();
+
         let json = serde_json::to_string_pretty(settings)
             .map_err(|e| format!("Failed to serialize settings: {}", e))?;
 

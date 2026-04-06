@@ -19,15 +19,39 @@ export function showNotification(message) {
 // 关闭窗口
 export async function closeWindow() {
   try {
-    // 保存设置
-    const { saveSettings } = await import("./handlers.js");
-    await saveSettings();
-
     // 使用正确的 Tauri API 关闭窗口
     const appWindow = getCurrentWebviewWindow();
     await appWindow.close();
   } catch (error) {
     // 忽略错误，因为在沙箱环境中可能会受限
+  }
+}
+
+// 确认保存并关闭
+export async function confirmAndClose() {
+  try {
+    // 保存设置
+    const { saveSettings } = await import("./handlers.js");
+    await saveSettings();
+
+    // 关闭窗口
+    await closeWindow();
+  } catch (error) {
+    console.error("保存设置失败:", error);
+  }
+}
+
+// 取消并关闭（恢复原始设置）
+export async function cancelAndClose() {
+  try {
+    // 恢复原始设置
+    const { restoreOriginalSettings } = await import("./handlers.js");
+    await restoreOriginalSettings();
+
+    // 关闭窗口
+    await closeWindow();
+  } catch (error) {
+    console.error("取消操作失败:", error);
   }
 }
 
@@ -82,17 +106,35 @@ export function setupCloseButton() {
   const closeButton = document.getElementById("close-button");
   if (closeButton) {
     closeButton.addEventListener("click", async function () {
+      // 关闭时不保存，直接关闭
       await closeWindow();
+    });
+  }
+}
+
+// 绑定确定/取消按钮事件
+export function setupConfirmCancelButtons() {
+  const confirmBtn = document.getElementById("confirm-btn");
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", async function () {
+      await confirmAndClose();
+    });
+  }
+
+  const cancelBtn = document.getElementById("cancel-btn");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", async function () {
+      await cancelAndClose();
     });
   }
 }
 
 // 绑定ESC键事件
 export function setupEscKey() {
-  // 监听 ESC 键关闭窗口
+  // 监听 ESC 键执行取消操作
   window.addEventListener("keydown", async function (event) {
     if (event.key === "Escape") {
-      await closeWindow();
+      await cancelAndClose();
     }
   });
 }

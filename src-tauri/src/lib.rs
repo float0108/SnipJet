@@ -115,7 +115,6 @@ where
                 // 解析事件payload获取快捷键字符串
                 let payload: String = event.payload().to_string();
                 let shortcut_str = payload.trim_matches('"');
-                info!("Global shortcut triggered: {}", shortcut_str);
 
                 // 查找对应的动作
                 let action = {
@@ -124,12 +123,7 @@ where
                 };
 
                 if let Some(action_name) = action {
-                    info!("Emitting shortcut event: shortcut-{}", action_name);
-                    if let Err(e) = app_handle_for_shortcut.emit(&format!("shortcut-{}", action_name), ()) {
-                        error!("Failed to emit shortcut event: {:?}", e);
-                    }
-                } else {
-                    warn!("No action mapped for shortcut: {}", shortcut_str);
+                    let _ = app_handle_for_shortcut.emit(&format!("shortcut-{}", action_name), ());
                 }
             });
             info!("Global shortcut event listener registered");

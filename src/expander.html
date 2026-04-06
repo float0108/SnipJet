@@ -7,55 +7,49 @@
     <link rel="stylesheet" href="./common/style.css" />
     <link rel="stylesheet" href="./views/expander/expander.css" />
     <link rel="stylesheet" href="./common/icon.css" />
-    <script type="module" src="./views/expander/expander.js"></script>
   </head>
   <body class="expander-body">
-    <div class="expander-container">
-      <div class="header-top" data-tauri-drag-region>
-        <h1 class="section-title">文本扩展规则</h1>
-        <div class="header-actions">
-          <button class="window-close-btn" id="close-button">
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+    <!-- 固定工具栏 -->
+    <div class="toolbar" data-tauri-drag-region>
+      <div class="toolbar-group toolbar-left">
+        <button id="add-rule-btn" class="toolbar-btn" title="添加规则">
+          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+        <button id="save-rules-btn" class="toolbar-btn" title="保存规则">
+          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        </button>
+        <div class="toolbar-divider"></div>
+        <div class="filter-group">
+          <select id="group-filter" class="filter-select" title="按分组筛选">
+            <option value="">全部分组</option>
+          </select>
         </div>
       </div>
-
-      <div class="expander-content">
-        <div class="toolbar">
-          <button id="add-rule-btn" class="action-btn primary">
-            <span class="icon">+</span>
-            添加规则
+      <div class="toolbar-group toolbar-right">
+        <span class="rule-count" id="rule-count">0 条规则</span>
+        <div class="help-wrapper">
+          <button id="help-btn" class="toolbar-btn" title="使用说明">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
           </button>
-          <button id="save-rules-btn" class="action-btn">
-            <span class="icon">💾</span>
-            保存规则
-          </button>
+          <div class="help-dropdown" id="help-dropdown">
+            <div class="help-item"><strong>触发词</strong> - 输入关键词自动触发扩展</div>
+            <div class="help-item"><strong>分组</strong> - 点击标签编辑，用于归类管理</div>
+            <div class="help-item"><strong>保存</strong> - 修改后点击保存按钮生效</div>
+          </div>
         </div>
-
-        <div id="rules-list" class="rules-list">
-          <!-- 规则列表将在这里动态生成 -->
-        </div>
-
-        <div class="expander-help">
-          <h3>使用说明</h3>
-          <ul>
-            <li>触发词：输入该关键词时会自动触发扩展</li>
-            <li>扩展内容：触发后自动输入的文本</li>
-            <li>分组：用于组织管理规则</li>
-            <li>修改规则文件后需要重启软件生效</li>
-          </ul>
-        </div>
+        <button id="close-btn" class="toolbar-btn" title="关闭">
+          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
       </div>
     </div>
+
+    <!-- 主内容区域 -->
+    <div class="expander-content ghost-scrollbar">
+      <div id="rules-list" class="rules-list">
+        <!-- 规则列表将在这里动态生成 -->
+      </div>
+    </div>
+
+    <script type="module" src="./views/expander/expander.js"></script>
   </body>
 </html>
