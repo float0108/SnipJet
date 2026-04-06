@@ -53,8 +53,9 @@ body {
 .content {
   flex: 1;
   padding: 0 24px;
-  /* 两侧留白 */
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 顶部标题栏 */
@@ -246,3 +247,45 @@ input:checked+.toggle-slider:before {
 }
 
 /* 调整位移 */
+
+/* --- 底部按钮区域 --- */
+.button-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.btn {
+  padding: 8px 24px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-cancel {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-cancel:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-confirm {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.btn-confirm:hover {
+  background-color: #2563eb;
+}

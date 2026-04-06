@@ -398,7 +398,6 @@ pub async fn load_settings_command(
 // --- 全局快捷键命令 ---
 
 /// 注册全局快捷键
-/// 注意：实际的快捷键处理在 lib.rs 的 setup 中统一设置
 #[tauri::command]
 pub async fn register_global_shortcut(
     app_handle: AppHandle,
@@ -406,8 +405,7 @@ pub async fn register_global_shortcut(
     action: String,
 ) -> Result<(), String> {
     use crate::common::globals::SHORTCUT_ACTION_MAP;
-
-    info!("Registering global shortcut: {} for action: {}", shortcut, action);
+    use tauri::Emitter;
 
     // 解析快捷键字符串
     let shortcut_parsed: Shortcut = shortcut.parse()
@@ -418,22 +416,27 @@ pub async fn register_global_shortcut(
 
     // 检查快捷键是否已注册，如果是则先注销
     if global_shortcut.is_registered(shortcut_parsed) {
-        info!("Shortcut {} is already registered, unregistering first", shortcut);
         global_shortcut.unregister(shortcut_parsed)
             .map_err(|e| format!("Failed to unregister existing shortcut: {:?}", e))?;
     }
 
-    // 注册新的快捷键（不设置回调，回调在setup中统一处理）
-    global_shortcut.register(shortcut_parsed)
-        .map_err(|e| format!("Failed to register shortcut: {:?}", e))?;
+    // 获取 app_handle 的克隆用于回调
+    let app_handle_for_callback = app_handle.clone();
+    let action_for_callback = action.clone();
+
+    // 注册新的快捷键，设置回调触发事件
+    global_shortcut.on_shortcut(shortcut_parsed, move |_app, _shortcut, _event| {
+        // 发送事件给前端
+        let _ = app_handle_for_callback.emit(&format!("shortcut-{}", action_for_callback), ());
+    })
+    .map_err(|e| format!("Failed to register shortcut with callback: {:?}", e))?;
 
     // 存储快捷键到动作的映射
     {
         let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
-        map.insert(shortcut.clone(), action.clone());
+        map.insert(shortcut, action);
     }
 
-    info!("Successfully registered global shortcut: {} for action: {}", shortcut, action);
     Ok(())
 }
 
@@ -444,8 +447,6 @@ pub async fn unregister_global_shortcut(
     shortcut: String,
 ) -> Result<(), String> {
     use crate::common::globals::SHORTCUT_ACTION_MAP;
-
-    info!("Unregistering global shortcut: {}", shortcut);
 
     let shortcut_parsed: Shortcut = shortcut.parse()
         .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))?;
@@ -459,10 +460,6 @@ pub async fn unregister_global_shortcut(
         // 从映射表中移除
         let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
         map.remove(&shortcut);
-
-        info!("Successfully unregistered shortcut: {}", shortcut);
-    } else {
-        info!("Shortcut {} was not registered", shortcut);
     }
 
     Ok(())

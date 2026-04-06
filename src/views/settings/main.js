@@ -32,11 +32,12 @@ async function init() {
     bindSettingsListeners();
 
     // 设置UI交互
-    const {setupSidebar, setupCloseButton, setupEscKey} =
+    const {setupSidebar, setupCloseButton, setupEscKey, setupConfirmCancelButtons} =
       await import("./ui.js");
     setupSidebar();
     setupCloseButton();
     setupEscKey();
+    setupConfirmCancelButtons();
 
     console.log("设置页面初始化完成");
   } catch (error) {
