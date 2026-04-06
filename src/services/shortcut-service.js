@@ -268,45 +268,43 @@ export async function initGlobalShortcuts() {
     const plainTextTimerRef = { current: null, executing: false };
     const toggleWindowTimerRef = { current: null, executing: false };
 
-    // 3. 定义快捷键动作映射
+    // 3. 定义快捷键动作映射（action 名称与后端一致）
     const actionMap = {
-      "显示/隐藏": createDebouncedAction(
+      "toggle_interface": createDebouncedAction(
         toggleWindowVisibility,
         DEBOUNCE_MS,
         toggleWindowTimerRef,
-        "显示/隐藏"
+        "toggle_interface"
       ),
-      "纯文本粘贴": createDebouncedAction(
+      "function_paste": createDebouncedAction(
         handlePlainTextPaste,
         PLAIN_TEXT_DEBOUNCE_MS,
         plainTextTimerRef,
-        "纯文本粘贴"
+        "function_paste"
       ),
     };
 
-    // 4. 注册项配置化
+    // 4. 注册项配置化（action 名称与后端一致）
     const registrations = [
-      { key: toggle_interface, label: "显示/隐藏" },
-      { key: function_paste, label: "纯文本粘贴" },
+      { key: toggle_interface, action: "toggle_interface" },
+      { key: function_paste, action: "function_paste" },
     ];
 
     // 5. 设置事件监听器（在注册快捷键之前）
     for (const item of registrations) {
-      const action = actionMap[item.label];
-      if (!action) {
-        await logError(`未找到动作处理器: ${item.label}`);
+      const actionFn = actionMap[item.action];
+      if (!actionFn) {
+        await logError(`未找到动作处理器: ${item.action}`);
         continue;
       }
 
       try {
-        // 监听后端发送的快捷键事件
-        await listen(`shortcut-${item.label}`, async () => {
-          await debug(`收到快捷键事件: ${item.label}`);
-          await action();
+        // 监听后端发送的快捷键事件（事件名格式: shortcut-{action}）
+        await listen(`shortcut-${item.action}`, async () => {
+          await actionFn();
         });
-        await debug(`事件监听已设置 [${item.label}]`);
       } catch (e) {
-        await logError(`设置事件监听失败 [${item.label}]`, e);
+        await logError(`设置事件监听失败 [${item.action}]`, e);
       }
     }
 
@@ -314,7 +312,6 @@ export async function initGlobalShortcuts() {
     for (const item of registrations) {
       const finalKey = convertShortcutFormat(item.key);
       if (!finalKey) {
-        await logError(`${item.label} 快捷键为空，跳过注册`);
         continue;
       }
 
@@ -322,11 +319,10 @@ export async function initGlobalShortcuts() {
         // 通过 invoke 调用后端注册快捷键
         await invoke("register_global_shortcut", {
           shortcut: finalKey,
-          action: item.label
+          action: item.action
         });
-        await debug(`注册成功 [${item.label}]: ${finalKey}`);
       } catch (e) {
-        await logError(`注册快捷键失败 [${item.label}]: ${finalKey}`, e);
+        await logError(`注册快捷键失败 [${item.action}]: ${finalKey}`, e);
       }
     }
   } catch (err) {

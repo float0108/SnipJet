@@ -1,7 +1,16 @@
 // 全局设置对象
 import * as fs from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 
 export let settings = {};
+// 原始设置备份（用于取消时恢复）
+let originalSettings = {};
+
+// 转换快捷键格式（Win -> Super）
+function convertShortcutFormat(shortcut) {
+  if (!shortcut) return "";
+  return shortcut.trim().replace(/Win/i, "Super");
+}
 
 // 默认设置
 function getDefaultSettings() {
@@ -42,6 +51,23 @@ export async function loadSettings() {
         baseDir: fs.BaseDirectory.AppConfig,
       });
       settings = JSON.parse(content);
+
+      // 清理旧的快捷键字段名（兼容旧版本）
+      if (settings.shortcuts) {
+        if (settings.shortcuts.toggle_interface_shortcut) {
+          settings.shortcuts.toggle_interface = settings.shortcuts.toggle_interface_shortcut;
+          delete settings.shortcuts.toggle_interface_shortcut;
+        }
+        if (settings.shortcuts.function_paste_shortcut) {
+          settings.shortcuts.function_paste = settings.shortcuts.function_paste_shortcut;
+          delete settings.shortcuts.function_paste_shortcut;
+        }
+        if (settings.shortcuts.quick_paste_shortcut) {
+          settings.shortcuts.quick_paste_mode = settings.shortcuts.quick_paste_shortcut;
+          delete settings.shortcuts.quick_paste_shortcut;
+        }
+      }
+
       console.log("设置加载成功:", settings);
     } else {
       console.log("设置文件不存在，使用默认设置");
@@ -55,6 +81,8 @@ export async function loadSettings() {
       if (response.ok) {
         settings = await response.json();
         console.log("设置加载成功 (非Tauri):", settings);
+        // 备份原始设置
+        originalSettings = JSON.parse(JSON.stringify(settings));
         return;
       }
     } catch (e) {
@@ -62,38 +90,24 @@ export async function loadSettings() {
     }
     settings = getDefaultSettings();
   }
+  // 备份原始设置
+  originalSettings = JSON.parse(JSON.stringify(settings));
 }
 
-// 保存设置
+// 保存设置（通过后端命令）
 export async function saveSettings() {
   try {
-    // 确保应用配置目录存在
-    try {
-      const dirExists = await fs.exists("", {
-        baseDir: fs.BaseDirectory.AppConfig,
-      });
-      console.log("应用配置目录存在:", dirExists);
+    console.log("开始保存设置，调用后端命令...");
 
-      // 如果目录不存在，创建它
-      if (!dirExists) {
-        try {
-          await fs.mkdir("", {
-            baseDir: fs.BaseDirectory.AppConfig,
-            recursive: true,
-          });
-          console.log("应用配置目录创建成功");
-        } catch (mkdirError) {
-          console.warn("创建目录时出错:", mkdirError);
-        }
-      }
-    } catch (dirError) {
-      console.warn("检查目录时出错:", dirError);
-    }
+    // 检测快捷键变化并更新注册
+    await updateShortcutRegistrations();
 
-    // 在应用配置目录下写入设置文件
-    await fs.writeTextFile("settings.json", JSON.stringify(settings, null, 2), {
-      baseDir: fs.BaseDirectory.AppConfig,
-    });
+    // 调用后端命令保存设置（会触发后端调试输出）
+    await invoke("save_settings", { settings: settings });
+
+    // 更新原始设置备份（保存成功后）
+    originalSettings = JSON.parse(JSON.stringify(settings));
+
     console.log("设置保存成功:", settings);
 
     // 显示保存成功通知
@@ -102,8 +116,50 @@ export async function saveSettings() {
     });
   } catch (error) {
     console.error("保存设置时出错:", error);
-    // 在非Tauri环境中，仅打印日志
-    console.log("保存设置:", settings);
+    // 如果后端命令失败，尝试使用fs插件直接保存
+    try {
+      await fs.writeTextFile("settings.json", JSON.stringify(settings, null, 2), {
+        baseDir: fs.BaseDirectory.AppConfig,
+      });
+      console.log("设置通过fs插件保存成功:", settings);
+      // 更新原始设置备份
+      originalSettings = JSON.parse(JSON.stringify(settings));
+    } catch (fsError) {
+      console.error("fs保存也失败:", fsError);
+    }
+  }
+}
+
+// 更新快捷键注册
+async function updateShortcutRegistrations() {
+  const shortcutKeys = ["toggle_interface", "function_paste"];
+
+  for (const key of shortcutKeys) {
+    const oldShortcut = convertShortcutFormat(originalSettings.shortcuts?.[key] || "");
+    const newShortcut = convertShortcutFormat(settings.shortcuts?.[key] || "");
+
+    if (oldShortcut !== newShortcut) {
+      // 取消注册旧的快捷键
+      if (oldShortcut) {
+        try {
+          await invoke("unregister_global_shortcut", { shortcut: oldShortcut });
+        } catch (e) {
+          console.warn("取消注册快捷键失败:", e);
+        }
+      }
+
+      // 注册新的快捷键
+      if (newShortcut) {
+        try {
+          await invoke("register_global_shortcut", {
+            shortcut: newShortcut,
+            action: key
+          });
+        } catch (e) {
+          console.error("注册快捷键失败:", e);
+        }
+      }
+    }
   }
 }
 
@@ -176,98 +232,100 @@ export function updateInterfaceSettings() {
   }
 }
 
-// 绑定设置变化监听器
+// 绑定设置变化监听器（不再自动保存，只在内存中更新）
 export function bindSettingsListeners() {
   // 监听软件设置变化
   const startupLaunch = document.getElementById("startup-launch");
   if (startupLaunch) {
-    startupLaunch.addEventListener("change", async function () {
+    startupLaunch.addEventListener("change", function () {
       if (!settings.software) settings.software = {};
       settings.software.startup_launch = this.checked;
-      await saveSettings();
     });
   }
 
   const checkUpdates = document.getElementById("check-updates");
   if (checkUpdates) {
-    checkUpdates.addEventListener("change", async function () {
+    checkUpdates.addEventListener("change", function () {
       if (!settings.software) settings.software = {};
       settings.software.check_updates = this.checked;
-      await saveSettings();
     });
   }
 
   // 监听复制设置变化
   const stripFormatting = document.getElementById("strip-formatting");
   if (stripFormatting) {
-    stripFormatting.addEventListener("change", async function () {
+    stripFormatting.addEventListener("change", function () {
       if (!settings.copy) settings.copy = {};
       settings.copy.strip_formatting = this.checked;
-      await saveSettings();
     });
   }
 
   const autoCopy = document.getElementById("auto-copy");
   if (autoCopy) {
-    autoCopy.addEventListener("change", async function () {
+    autoCopy.addEventListener("change", function () {
       if (!settings.copy) settings.copy = {};
       settings.copy.auto_copy = this.checked;
-      await saveSettings();
     });
   }
 
   const copyOnSelect = document.getElementById("copy-on-select");
   if (copyOnSelect) {
-    copyOnSelect.addEventListener("change", async function () {
+    copyOnSelect.addEventListener("change", function () {
       if (!settings.copy) settings.copy = {};
       settings.copy.copy_on_select = this.checked;
-      await saveSettings();
     });
   }
 
   // 监听界面设置变化
   const theme = document.getElementById("theme");
   if (theme) {
-    theme.addEventListener("change", async function () {
+    theme.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.theme = this.value;
-      await saveSettings();
     });
   }
 
   const autoHideEl = document.getElementById("auto-hide");
   if (autoHideEl) {
-    autoHideEl.addEventListener("change", async function () {
+    autoHideEl.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.auto_hide = this.checked;
-      await saveSettings();
     });
   }
 
   const maxHistoryItems = document.getElementById("max-history-items");
   if (maxHistoryItems) {
-    maxHistoryItems.addEventListener("change", async function () {
+    maxHistoryItems.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.max_history_items = parseInt(this.value);
-      await saveSettings();
     });
   }
 
   const language = document.getElementById("language");
   if (language) {
-    language.addEventListener("change", async function () {
+    language.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.language = this.value;
-      await saveSettings();
     });
   }
 
   const previewSize = document.getElementById("preview-size");
   if (previewSize) {
-    previewSize.addEventListener("change", async function () {
+    previewSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.preview_size = this.value;
-      await saveSettings();
     });
   }
+}
+
+// 恢复原始设置（取消操作）
+export async function restoreOriginalSettings() {
+  settings = JSON.parse(JSON.stringify(originalSettings));
+  // 更新UI
+  updateSoftwareSettings();
+  updateCopySettings();
+  updateInterfaceSettings();
+  // 更新快捷键UI
+  const { updateShortcutInputs } = await import("./shortcuts.js");
+  updateShortcutInputs();
 }
