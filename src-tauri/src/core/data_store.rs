@@ -5,27 +5,20 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use log::{error, info};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 use crate::common::models::ClipboardItem;
+use crate::core::database::Database;
 
 // 应用数据文件名称
-const CLIPBOARD_HISTORY_FILE: &str = "clipboard_history.json";
 const SETTINGS_FILE: &str = "settings.json";
 const TEXT_EXPAND_FILE: &str = "text_expand.yaml";
+const LEGACY_HISTORY_FILE: &str = "clipboard_history.json";
 
 // 自动保存间隔（秒）
 pub const AUTO_SAVE_INTERVAL_SECS: u64 = 60; // 1分钟
-
-/// 应用数据存储结构
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct AppData {
-    pub version: String,
-    pub settings: serde_json::Value,
-    pub text_expand_rules: Vec<TextExpandRuleData>,
-}
 
 /// 文本扩展规则数据结构（用于文件存储）
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -40,6 +33,7 @@ pub struct TextExpandRuleData {
 /// 数据存储管理器
 pub struct DataStore {
     app_data_dir: PathBuf,
+    db: Database,
     last_saved_history: Arc<Mutex<Vec<ClipboardItem>>>,
 }
 
@@ -57,17 +51,16 @@ impl DataStore {
                 .map_err(|e| format!("Failed to create app data dir: {}", e))?;
         }
 
+        // 初始化数据库
+        let db = Database::new(&app_data_dir)?;
+
         info!("Data store initialized at: {:?}", app_data_dir);
 
         Ok(Self {
             app_data_dir,
+            db,
             last_saved_history: Arc::new(Mutex::new(Vec::new())),
         })
-    }
-
-    /// 获取剪贴板历史文件路径
-    fn get_history_path(&self) -> PathBuf {
-        self.app_data_dir.join(CLIPBOARD_HISTORY_FILE)
     }
 
     /// 获取设置文件路径
@@ -80,118 +73,160 @@ impl DataStore {
         self.app_data_dir.join(TEXT_EXPAND_FILE)
     }
 
-    /// 保存剪贴板历史到文件
-    pub fn save_clipboard_history(&self, history: &[ClipboardItem]) -> Result<(), String> {
-        let path = self.get_history_path();
-        let json = serde_json::to_string_pretty(history)
-            .map_err(|e| format!("Failed to serialize history: {}", e))?;
-
-        let mut file = fs::File::create(&path)
-            .map_err(|e| format!("Failed to create history file: {}", e))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| format!("Failed to write history file: {}", e))?;
-
-        // 更新最后保存的历史记录
-        let mut last_saved = self.last_saved_history.lock().unwrap();
-        *last_saved = history.to_vec();
-
-        info!("Clipboard history saved to {:?} ({} items)", path, history.len());
-        Ok(())
+    /// 获取旧版 JSON 历史文件路径
+    fn get_legacy_history_path(&self) -> PathBuf {
+        self.app_data_dir.join(LEGACY_HISTORY_FILE)
     }
 
-    /// 从文件加载剪贴板历史
-    pub fn load_clipboard_history(&self) -> Result<Vec<ClipboardItem>, String> {
-        let path = self.get_history_path();
+    /// 从旧版 JSON 文件迁移数据
+    pub fn migrate_from_json(&self) -> Result<bool, String> {
+        let legacy_path = self.get_legacy_history_path();
 
-        if !path.exists() {
-            info!("No history file found at {:?}, returning empty history", path);
-            return Ok(Vec::new());
+        if !legacy_path.exists() {
+            info!("No legacy JSON file found, skipping migration");
+            return Ok(false);
         }
 
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read history file: {}", e))?;
+        // 检查数据库是否已有数据
+        if !self.db.is_history_empty()? {
+            info!("Database already has data, skipping migration");
+            return Ok(false);
+        }
 
-        // 尝试解析历史记录，如果失败则尝试以兼容模式解析（处理旧数据格式）
+        info!("Migrating clipboard history from JSON to SQLite...");
+
+        let content = fs::read_to_string(&legacy_path)
+            .map_err(|e| format!("Failed to read legacy history file: {}", e))?;
+
+        // 尝试解析历史记录
         let history: Vec<ClipboardItem> = match serde_json::from_str(&content) {
             Ok(items) => items,
             Err(e) => {
-                error!("Failed to parse history file with standard format: {}", e);
-                // 尝试以 Value 格式解析，然后手动迁移旧数据
+                error!("Failed to parse legacy history file: {}", e);
+                // 尝试以 Value 格式解析（处理旧数据格式）
                 let raw_value: Result<serde_json::Value, _> = serde_json::from_str(&content);
                 match raw_value {
                     Ok(values) => {
                         if let Some(array) = values.as_array() {
                             let migrated: Vec<ClipboardItem> = array
                                 .iter()
-                                .filter_map(|v| {
-                                    // 手动构建 ClipboardItem，处理缺失的字段
-                                    let id = v.get("id")?.as_str()?.to_string();
-                                    let content = v.get("content")?.as_str()?.to_string();
-                                    let preview = v.get("preview")?.as_str()?.to_string();
-                                    let timestamp = v.get("timestamp")?.as_i64()?;
-                                    let word_count = v.get("word_count")?.as_u64()? as usize;
-
-                                    // 解析 format 字段
-                                    let format_str = v.get("format")?.as_str()?;
-                                    let format = match format_str {
-                                        "html" => crate::common::models::ClipboardFormat::Html,
-                                        "rtf" => crate::common::models::ClipboardFormat::Rtf,
-                                        "image" => crate::common::models::ClipboardFormat::Image,
-                                        "files" => crate::common::models::ClipboardFormat::Files,
-                                        _ => crate::common::models::ClipboardFormat::Plain,
-                                    };
-
-                                    // 解析 metadata（可选）
-                                    let metadata = v.get("metadata")
-                                        .and_then(|m| m.as_object())
-                                        .map(|obj| {
-                                            obj.iter()
-                                                .filter_map(|(k, v)| {
-                                                    v.as_str().map(|s| (k.clone(), s.to_string()))
-                                                })
-                                                .collect()
-                                        })
-                                        .unwrap_or_default();
-
-                                    // 解析 is_favorite（可选，默认为 false）
-                                    let is_favorite = v.get("is_favorite")
-                                        .and_then(|v| v.as_bool())
-                                        .unwrap_or(false);
-
-                                    Some(ClipboardItem {
-                                        id,
-                                        format,
-                                        content,
-                                        preview,
-                                        timestamp,
-                                        word_count,
-                                        metadata,
-                                        is_favorite,
-                                    })
-                                })
+                                .filter_map(|v| self.parse_legacy_item(v))
                                 .collect();
-
                             info!("Successfully migrated {} items from old data format", migrated.len());
                             migrated
                         } else {
-                            error!("History file is not a valid array");
-                            Vec::new()
+                            warn!("Legacy history file is not a valid array");
+                            return Ok(false);
                         }
                     }
                     Err(e2) => {
-                        error!("Failed to parse history file even as raw JSON: {}", e2);
-                        return Err(format!("History file is corrupted: {} (raw parse: {})", e, e2));
+                        error!("Failed to parse legacy file even as raw JSON: {}", e2);
+                        return Err(format!("Legacy file is corrupted"));
                     }
                 }
             }
         };
 
+        if history.is_empty() {
+            info!("No items to migrate");
+            return Ok(false);
+        }
+
+        // 保存到数据库
+        self.db.save_clipboard_history(&history)?;
+
+        // 备份旧文件
+        let backup_path = legacy_path.with_extension("json.bak");
+        if let Err(e) = fs::rename(&legacy_path, &backup_path) {
+            warn!("Failed to rename legacy file to backup: {}", e);
+        }
+
+        info!("Migration completed: {} items migrated, backup saved to {:?}", history.len(), backup_path);
+        Ok(true)
+    }
+
+    /// 解析旧版数据项
+    fn parse_legacy_item(&self, v: &serde_json::Value) -> Option<ClipboardItem> {
+        use crate::common::models::ClipboardFormat;
+
+        let id = v.get("id")?.as_str()?.to_string();
+        let content = v.get("content")?.as_str()?.to_string();
+        let preview = v.get("preview")?.as_str()?.to_string();
+        let timestamp = v.get("timestamp")?.as_i64()?;
+        let word_count = v.get("word_count")?.as_u64()? as usize;
+
+        let format_str = v.get("format")?.as_str()?;
+        let format = match format_str {
+            "html" => ClipboardFormat::Html,
+            "markdown" => ClipboardFormat::Markdown,
+            "rtf" => ClipboardFormat::Rtf,
+            "image" => ClipboardFormat::Image,
+            "files" => ClipboardFormat::Files,
+            _ => ClipboardFormat::Plain,
+        };
+
+        let metadata = v.get("metadata")
+            .and_then(|m| m.as_object())
+            .map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| {
+                        v.as_str().map(|s| (k.clone(), s.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let is_favorite = v.get("is_favorite")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        Some(ClipboardItem {
+            id,
+            format,
+            content,
+            preview,
+            timestamp,
+            word_count,
+            metadata,
+            is_favorite,
+        })
+    }
+
+    /// 保存剪贴板历史到数据库
+    pub fn save_clipboard_history(&self, history: &[ClipboardItem]) -> Result<(), String> {
+        self.db.save_clipboard_history(history)?;
+
+        // 更新最后保存的历史记录
+        let mut last_saved = self.last_saved_history.lock().unwrap();
+        *last_saved = history.to_vec();
+
+        Ok(())
+    }
+
+    /// 从数据库加载剪贴板历史
+    pub fn load_clipboard_history(&self) -> Result<Vec<ClipboardItem>, String> {
+        let history = self.db.load_clipboard_history()?;
+
         // 更新最后保存的历史记录
         let mut last_saved = self.last_saved_history.lock().unwrap();
         *last_saved = history.clone();
 
-        info!("Clipboard history loaded from {:?} ({} items)", path, history.len());
         Ok(history)
+    }
+
+    /// 切换收藏状态
+    pub fn toggle_favorite(&self, id: &str) -> Result<bool, String> {
+        self.db.toggle_favorite(id)
+    }
+
+    /// 删除单个项目
+    pub fn delete_item(&self, id: &str) -> Result<(), String> {
+        self.db.delete_item(id)
+    }
+
+    /// 清空所有历史
+    pub fn clear_history(&self) -> Result<(), String> {
+        self.db.clear_history()
     }
 
     /// 保存设置到文件
@@ -261,7 +296,6 @@ impl DataStore {
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read text expand file: {}", e))?;
 
-        // 尝试解析为 YAML
         let config: serde_yaml::Value = serde_yaml::from_str(&content)
             .map_err(|e| format!("Failed to parse text expand file: {}", e))?;
 
@@ -293,7 +327,6 @@ impl DataStore {
         if last_saved.len() != current.len() {
             return true;
         }
-        // 比较每个项目的 ID 和 is_favorite 状态
         for (last, curr) in last_saved.iter().zip(current.iter()) {
             if last.id != curr.id || last.is_favorite != curr.is_favorite {
                 return true;
@@ -352,7 +385,6 @@ pub fn start_auto_save(
     interval_secs: u64,
 ) {
     thread::spawn(move || {
-        // 初始化数据存储
         let data_store = match DataStore::new(&app_handle) {
             Ok(store) => store,
             Err(e) => {
@@ -366,13 +398,11 @@ pub fn start_auto_save(
         loop {
             thread::sleep(Duration::from_secs(interval_secs));
 
-            // 获取当前历史记录
             let current_history = {
                 let history_lock = history.lock().unwrap();
                 history_lock.clone()
             };
 
-            // 检查是否有变更，有则保存
             if data_store.has_history_changed(&current_history) {
                 if let Err(e) = data_store.save_clipboard_history(&current_history) {
                     error!("Auto-save failed: {}", e);
@@ -391,7 +421,6 @@ pub fn save_all_data(
 ) -> Result<(), String> {
     let data_store = DataStore::new(app_handle)?;
 
-    // 保存剪贴板历史
     let history_data = {
         let history_lock = history.lock().unwrap();
         history_lock.clone()
@@ -407,6 +436,11 @@ pub fn load_all_data(
     app_handle: &tauri::AppHandle,
 ) -> Result<(Vec<ClipboardItem>, serde_json::Value, Vec<TextExpandRuleData>), String> {
     let data_store = DataStore::new(app_handle)?;
+
+    // 尝试从旧版 JSON 迁移
+    if let Err(e) = data_store.migrate_from_json() {
+        warn!("Migration check failed (non-fatal): {}", e);
+    }
 
     let history = data_store.load_clipboard_history()?;
     let settings = data_store.load_settings()?;
