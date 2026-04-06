@@ -7,6 +7,7 @@ use xxhash_rust::xxh3;
 
 use crate::common::globals::{LAST_HASH, should_ignore_clipboard};
 use crate::common::models::ClipboardItem;
+use crate::generators::html_generator::markdown_to_html;
 
 pub struct ClipboardManager {
     pub ctx: ClipboardContext,
@@ -159,7 +160,15 @@ impl ClipboardHandler for ClipboardManager {
                         let mut global_last_hash = LAST_HASH.lock().unwrap();
                         *global_last_hash = hash.clone();
                     }
-                    let item = ClipboardItem::new_text(&text, &hash);
+
+                    // 检测是否包含 Markdown 标记，如果有则标记为 markdown 格式
+                    let item = if let Some(_html) = markdown_to_html(&text) {
+                        info!("Detected Markdown syntax, storing as markdown");
+                        ClipboardItem::new_markdown(&text, &hash)
+                    } else {
+                        ClipboardItem::new_text(&text, &hash)
+                    };
+
                     self.process_new_item(item);
                     return;
                 }

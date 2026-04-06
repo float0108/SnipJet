@@ -12,6 +12,7 @@ export function getFormatLabel(format) {
     text: "纯文本",      // 后端 ClipboardFormat::Plain 序列化为 "text"
     plain: "纯文本",     // 兼容旧数据
     html: "HTML",
+    markdown: "MD",      // Markdown 富文本
     rtf: "富文本",
     image: "图片",
     files: "文件",

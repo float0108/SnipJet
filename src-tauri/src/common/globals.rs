@@ -1,5 +1,6 @@
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
 
 use tauri::AppHandle;
 
@@ -19,6 +20,11 @@ pub static APP_HANDLE: LazyLock<Arc<Mutex<Option<AppHandle>>>> =
 // 单位：毫秒时间戳
 pub static CLIPBOARD_IGNORE_UNTIL: LazyLock<Arc<Mutex<u64>>> =
     LazyLock::new(|| Arc::new(Mutex::new(0)));
+
+// 全局变量，用于存储快捷键到动作的映射
+// key: 快捷键字符串 (如 "Super+V"), value: 动作名称 (如 "显示/隐藏")
+pub static SHORTCUT_ACTION_MAP: LazyLock<Arc<Mutex<HashMap<String, String>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// 设置剪贴板忽略截止时间（从现在起忽略指定毫秒）
 pub fn set_clipboard_ignore_for(millis: u64) {

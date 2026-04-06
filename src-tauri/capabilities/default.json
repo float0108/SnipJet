@@ -53,6 +53,8 @@
     },
     "allow-print-message",
     "allow-update-window-pin-state",
-    "allow-clipboard-operations"
+    "allow-clipboard-operations",
+    "allow-register-global-shortcut",
+    "allow-unregister-global-shortcut"
   ]
 }

@@ -15,11 +15,19 @@ export default defineConfig({
         main: resolve(__dirname, 'src/index.html'),
         settings: resolve(__dirname, 'src/settings.html'),
         reader: resolve(__dirname, 'src/reader.html'),
+        expander: resolve(__dirname, 'src/expander.html'),
       },
       output: {
-        entryFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name].js',
         chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]'
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split('.');
+          const ext = info[info.length - 1];
+          if (/\.css$/i.test(assetInfo.name)) {
+            return 'assets/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
+        }
       }
     },
   },
