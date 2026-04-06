@@ -39,10 +39,7 @@ dist-ssr
 # Tauri 2.x
 /src-tauri/target
 /src-tauri/gen
-/src-tauri/icons
 /src-tauri/.gitignore
-/src-tauri/build.rs
-/src-tauri/tauri.conf.json
 
 # Backend (Rust)
 backend/target
@@ -88,7 +85,6 @@ ehthumbs.db
 .idea/
 
 # Package manager files
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
@@ -103,9 +99,8 @@ clipboard-rs/
 *.pkg
 *.app
 
-# Cargo generated files
-Cargo.lock
-**/Cargo.lock
+# Cargo generated files (only root, keep src-tauri/Cargo.lock for reproducibility)
+/Cargo.lock
 
 # Tauri build outputs
 tauri-apps/
