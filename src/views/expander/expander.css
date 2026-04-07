@@ -356,6 +356,21 @@
   flex-shrink: 0;
 }
 
+/* 前缀冲突警告 */
+.prefix-conflict-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+  margin-right: 4px;
+  cursor: help;
+}
+
+.prefix-conflict-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* 标签显示态 */
 .group-tag-display {
   padding: 4px 10px;
