@@ -1,14 +1,10 @@
 use enigo::{Enigo, Key as EnigoKey, KeyboardControllable};
-use log::{error, info};
+use log::{error, info, warn};
 use rdev::{listen, Event, EventType, Key as RdevKey};
 use serde::{Deserialize, Serialize};
-use serde_yaml;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -22,75 +18,80 @@ pub struct TextExpandRule {
     pub date: String,
 }
 
-// 定义YAML文件结构
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TextExpandConfig {
-    pub rules: Vec<TextExpandRule>,
-}
-
 pub struct TextExpander {
-    // 使用 AtomicBool 来防止“听到自己说话”
+    // 使用 AtomicBool 来防止"听到自己说话"
     is_paused: Arc<AtomicBool>,
-    // 存储扩展规则
-    rules: Vec<TextExpandRule>,
+    // 存储扩展规则（共享可变）
+    rules: Arc<Mutex<Vec<TextExpandRule>>>,
 }
 
 impl TextExpander {
-    pub fn new() -> Self {
-        let mut rules = Vec::new();
-
-        // 尝试加载默认YAML文件
-        if let Ok(loaded_rules) = Self::load_rules("text_expand.yaml") {
-            rules = loaded_rules;
-        } else {
-            // 如果加载失败，使用默认规则
-            info!("Failed to load text_expand.yaml, using default rules");
-            rules.push(TextExpandRule {
-                key: ":te".to_string(),
-                content: "textexpand".to_string(),
-                group: "default".to_string(),
-                description: "示例扩展规则".to_string(),
-                date: "2026-02-12".to_string(),
-            });
-        }
+    /// 创建新的文本扩展器
+    pub fn new(app_handle: &tauri::AppHandle) -> Self {
+        // 从用户数据目录加载规则
+        let rules = Self::load_rules_from_user_data(app_handle);
 
         Self {
             is_paused: Arc::new(AtomicBool::new(false)),
-            rules,
+            rules: Arc::new(Mutex::new(rules)),
         }
     }
 
-    // 加载扩展规则
-    fn load_rules<P: AsRef<Path>>(path: P) -> Result<Vec<TextExpandRule>, String> {
-        let path = path.as_ref();
-        info!("Loading text expand rules from {:?}", path);
+    /// 从用户数据目录加载规则
+    fn load_rules_from_user_data(app_handle: &tauri::AppHandle) -> Vec<TextExpandRule> {
+        use crate::core::data_store::DataStore;
 
-        // 检查文件是否存在
-        if !path.exists() {
-            return Err(format!("File {:?} does not exist", path));
+        match DataStore::new(app_handle) {
+            Ok(data_store) => match data_store.load_text_expand_rules() {
+                Ok(rules) => {
+                    // 转换 TextExpandRuleData 为 TextExpandRule
+                    let result: Vec<TextExpandRule> = rules
+                        .into_iter()
+                        .map(|r| TextExpandRule {
+                            key: r.key,
+                            content: r.content,
+                            group: r.group,
+                            description: r.description,
+                            date: r.date,
+                        })
+                        .collect();
+                    info!("Loaded {} text expand rules from user data", result.len());
+                    return result;
+                }
+                Err(e) => {
+                    warn!("Failed to load text expand rules from user data: {}", e);
+                }
+            },
+            Err(e) => {
+                warn!("Failed to create DataStore for loading text expand rules: {}", e);
+            }
         }
 
-        // 读取文件内容
-        let mut file = match File::open(path) {
-            Ok(file) => file,
-            Err(e) => return Err(format!("Failed to open file: {:?}", e)),
-        };
-
-        let mut content = String::new();
-        if let Err(e) = file.read_to_string(&mut content) {
-            return Err(format!("Failed to read file: {:?}", e));
-        }
-
-        // 解析YAML文件
-        let config: TextExpandConfig = match serde_yaml::from_str(&content) {
-            Ok(config) => config,
-            Err(e) => return Err(format!("Failed to parse YAML: {:?}", e)),
-        };
-
-        info!("Loaded {} text expand rules", config.rules.len());
-        Ok(config.rules)
+        // 返回默认规则
+        info!("Using default text expand rules");
+        vec![TextExpandRule {
+            key: ":te".to_string(),
+            content: "textexpand".to_string(),
+            group: "default".to_string(),
+            description: "示例扩展规则".to_string(),
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+        }]
     }
 
+    /// 重新加载规则（从用户数据目录）
+    pub fn reload_rules(&self, app_handle: &tauri::AppHandle) {
+        let new_rules = Self::load_rules_from_user_data(app_handle);
+        let mut rules_lock = self.rules.lock().unwrap();
+        *rules_lock = new_rules;
+        info!("Text expand rules reloaded");
+    }
+
+    /// 获取当前规则
+    pub fn get_rules(&self) -> Vec<TextExpandRule> {
+        self.rules.lock().unwrap().clone()
+    }
+
+    /// 启动监听
     pub fn start(&self) {
         info!("Text expander started. Try typing any trigger from the rules...");
 
@@ -119,7 +120,7 @@ impl TextExpander {
     }
 }
 
-fn process_events(rx: Receiver<Event>, is_paused: Arc<AtomicBool>, rules: Vec<TextExpandRule>) {
+fn process_events(rx: Receiver<Event>, is_paused: Arc<AtomicBool>, rules: Arc<Mutex<Vec<TextExpandRule>>>) {
     let mut buffer = String::new();
     let mut enigo = Enigo::new();
 
@@ -138,7 +139,9 @@ fn process_events(rx: Receiver<Event>, is_paused: Arc<AtomicBool>, rules: Vec<Te
                 }
 
                 // --- 触发检测 ---
-                for rule in &rules {
+                // 获取当前规则的快照
+                let current_rules = rules.lock().unwrap().clone();
+                for rule in &current_rules {
                     let trigger = &rule.key;
                     if buffer.ends_with(trigger) {
                         info!("Trigger detected: {} -> {}", trigger, rule.content);
@@ -146,7 +149,7 @@ fn process_events(rx: Receiver<Event>, is_paused: Arc<AtomicBool>, rules: Vec<Te
                         // 1. 暂停监听，防止死循环和 Buffer 污染
                         is_paused.store(true, Ordering::SeqCst);
 
-                        // 2. 稍微等待，确保“最后一次按键”已被系统处理完毕
+                        // 2. 稍微等待，确保"最后一次按键"已被系统处理完毕
                         thread::sleep(Duration::from_millis(50));
 
                         // 3. 删除触发词 (统一使用 Enigo)
