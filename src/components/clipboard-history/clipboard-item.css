@@ -61,6 +61,76 @@
     object-fit: cover;
 }
 
+/* 图片预览样式 */
+.item-body .preview-image {
+    max-width: 100%;
+    max-height: 150px;
+    border-radius: 4px;
+    object-fit: contain;
+    background: var(--bg-body);
+    display: block;
+    margin: 0 auto;
+}
+
+/* 图片加载状态 */
+.preview-image.loading {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    min-height: 60px;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* 图片卡片特殊样式 */
+.clipboard-item[data-format="image"] .item-body {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 图片预览大小设置 */
+.preview-image.size-large {
+    max-width: 100%;
+    max-height: 200px;
+}
+
+.preview-image.size-medium {
+    max-width: 60%;
+    max-height: 120px;
+}
+
+.preview-image.size-small {
+    max-width: 30%;
+    max-height: 80px;
+}
+
+/* 图片无预览占位符 */
+.image-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background: var(--bg-body);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.image-placeholder .placeholder-icon {
+    font-size: 24px;
+    margin-bottom: 4px;
+}
+
+.image-placeholder .placeholder-info {
+    color: var(--text-tertiary);
+}
+
 /* --- 底部元数据栏 (整合了原来的 Header 和 Footer) --- */
 .item-meta-row {
     display: flex;

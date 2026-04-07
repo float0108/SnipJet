@@ -1,6 +1,7 @@
 // 全局设置对象
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 
 export let settings = {};
 // 原始设置备份（用于取消时恢复）
@@ -25,6 +26,7 @@ function getDefaultSettings() {
       language: "cn",
       auto_hide: true,
       preview_size: "small",
+      image_preview_size: "medium",
       max_history_items: 100,
     },
     copy: {
@@ -69,6 +71,8 @@ export async function loadSettings() {
       }
 
       console.log("设置加载成功:", settings);
+      // 同时保存到 localStorage 供前端快速访问
+      localStorage.setItem('snipjet-settings', JSON.stringify(settings));
     } else {
       console.log("设置文件不存在，使用默认设置");
       settings = getDefaultSettings();
@@ -105,8 +109,14 @@ export async function saveSettings() {
     // 调用后端命令保存设置（会触发后端调试输出）
     await invoke("save_settings", { settings: settings });
 
+    // 同时保存到 localStorage 供前端快速访问
+    localStorage.setItem('snipjet-settings', JSON.stringify(settings));
+
     // 更新原始设置备份（保存成功后）
     originalSettings = JSON.parse(JSON.stringify(settings));
+
+    // 发送事件通知主界面刷新
+    await emit('settings-changed', settings);
 
     console.log("设置保存成功:", settings);
 
@@ -121,6 +131,10 @@ export async function saveSettings() {
       await fs.writeTextFile("settings.json", JSON.stringify(settings, null, 2), {
         baseDir: fs.BaseDirectory.AppConfig,
       });
+      // 同时保存到 localStorage
+      localStorage.setItem('snipjet-settings', JSON.stringify(settings));
+      // 发送事件通知主界面刷新
+      await emit('settings-changed', settings);
       console.log("设置通过fs插件保存成功:", settings);
       // 更新原始设置备份
       originalSettings = JSON.parse(JSON.stringify(settings));
@@ -225,6 +239,12 @@ export function updateInterfaceSettings() {
     previewSize.value = settings.interface?.preview_size ?? "small";
   }
 
+  // 更新图片预览大小
+  const imagePreviewSize = document.getElementById("image-preview-size");
+  if (imagePreviewSize) {
+    imagePreviewSize.value = settings.interface?.image_preview_size ?? "medium";
+  }
+
   // 更新最大历史记录数
   const maxHistoryItems = document.getElementById("max-history-items");
   if (maxHistoryItems) {
@@ -314,6 +334,14 @@ export function bindSettingsListeners() {
     previewSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.preview_size = this.value;
+    });
+  }
+
+  const imagePreviewSize = document.getElementById("image-preview-size");
+  if (imagePreviewSize) {
+    imagePreviewSize.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.image_preview_size = this.value;
     });
   }
 }

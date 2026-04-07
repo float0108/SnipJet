@@ -32,7 +32,7 @@ export function parseClipboardItem(item) {
   // 后端返回的 format 可能是 "text" (Plain), "html", "rtf", "image", "files"
   const format = item.format || "text";
 
-  return {
+  const result = {
     id: item.id,
     format: format,
     content: item.content,
@@ -44,6 +44,16 @@ export function parseClipboardItem(item) {
     encodedTimestamp: encodeURIComponent(item.timestamp || ""),
     isFavorite: item.is_favorite || false,
   };
+
+  // 添加图片特定字段
+  if (format === "image" && item.metadata) {
+    result.imageWidth = item.metadata.width;
+    result.imageHeight = item.metadata.height;
+    result.imageFormat = item.metadata.image_format || "png";
+    result.imageSize = item.metadata.size;
+  }
+
+  return result;
 }
 
 

@@ -78,6 +78,49 @@ impl DataStore {
         self.app_data_dir.join(LEGACY_HISTORY_FILE)
     }
 
+    /// 获取图片存储目录
+    pub fn get_images_dir(&self) -> PathBuf {
+        let dir = self.app_data_dir.join("assets").join("images");
+        if !dir.exists() {
+            fs::create_dir_all(&dir).ok();
+        }
+        dir
+    }
+
+    /// 保存图片文件，返回相对路径
+    pub fn save_image(&self, hash: &str, image_data: &[u8]) -> Result<String, String> {
+        let filename = format!("{}.png", hash);
+        let filepath = self.get_images_dir().join(&filename);
+
+        fs::write(&filepath, image_data)
+            .map_err(|e| format!("Failed to save image: {}", e))?;
+
+        // 返回相对路径
+        Ok(format!("assets/images/{}", filename))
+    }
+
+    /// 读取图片文件
+    pub fn load_image(&self, relative_path: &str) -> Result<Vec<u8>, String> {
+        let filepath = self.app_data_dir.join(relative_path);
+        fs::read(&filepath)
+            .map_err(|e| format!("Failed to load image: {}", e))
+    }
+
+    /// 删除图片文件
+    pub fn delete_image(&self, relative_path: &str) -> Result<(), String> {
+        let filepath = self.app_data_dir.join(relative_path);
+        if filepath.exists() {
+            fs::remove_file(&filepath)
+                .map_err(|e| format!("Failed to delete image: {}", e))?;
+        }
+        Ok(())
+    }
+
+    /// 获取图片绝对路径（供前端使用）
+    pub fn get_image_absolute_path(&self, relative_path: &str) -> PathBuf {
+        self.app_data_dir.join(relative_path)
+    }
+
     /// 从旧版 JSON 文件迁移数据
     pub fn migrate_from_json(&self) -> Result<bool, String> {
         let legacy_path = self.get_legacy_history_path();
@@ -221,11 +264,34 @@ impl DataStore {
 
     /// 删除单个项目
     pub fn delete_item(&self, id: &str) -> Result<(), String> {
+        // 先获取条目信息，检查是否是图片类型
+        if let Some(item) = self.db.get_item(id)? {
+            // 如果是图片类型，删除图片文件
+            if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
+                if let Err(e) = self.delete_image(&item.content) {
+                    // 记录错误但继续删除数据库记录
+                    log::warn!("Failed to delete image file: {}", e);
+                }
+            }
+        }
+
+        // 从数据库删除
         self.db.delete_item(id)
     }
 
     /// 清空所有历史
     pub fn clear_history(&self) -> Result<(), String> {
+        // 获取所有图片类型的条目，删除图片文件
+        let history = self.db.load_clipboard_history()?;
+        for item in history.iter() {
+            if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
+                if let Err(e) = self.delete_image(&item.content) {
+                    log::warn!("Failed to delete image file: {}", e);
+                }
+            }
+        }
+
+        // 清空数据库
         self.db.clear_history()
     }
 

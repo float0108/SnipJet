@@ -59,11 +59,49 @@ export function renderClipboardItem(item) {
     format: item.format || "plain",
     timestamp: item.encodedTimestamp,
     preview: escapeHtml((item.preview || "").trim()),
-    label: escapeHtml(item.formatLabel),
+    // 图片格式统一显示 IMG
+    label: escapeHtml(item.format === "image" ? "IMG" : item.formatLabel),
     wordCount: item.wordCount ? `${item.wordCount} 字` : "", // 有字数才显示
     displayTime: escapeHtml(formatTimestamp(item.timestamp)),
     isFavorite: item.isFavorite || false,
   };
+
+  // 获取图片预览大小设置
+  const getImagePreviewSize = () => {
+    try {
+      const saved = localStorage.getItem('snipjet-settings');
+      if (saved) {
+        const settings = JSON.parse(saved);
+        return settings?.interface?.image_preview_size || 'medium';
+      }
+    } catch (e) {}
+    return 'medium';
+  };
+  const imagePreviewSize = getImagePreviewSize();
+
+  // 生成预览内容（根据格式类型）
+  let previewHtml;
+  if (item.format === "image" && item.content) {
+    if (imagePreviewSize === 'none') {
+      // 无预览：只显示元信息占位
+      const sizeInfo = item.imageWidth && item.imageHeight
+        ? `${item.imageWidth} × ${item.imageHeight}`
+        : '未知尺寸';
+      previewHtml = `<div class="image-placeholder">
+        <span class="placeholder-icon">📷</span>
+        <span class="placeholder-info">${sizeInfo}</span>
+      </div>`;
+    } else {
+      // 图片预览：使用占位符，异步加载，根据设置添加尺寸类
+      previewHtml = `<img src=""
+                           data-image-path="${item.content}"
+                           alt="剪贴板图片"
+                           class="preview-image loading size-${imagePreviewSize}"
+                           loading="lazy" />`;
+    }
+  } else {
+    previewHtml = `<div class="item-preview">${safeData.preview}</div>`;
+  }
 
   // 构建 HTML
   return `
@@ -74,6 +112,10 @@ export function renderClipboardItem(item) {
       data-format="${safeData.format}"
       data-timestamp="${safeData.timestamp}"
       data-id="${uniqueId}"
+      data-image-width="${item.imageWidth || ''}"
+      data-image-height="${item.imageHeight || ''}"
+      data-image-size="${item.imageSize || ''}"
+      data-image-format="${item.imageFormat || ''}"
       onclick="window.pasteToCurrentWindow(this)"
     >
       <div class="item-actions-overlay">
@@ -83,16 +125,16 @@ export function renderClipboardItem(item) {
         <button class="card-btn" title="详情/编辑" onclick="window.openReaderWindow(this.closest('.clipboard-item')); event.stopPropagation();">
           ${ICONS.edit}
         </button>
-        <button class="card-btn" title="粘贴为纯文本" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
+        ${safeData.format !== "image" ? `<button class="card-btn" title="粘贴为纯文本" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
           ${ICONS.copy}
-        </button>
+        </button>` : ""}
         <button class="card-btn btn-delete" title="删除" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
           ${ICONS.delete}
         </button>
       </div>
 
       <div class="item-body">
-        <div class="item-preview">${safeData.preview}</div>
+        ${previewHtml}
       </div>
 
       <div class="item-meta-row">
@@ -105,4 +147,33 @@ export function renderClipboardItem(item) {
       </div>
     </div>
   `;
+}
+
+/**
+ * 异步加载图片元素
+ * @param {HTMLImageElement} imgElement - 图片元素
+ */
+export async function loadItemImage(imgElement) {
+  const relativePath = imgElement.dataset.imagePath;
+  if (!relativePath) return;
+
+  try {
+    // 动态导入 Tauri invoke
+    const { invoke } = await import('@tauri-apps/api/core');
+    const base64 = await invoke('read_image_as_base64', { relativePath });
+    imgElement.src = `data:image/png;base64,${base64}`;
+    imgElement.classList.remove('loading');
+  } catch (e) {
+    console.error('Failed to load image:', e);
+    // 显示占位符文本
+    imgElement.replaceWith(document.createTextNode('[图片加载失败]'));
+  }
+}
+
+/**
+ * 加载所有图片预览（在列表渲染后调用）
+ */
+export function loadAllImagePreviews() {
+  const images = document.querySelectorAll('.preview-image.loading');
+  images.forEach(img => loadItemImage(img));
 }

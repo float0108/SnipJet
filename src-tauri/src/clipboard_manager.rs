@@ -1,13 +1,18 @@
 use std::sync::{Arc, Mutex};
 
 use clipboard_rs::{Clipboard, ClipboardContext, ClipboardHandler};
-use log::{error, info};
+use clipboard_rs::common::RustImage;
+use log::{error, info, warn};
 use tauri::{AppHandle, Emitter};
 use xxhash_rust::xxh3;
 
 use crate::common::globals::{LAST_HASH, should_ignore_clipboard};
 use crate::common::models::ClipboardItem;
+use crate::core::data_store::DataStore;
 use crate::generators::html_generator::markdown_to_html;
+
+// 图片处理常量
+const MAX_IMAGE_SIZE_BYTES: usize = 5 * 1024 * 1024;  // 5MB
 
 pub struct ClipboardManager {
     pub ctx: ClipboardContext,
@@ -176,14 +181,36 @@ impl ClipboardHandler for ClipboardManager {
         }
 
         // --- 优先级 5: 图片 (Image) --- (放在最后，因为 get_image() 可能比较耗时)
-        // 检测图片是否存在
-        if self.ctx.get_image().is_ok() {
-            let hash = Self::generate_hash(b"[image]");
+        if let Ok(img) = self.ctx.get_image() {
+            // 获取原始尺寸
+            let (width, height) = img.get_size();
+
+            // 转换为 PNG 字节
+            let buffer = match img.to_png() {
+                Ok(data) => data,
+                Err(e) => {
+                    error!("Failed to encode image as PNG: {:?}", e);
+                    return;
+                }
+            };
+
+            // 获取字节数据
+            let bytes = buffer.get_bytes();
+
+            // 大小检查
+            if bytes.len() > MAX_IMAGE_SIZE_BYTES {
+                warn!("Image too large ({} bytes), skipping", bytes.len());
+                return;
+            }
+
+            // 使用图片数据计算 hash
+            let hash = Self::generate_hash(&bytes);
 
             let is_new_hash = {
                 let global_last_hash = LAST_HASH.lock().unwrap();
                 hash != self.last_hash && hash != *global_last_hash
             };
+
             if is_new_hash {
                 // 立即更新 last_hash，防止竞态条件
                 self.last_hash = hash.clone();
@@ -193,9 +220,30 @@ impl ClipboardHandler for ClipboardManager {
                     *global_last_hash = hash.clone();
                 }
 
-                // 创建图片条目
-                let item = ClipboardItem::new_image("[image]", &hash, None, None);
-                self.process_new_item(item);
+                // 保存图片文件
+                match DataStore::new(&self.app_handle) {
+                    Ok(data_store) => {
+                        match data_store.save_image(&hash, &bytes) {
+                            Ok(relative_path) => {
+                                // 创建图片条目
+                                let item = ClipboardItem::new_image(
+                                    &relative_path,
+                                    &hash,
+                                    Some(width as usize),
+                                    Some(height as usize),
+                                    Some(bytes.len()),
+                                );
+                                self.process_new_item(item);
+                            }
+                            Err(e) => {
+                                error!("Failed to save image file: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to create DataStore: {}", e);
+                    }
+                }
                 return; // 捕获到图片后，不再处理后续格式
             }
         }

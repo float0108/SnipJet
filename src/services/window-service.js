@@ -130,6 +130,11 @@ export async function openReaderWindow(element) {
   const content = element.getAttribute("data-content");
   const format = element.getAttribute("data-format");
   const timestamp = element.getAttribute("data-timestamp");
+  // 图片元数据
+  const imageWidth = element.getAttribute("data-image-width");
+  const imageHeight = element.getAttribute("data-image-height");
+  const imageSize = element.getAttribute("data-image-size");
+  const imageFormat = element.getAttribute("data-image-format");
 
   // 3. 使用 localStorage 传递大数据内容，避免 URL 长度限制
   const storageKey = `transfer-${contentId}`;
@@ -150,6 +155,12 @@ export async function openReaderWindow(element) {
     format: format,
     timestamp: timestamp,
   });
+
+  // 添加图片元数据
+  if (imageWidth) params.set("imageWidth", imageWidth);
+  if (imageHeight) params.set("imageHeight", imageHeight);
+  if (imageSize) params.set("imageSize", imageSize);
+  if (imageFormat) params.set("imageFormat", imageFormat);
 
   console.log(`尝试打开窗口: ${label}`);
 
