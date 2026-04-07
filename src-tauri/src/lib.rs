@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use clipboard_rs::ClipboardWatcher;
-use log::{error, info, warn};
+use log::{error, info};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -146,9 +146,11 @@ where
             });
 
             // 初始化并启动文本扩展
-            let text_expander = TextExpander::new();
+            let text_expander = TextExpander::new(&app_handle);
             // 启动文本扩展监听
             text_expander.start();
+            // 将 TextExpander 存入 Tauri 状态管理
+            app.manage(Arc::new(Mutex::new(text_expander)));
 
             // 创建托盘图标 - 使用 32x32 图标以确保在 Windows 上显示清晰
             let quit = MenuItem::with_id(app, "quit", "退出程序", true, None::<&str>)?;
@@ -236,7 +238,10 @@ where
             commands::save_settings,
             commands::load_settings_command,
             commands::register_global_shortcut,
-            commands::unregister_global_shortcut
+            commands::unregister_global_shortcut,
+            commands::load_text_expand_rules,
+            commands::save_text_expand_rules,
+            commands::reload_text_expand_rules
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
