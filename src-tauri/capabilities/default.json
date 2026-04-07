@@ -55,6 +55,7 @@
     "allow-update-window-pin-state",
     "allow-clipboard-operations",
     "allow-register-global-shortcut",
-    "allow-unregister-global-shortcut"
+    "allow-unregister-global-shortcut",
+    "allow-text-expand-operations"
   ]
 }

@@ -464,3 +464,40 @@ pub async fn unregister_global_shortcut(
 
     Ok(())
 }
+
+// --- 文本扩展规则命令 ---
+
+/// 加载文本扩展规则
+#[tauri::command]
+pub async fn load_text_expand_rules(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<crate::core::data_store::TextExpandRuleData>, String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let rules = data_store.load_text_expand_rules()?;
+    info!("Text expand rules loaded ({} rules)", rules.len());
+    Ok(rules)
+}
+
+/// 保存文本扩展规则
+#[tauri::command]
+pub async fn save_text_expand_rules(
+    app_handle: tauri::AppHandle,
+    rules: Vec<crate::core::data_store::TextExpandRuleData>,
+) -> Result<(), String> {
+    let data_store = DataStore::new(&app_handle)?;
+    data_store.save_text_expand_rules(&rules)?;
+    info!("Text expand rules saved ({} rules)", rules.len());
+    Ok(())
+}
+
+/// 重新加载文本扩展规则
+#[tauri::command]
+pub async fn reload_text_expand_rules(
+    app_handle: tauri::AppHandle,
+    text_expander: State<'_, Arc<Mutex<crate::core::text_expand::TextExpander>>>,
+) -> Result<(), String> {
+    let expander = text_expander.lock().map_err(|e| e.to_string())?;
+    expander.reload_rules(&app_handle);
+    info!("Text expand rules reloaded");
+    Ok(())
+}

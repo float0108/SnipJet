@@ -15,9 +15,6 @@
         <button id="add-rule-btn" class="toolbar-btn" title="添加规则">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
-        <button id="save-rules-btn" class="toolbar-btn" title="保存规则">
-          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-        </button>
         <div class="toolbar-divider"></div>
         <div class="filter-group">
           <select id="group-filter" class="filter-select" title="按分组筛选">
@@ -26,7 +23,15 @@
         </div>
       </div>
       <div class="toolbar-group toolbar-right">
-        <span class="rule-count" id="rule-count">0 条规则</span>
+        <div id="search-box" class="search-box">
+          <input type="text" id="search-input" placeholder="搜索触发词..." />
+          <button id="search-close" class="search-close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <button id="search-btn" class="toolbar-btn" title="搜索 (Ctrl+F)">
+          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </button>
         <div class="help-wrapper">
           <button id="help-btn" class="toolbar-btn" title="使用说明">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
@@ -34,7 +39,9 @@
           <div class="help-dropdown" id="help-dropdown">
             <div class="help-item"><strong>触发词</strong> - 输入关键词自动触发扩展</div>
             <div class="help-item"><strong>分组</strong> - 点击标签编辑，用于归类管理</div>
-            <div class="help-item"><strong>保存</strong> - 修改后点击保存按钮生效</div>
+            <div class="help-item"><strong>保存</strong> - 点击底部保存按钮或 Ctrl+S</div>
+            <div class="help-item"><strong>搜索</strong> - Ctrl+F 打开搜索框</div>
+            <div class="help-item"><strong>Esc</strong> - 取消更改并关闭窗口</div>
           </div>
         </div>
         <button id="close-btn" class="toolbar-btn" title="关闭">
@@ -49,6 +56,15 @@
         <!-- 规则列表将在这里动态生成 -->
       </div>
     </div>
+
+    <!-- 底部按钮区域 -->
+    <div class="button-footer">
+      <button class="btn btn-cancel" id="cancel-btn">取消</button>
+      <button class="btn btn-confirm" id="save-rules-btn">保存</button>
+    </div>
+
+    <!-- 提示气泡容器 -->
+    <div id="toast-container"></div>
 
     <script type="module" src="./views/expander/expander.js"></script>
   </body>
