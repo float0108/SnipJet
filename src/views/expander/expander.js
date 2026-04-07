@@ -10,6 +10,26 @@ let currentGroup = "";
 let searchQuery = "";
 let allGroups = [];
 
+// 前缀冲突检查 - 返回有冲突的触发词集合
+function findPrefixConflicts(ruleList) {
+  const conflicts = new Set();
+  const keys = ruleList
+    .filter(r => r.key && r.key.trim())
+    .map(r => r.key.trim().toLowerCase());
+
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = 0; j < keys.length; j++) {
+      if (i !== j) {
+        // 如果 keys[i] 是 keys[j] 的前缀，则 keys[j] 无法被触发
+        if (keys[j].startsWith(keys[i])) {
+          conflicts.add(keys[j]);
+        }
+      }
+    }
+  }
+  return conflicts;
+}
+
 // 当前激活的分组输入
 let activeGroupInput = null;
 let suggestionsEl = null;
@@ -316,6 +336,9 @@ function renderRules() {
     );
   }
 
+  // 检查前缀冲突
+  const conflicts = findPrefixConflicts(rules);
+
   if (filteredRules.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
@@ -330,6 +353,13 @@ function renderRules() {
   container.innerHTML = filteredRules.map((rule) => {
     const originalIndex = rules.indexOf(rule);
     const currentGroupValue = rule.group || "default";
+    const keyLower = (rule.key || "").trim().toLowerCase();
+    const hasConflict = conflicts.has(keyLower);
+    const conflictIcon = hasConflict ? `
+      <span class="prefix-conflict-icon" title="前缀冲突：此触发词可能无法被触发">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+      </span>
+    ` : '';
 
     return `
     <div class="rule-item" data-index="${originalIndex}">
@@ -337,6 +367,7 @@ function renderRules() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
       </button>
       <div class="rule-trigger">
+        ${conflictIcon}
         <input type="text" class="rule-trigger-input" placeholder=":te" value="${escapeHtml(rule.key)}" data-field="key" data-index="${originalIndex}" />
       </div>
       <span class="rule-arrow">→</span>
@@ -357,6 +388,16 @@ function bindRuleEvents() {
 
   container.querySelectorAll('.rule-trigger-input, .rule-content-input').forEach(input => {
     input.addEventListener('input', handleInputChange);
+    // 触发词输入框失去焦点时重新渲染以更新冲突图标
+    if (input.dataset.field === 'key') {
+      input.addEventListener('blur', () => {
+        setTimeout(() => {
+          if (!document.activeElement?.closest('.group-tag-input') && !document.activeElement?.closest('.group-suggestions')) {
+            renderRules();
+          }
+        }, 100);
+      });
+    }
   });
 
   container.querySelectorAll('.delete-btn').forEach(btn => {
@@ -425,7 +466,9 @@ function bindRuleEvents() {
 function handleInputChange(e) {
   const index = parseInt(e.target.dataset.index);
   const field = e.target.dataset.field;
-  if (rules[index]) rules[index][field] = e.target.value;
+  if (rules[index]) {
+    rules[index][field] = e.target.value;
+  }
 }
 
 async function handleDelete(e) {
@@ -465,6 +508,14 @@ async function saveRules() {
   if (duplicates.length > 0) {
     showToast(`发现重复的触发词: ${duplicates.join(', ')}`, 'error');
     return;
+  }
+
+  // 检查前缀冲突
+  const conflicts = findPrefixConflicts(validRules);
+  if (conflicts.size > 0) {
+    const conflictKeys = [...conflicts].join(', ');
+    const confirmed = await showConfirm('前缀冲突警告', `以下触发词可能无法被触发：${conflictKeys}\n\n这是因为存在更短的前缀触发词。是否仍要保存？`);
+    if (!confirmed) return;
   }
 
   try {
