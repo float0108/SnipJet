@@ -241,7 +241,9 @@ where
             commands::unregister_global_shortcut,
             commands::load_text_expand_rules,
             commands::save_text_expand_rules,
-            commands::reload_text_expand_rules
+            commands::reload_text_expand_rules,
+            commands::read_image_as_base64,
+            commands::get_image_path
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

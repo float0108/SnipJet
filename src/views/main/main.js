@@ -443,6 +443,17 @@ async function init() {
     statusElement: !!statusElement,
   });
 
+  // 加载设置到 localStorage（供图片预览等功能使用）
+  try {
+    const settings = await invoke("load_settings_command");
+    if (settings) {
+      localStorage.setItem('snipjet-settings', JSON.stringify(settings));
+      console.log("设置已加载到 localStorage:", settings);
+    }
+  } catch (e) {
+    console.warn("加载设置失败:", e);
+  }
+
   // 确保加载空状态样式
   ensureEmptyStateStyles();
 
@@ -504,6 +515,18 @@ async function init() {
     console.log("导航剪贴板事件监听已启动");
   } catch (error) {
     console.error("导航事件监听失败:", error);
+  }
+
+  // 监听设置变化事件，重新渲染列表
+  try {
+    await listen("settings-changed", (event) => {
+      console.log("收到设置变化事件，重新渲染列表");
+      // 重新应用筛选，这会重新渲染整个列表
+      applyFilters(container, statusElement);
+    });
+    console.log("设置变化事件监听已启动");
+  } catch (error) {
+    console.error("设置变化事件监听失败:", error);
   }
 
   console.log("SnipJet前端应用初始化完成");

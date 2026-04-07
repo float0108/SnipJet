@@ -46,6 +46,11 @@ async function handleNavigation(payload, container) {
       const format = targetItem.getAttribute("data-format");
       const timestamp = targetItem.getAttribute("data-timestamp");
       const targetId = targetItem.id.replace("item-", "");
+      // 图片元数据
+      const imageWidth = targetItem.getAttribute("data-image-width");
+      const imageHeight = targetItem.getAttribute("data-image-height");
+      const imageSize = targetItem.getAttribute("data-image-size");
+      const imageFormat = targetItem.getAttribute("data-image-format");
 
       console.log("目标项目数据:", { content, format, timestamp, targetId });
 
@@ -55,12 +60,19 @@ async function handleNavigation(payload, container) {
 
       // 发送事件给当前reader窗口，通知其刷新内容
       console.log("准备发送刷新事件");
-      await emit("refresh-reader", {
+      const payload = {
         id: targetId,
         cacheKey: storageKey,
         format: format,
         timestamp: timestamp,
-      });
+      };
+      // 添加图片元数据
+      if (imageWidth) payload.imageWidth = imageWidth;
+      if (imageHeight) payload.imageHeight = imageHeight;
+      if (imageSize) payload.imageSize = imageSize;
+      if (imageFormat) payload.imageFormat = imageFormat;
+
+      await emit("refresh-reader", payload);
       console.log("发送刷新reader窗口的事件成功");
     } else {
       console.log("没有更多项目可以导航");

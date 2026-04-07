@@ -56,6 +56,7 @@
     "allow-clipboard-operations",
     "allow-register-global-shortcut",
     "allow-unregister-global-shortcut",
-    "allow-text-expand-operations"
+    "allow-text-expand-operations",
+    "allow-image-operations"
   ]
 }

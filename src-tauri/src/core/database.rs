@@ -204,6 +204,38 @@ impl Database {
         Ok(new_status)
     }
 
+    /// 获取单个项目
+    pub fn get_item(&self, id: &str) -> Result<Option<ClipboardItem>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Failed to lock connection: {}", e))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, format, content, preview, timestamp, word_count, is_favorite
+             FROM clipboard_items WHERE id = ?1"
+        ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let result = stmt.query_row([id], |row| {
+            Ok(ClipboardItem {
+                id: row.get(0)?,
+                format: parse_format(&row.get::<_, String>(1)?),
+                content: row.get(2)?,
+                preview: row.get(3)?,
+                timestamp: row.get(4)?,
+                word_count: row.get::<_, i32>(5)? as usize,
+                metadata: std::collections::HashMap::new(),
+                is_favorite: row.get::<_, i32>(6)? != 0,
+            })
+        });
+
+        match result {
+            Ok(mut item) => {
+                item.metadata = self.load_metadata_internal(&conn, &item.id)?;
+                Ok(Some(item))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Failed to get item: {}", e)),
+        }
+    }
+
     /// 删除单个项目
     pub fn delete_item(&self, id: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Failed to lock connection: {}", e))?;
