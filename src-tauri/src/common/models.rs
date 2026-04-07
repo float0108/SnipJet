@@ -119,15 +119,16 @@ impl ClipboardItem {
     }
 
     pub fn new_image(
-        base64: &str,
+        relative_path: &str,
         hash: &str,
         width: Option<usize>,
         height: Option<usize>,
+        size: Option<usize>,
     ) -> Self {
         let mut item = Self::base(
             hash,
             ClipboardFormat::Image,
-            base64.to_string(),
+            relative_path.to_string(), // 存储 relative_path 而非 base64
             "[图片]".to_string(),
             0, // 图片字数为 0
         );
@@ -138,6 +139,10 @@ impl ClipboardItem {
         if let Some(h) = height {
             item.metadata.insert("height".to_string(), h.to_string());
         }
+        if let Some(s) = size {
+            item.metadata.insert("size".to_string(), s.to_string());
+        }
+        item.metadata.insert("image_format".to_string(), "png".to_string());
         item
     }
 

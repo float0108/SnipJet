@@ -65,3 +65,12 @@ commands.allow = [
     "save_text_expand_rules",
     "reload_text_expand_rules"
 ]
+
+[[permission]]
+identifier = "allow-image-operations"
+description = "允许前端读取和管理图片"
+
+commands.allow = [
+    "read_image_as_base64",
+    "get_image_path"
+]

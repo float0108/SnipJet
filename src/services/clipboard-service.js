@@ -151,6 +151,7 @@ function updateUIWithNewItem(newItem, container, statusElement, onNewItem) {
 
   // 解析剪贴板项目数据
   const parsedItem = parseClipboardItem(newItem);
+  console.log("Parsed item:", parsedItem);
 
   // 使用ClipboardItem.js中的renderClipboardItem函数渲染新项目
   const newItemHtml = renderClipboardItem(parsedItem);
@@ -162,6 +163,16 @@ function updateUIWithNewItem(newItem, container, statusElement, onNewItem) {
 
   // 在顶部插入新项目
   container.insertBefore(actualItemElement, container.firstChild);
+
+  // 如果是图片，加载图片预览
+  if (parsedItem.format === "image") {
+    const imgElement = actualItemElement.querySelector(".preview-image");
+    if (imgElement && imgElement.dataset.imagePath) {
+      import("../components/clipboard-history/clipboard-item.js")
+        .then(({ loadItemImage }) => loadItemImage(imgElement))
+        .catch((e) => console.error("Failed to load image preview:", e));
+    }
+  }
 
   // 通知新项目
   if (onNewItem) {

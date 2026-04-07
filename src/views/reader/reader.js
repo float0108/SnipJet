@@ -79,6 +79,15 @@ function switchMode(mode) {
   }
 }
 
+// 格式化文件大小
+function formatSize(bytes) {
+  if (!bytes) return "未知";
+  const size = parseInt(bytes);
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 // 初始化页面
 async function init() {
   const params = getUrlParams();
@@ -112,9 +121,6 @@ async function init() {
       const date = new Date(parseInt(params.timestamp) || params.timestamp);
       document.getElementById("meta-time").textContent = date.toLocaleString();
     }
-    // 简略计算大小 (字符数)
-    document.getElementById("meta-size").textContent =
-      `${decodedContent.length} chars`;
 
     // 2. 准备 DOM 元素
     const htmlFrame = document.getElementById("html-frame");
@@ -124,8 +130,74 @@ async function init() {
 
     // 3. 根据格式渲染
     console.log("[Reader] 格式类型:", params.format, "内容长度:", decodedContent.length);
-    if (params.format === "html" || params.format === "markdown") {
+
+    // --- 图片处理逻辑 ---
+    if (params.format === "image") {
+      // 隐藏其他视图
+      viewToggle.style.display = "none";
+      htmlFrame.style.display = "none";
+      sourceView.style.display = "none";
+      textFallback.style.display = "none";
+
+      // 相对路径 (content 存储的是相对路径)
+      const relativePath = decodedContent;
+
+      // 更新类型显示（显示具体格式）
+      const imageFormat = params.imageFormat || "png";
+      document.getElementById("meta-type").textContent = imageFormat.toUpperCase();
+
+      // 更新大小显示
+      document.getElementById("meta-size").textContent = params.imageSize
+        ? formatSize(params.imageSize)
+        : "未知";
+
+      // 异步加载图片
+      try {
+        const base64 = await invoke('read_image_as_base64', { relativePath });
+
+        // 查找或创建图片容器
+        const contentContainer = document.getElementById("content-container");
+        let imageView = document.getElementById("image-view");
+
+        // 隐藏其他子元素
+        htmlFrame.style.display = "none";
+        textFallback.style.display = "none";
+        sourceView.style.display = "none";
+
+        if (!imageView) {
+          // 创建图片视图
+          imageView = document.createElement("div");
+          imageView.id = "image-view";
+          imageView.className = "image-view";
+          contentContainer.appendChild(imageView);
+        }
+
+        imageView.innerHTML = `
+          <div class="image-wrapper">
+            <img src="data:image/png;base64,${base64}" alt="剪贴板图片" class="full-image" />
+          </div>
+          <div class="image-info">
+            <span>尺寸: ${params.imageWidth || '-'} × ${params.imageHeight || '-'}</span>
+            <span>大小: ${params.imageSize ? formatSize(params.imageSize) : '未知'}</span>
+          </div>
+        `;
+        imageView.style.display = "flex";
+        contentContainer.style.display = "block";
+      } catch (e) {
+        console.error("[Reader] 加载图片失败:", e);
+        // 显示错误信息
+        textFallback.style.display = "block";
+        const textContent = textFallback.querySelector(".text-content");
+        if (textContent) {
+          textContent.textContent = `[图片加载失败: ${e}]`;
+        }
+      }
+    } else if (params.format === "html" || params.format === "markdown") {
       // --- HTML/Markdown 处理逻辑 ---
+
+      // 隐藏图片视图
+      const imageView = document.getElementById("image-view");
+      if (imageView) imageView.style.display = "none";
 
       // A. 显示切换开关
       viewToggle.style.display = "flex";
@@ -207,6 +279,10 @@ async function init() {
       viewToggle.style.display = "none";
       htmlFrame.style.display = "none";
       sourceView.style.display = "none";
+
+      // 隐藏图片视图
+      const imageView = document.getElementById("image-view");
+      if (imageView) imageView.style.display = "none";
 
       // 显示文本 Fallback
       textFallback.style.display = "block";
@@ -433,13 +509,13 @@ async function initEventListeners() {
     refreshEventListener = await listen("refresh-reader", (event) => {
       console.log("收到刷新事件:", event);
       if (event && event.payload) {
-        const { error, id, cacheKey, format, timestamp } = event.payload;
+        const { error, id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat } = event.payload;
         if (error) {
           // 显示错误提示
           showToast(error, "error");
         } else {
           // 刷新页面内容
-          refreshContent(id, cacheKey, format, timestamp);
+          refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat);
         }
       }
     });
@@ -450,8 +526,8 @@ async function initEventListeners() {
 }
 
 // 刷新页面内容
-function refreshContent(id, cacheKey, format, timestamp) {
-  console.log("刷新页面内容:", { id, cacheKey, format, timestamp });
+function refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat) {
+  console.log("刷新页面内容:", { id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat });
 
   // 更新URL参数
   const params = new URLSearchParams(window.location.search);
@@ -459,6 +535,11 @@ function refreshContent(id, cacheKey, format, timestamp) {
   params.set("cacheKey", cacheKey);
   params.set("format", format);
   params.set("timestamp", timestamp);
+  // 添加图片元数据
+  if (imageWidth) params.set("imageWidth", imageWidth);
+  if (imageHeight) params.set("imageHeight", imageHeight);
+  if (imageSize) params.set("imageSize", imageSize);
+  if (imageFormat) params.set("imageFormat", imageFormat);
   window.history.replaceState({}, document.title, `?${params.toString()}`);
 
   // 重新初始化页面

@@ -12,7 +12,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::POINT;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use clipboard_rs::{Clipboard, ClipboardContext};
+use clipboard_rs::common::{RustImage, RustImageData};
 use enigo::{Enigo, Key, KeyboardControllable};
 use log::{error, info};
 use tauri::{Manager, State, AppHandle};
@@ -90,6 +92,7 @@ pub fn get_favorite_items(
 
 #[tauri::command]
 pub async fn paste_to_active_window(
+    app_handle: AppHandle,
     _window: tauri::WebviewWindow,
     content: String,
     format: String,
@@ -105,6 +108,15 @@ pub async fn paste_to_active_window(
 
     // 2. 写入剪贴板 (在新线程执行)
     let format_clone = format.clone();
+
+    // 对于图片格式，需要先读取图片数据
+    let image_data = if format == "image" {
+        let data_store = DataStore::new(&app_handle)?;
+        Some(data_store.load_image(&content)?)
+    } else {
+        None
+    };
+
     // 对于 markdown 格式，需要将原始文本转换为 HTML
     let content_for_clipboard = if format == "markdown" {
         markdown_to_html(&content).unwrap_or(content.clone())
@@ -119,19 +131,35 @@ pub async fn paste_to_active_window(
             e.to_string()
         })?;
 
-        let res = match format_clone.as_str() {
-            "html" | "markdown" => ctx.set_html(content_for_clipboard),
-            "rtf" => ctx.set_rich_text(content_for_clipboard),
-            _ => ctx.set_text(content_for_clipboard),
+        let res: Result<(), String> = match format_clone.as_str() {
+            "image" => {
+                // 从预先读取的数据加载图片
+                if let Some(data) = image_data {
+                    // 使用 RustImageData::from_bytes 加载图片
+                    let img = RustImageData::from_bytes(&data)
+                        .map_err(|e| format!("Image load error: {:?}", e))?;
+                    ctx.set_image(img)
+                        .map_err(|e| format!("Set image error: {:?}", e))?;
+                    Ok(())
+                } else {
+                    Err("No image data".to_string())
+                }
+            }
+            "html" | "markdown" => {
+                ctx.set_html(content_for_clipboard)
+                    .map_err(|e| format!("Set HTML error: {:?}", e))
+            }
+            "rtf" => {
+                ctx.set_rich_text(content_for_clipboard)
+                    .map_err(|e| format!("Set RTF error: {:?}", e))
+            }
+            _ => {
+                ctx.set_text(content_for_clipboard)
+                    .map_err(|e| format!("Set text error: {:?}", e))
+            }
         };
 
-        match res {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                eprintln!("[ERROR] 剪贴板写入失败: {}", e);
-                Err(e.to_string())
-            }
-        }
+        res
     });
 
     // 等待剪贴板写入完成
@@ -500,4 +528,32 @@ pub async fn reload_text_expand_rules(
     expander.reload_rules(&app_handle);
     info!("Text expand rules reloaded");
     Ok(())
+}
+
+// --- 图片相关命令 ---
+
+/// 读取图片并返回 base64（供前端显示）
+#[tauri::command]
+pub async fn read_image_as_base64(
+    app_handle: tauri::AppHandle,
+    relative_path: String,
+) -> Result<String, String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let image_data = data_store.load_image(&relative_path)?;
+
+    // 转换为 base64
+    let base64_str = STANDARD.encode(&image_data);
+
+    Ok(base64_str)
+}
+
+/// 获取图片绝对路径（供前端显示）
+#[tauri::command]
+pub async fn get_image_path(
+    app_handle: tauri::AppHandle,
+    relative_path: String,
+) -> Result<String, String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let absolute_path = data_store.get_image_absolute_path(&relative_path);
+    Ok(absolute_path.to_string_lossy().to_string())
 }

@@ -1,6 +1,6 @@
 // 剪贴板历史记录组件
 import {parseClipboardItem} from "../../utils/content-parser.js";
-import {renderClipboardItem} from "./clipboard-item.js";
+import {renderClipboardItem, loadAllImagePreviews} from "./clipboard-item.js";
 
 // 确保加载样式文件
 if (
@@ -47,6 +47,9 @@ export function renderHistory(history, container, statusElement) {
 
     console.log("[renderHistory] 生成的 HTML 片段数:", htmlParts.length);
     container.innerHTML = htmlParts.join("");
+
+    // 异步加载图片预览
+    loadAllImagePreviews();
 
     if (statusElement) {
       statusElement.textContent = "";
