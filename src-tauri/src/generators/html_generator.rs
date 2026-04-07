@@ -1,4 +1,4 @@
-use crate::core::ast::{Block, Document, Inline};
+use crate::core::ast::{Block, Document, Inline, ListType};
 
 pub struct HtmlGenerator;
 
@@ -8,21 +8,26 @@ impl HtmlGenerator {
         let mut blocks_iter = doc.blocks.iter().peekable();
 
         while let Some(block) = blocks_iter.next() {
-            // 合并相邻的列表块
-            if let Block::List { items } = block {
+            // 合并相邻的同类型列表块
+            if let Block::List { items, list_type } = block {
                 let mut merged_items = items.clone();
+                let current_type = *list_type;
 
-                // 检查后续是否有相邻的列表
+                // 检查后续是否有相邻的同类型列表
                 while let Some(&next_block) = blocks_iter.peek() {
-                    if let Block::List { items: next_items } = next_block {
-                        merged_items.extend(next_items.clone());
-                        blocks_iter.next(); // 消费这个相邻的列表
+                    if let Block::List { items: next_items, list_type: next_type } = next_block {
+                        if *next_type == current_type {
+                            merged_items.extend(next_items.clone());
+                            blocks_iter.next(); // 消费这个相邻的列表
+                        } else {
+                            break;
+                        }
                     } else {
                         break;
                     }
                 }
 
-                html.push_str(&self.generate_list(&merged_items));
+                html.push_str(&self.generate_list(&merged_items, current_type));
             } else {
                 html.push_str(&self.generate_block(block));
             }
@@ -30,11 +35,17 @@ impl HtmlGenerator {
         html
     }
 
-    fn generate_list(&self, items: &[Vec<Block>]) -> String {
-        let mut html = String::from("<ul>\n");
+    fn generate_list(&self, items: &[crate::core::ast::ListItem], list_type: ListType) -> String {
+        let tag = match list_type {
+            ListType::Ordered => "ol",
+            ListType::Unordered => "ul",
+        };
+
+        let mut html = format!("<{}>\n", tag);
         for item in items {
             html.push_str("<li>");
-            for sub_block in item {
+            // 先生成内容
+            for sub_block in &item.content {
                 match sub_block {
                     Block::Paragraph(content) => {
                         html.push_str(&self.generate_inlines(content));
@@ -44,9 +55,13 @@ impl HtmlGenerator {
                     }
                 }
             }
+            // 然后生成嵌套列表
+            for nested_list in &item.nested_lists {
+                html.push_str(&self.generate_block(nested_list));
+            }
             html.push_str("</li>\n");
         }
-        html.push_str("</ul>\n");
+        html.push_str(&format!("</{}>\n", tag));
         html
     }
 
@@ -85,9 +100,8 @@ impl HtmlGenerator {
             Block::MathDisplay(content) => {
                 format!("<p><code>[Formula: {}]</code></p>\n", html_escape(content))
             }
-            Block::List { items } => {
-                // 列表在 generate() 方法中合并处理，这里直接生成
-                self.generate_list(items)
+            Block::List { items, list_type } => {
+                self.generate_list(items, *list_type)
             }
             Block::BlockQuote(content) => {
                 let mut html = String::from("<blockquote>\n");
