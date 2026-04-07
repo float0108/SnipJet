@@ -1,9 +1,13 @@
-use crate::core::ast::{Block, Document, Inline};
+use crate::core::ast::{Block, Document, Inline, ListType};
 use crate::core::generator::Generator;
 use docx_rs::{AbstractNumbering, BreakType, Docx, IndentLevel, Level, LevelJc, LevelText, NumberFormat, Numbering, NumberingId, Paragraph, Run, RunFonts, Start, Style, StyleType, Table, TableCell, TableRow};
 use std::io::Cursor;
 
 pub struct DocxGenerator;
+
+// 编号ID常量
+const UNORDERED_LIST_NUMBERING_ID: usize = 1;
+const ORDERED_LIST_NUMBERING_ID: usize = 2;
 
 impl Generator for DocxGenerator {
     fn generate(&self, doc: &Document) -> Result<Vec<u8>, std::io::Error> {
@@ -18,24 +22,47 @@ impl Generator for DocxGenerator {
             .add_style(Style::new("Heading5", StyleType::Paragraph).name("Heading 5").outline_lvl(4))
             .add_style(Style::new("Heading6", StyleType::Paragraph).name("Heading 6").outline_lvl(5));
 
-        // 添加列表编号定义（项目符号列表）
-        let abstract_numbering = AbstractNumbering::new(1)
-            .add_level(
+        // 添加无序列表编号定义（项目符号列表）- 支持多级嵌套
+        let mut unordered_numbering = AbstractNumbering::new(UNORDERED_LIST_NUMBERING_ID);
+        for level in 0..4 {
+            let indent = (level * 720) as i32; // 每级缩进720 twips (约0.5英寸)
+            unordered_numbering = unordered_numbering.add_level(
                 Level::new(
-                    0,
+                    level,
                     Start::new(1),
                     NumberFormat::new("bullet"),
                     LevelText::new("\u{2022}"),
                     LevelJc::new("left"),
-                )
+                ).indent(Some(indent), None, None, None)
             );
-        let numbering = Numbering::new(1, 1);
+        }
+        let unordered_numbering_instance = Numbering::new(UNORDERED_LIST_NUMBERING_ID, UNORDERED_LIST_NUMBERING_ID);
+
+        // 添加有序列表编号定义 - 支持多级嵌套
+        let mut ordered_numbering = AbstractNumbering::new(ORDERED_LIST_NUMBERING_ID);
+        let level_formats = ["%1.", "%2.", "%3.", "%4."];
+        for level in 0..4 {
+            let indent = (level * 720) as i32; // 每级缩进720 twips (约0.5英寸)
+            ordered_numbering = ordered_numbering.add_level(
+                Level::new(
+                    level,
+                    Start::new(1),
+                    NumberFormat::new("decimal"),
+                    LevelText::new(level_formats[level]),
+                    LevelJc::new("left"),
+                ).indent(Some(indent), None, None, None)
+            );
+        }
+        let ordered_numbering_instance = Numbering::new(ORDERED_LIST_NUMBERING_ID, ORDERED_LIST_NUMBERING_ID);
+
         docx = docx
-            .add_abstract_numbering(abstract_numbering)
-            .add_numbering(numbering);
+            .add_abstract_numbering(unordered_numbering)
+            .add_numbering(unordered_numbering_instance)
+            .add_abstract_numbering(ordered_numbering)
+            .add_numbering(ordered_numbering_instance);
 
         for block in &doc.blocks {
-            docx = self.generate_block(docx, block);
+            docx = self.generate_block(docx, block, 0);
         }
 
         let xml_docx = docx.build();
@@ -48,7 +75,7 @@ impl Generator for DocxGenerator {
 }
 
 impl DocxGenerator {
-    fn generate_block(&self, mut docx: Docx, block: &Block) -> Docx {
+    fn generate_block(&self, mut docx: Docx, block: &Block, list_level: usize) -> Docx {
         match block {
             Block::Heading { level, content } => {
                 let style_name = match level {
@@ -137,22 +164,14 @@ impl DocxGenerator {
 
                 docx = docx.add_paragraph(p);
             }
-            Block::List { items } => {
+            Block::List { items, list_type } => {
+                let numbering_id = match list_type {
+                    ListType::Ordered => ORDERED_LIST_NUMBERING_ID,
+                    ListType::Unordered => UNORDERED_LIST_NUMBERING_ID,
+                };
+
                 for item in items {
-                    for sub_block in item {
-                        match sub_block {
-                            Block::Paragraph(content) => {
-                                // 使用真正的Word列表格式（项目符号）
-                                let mut p = Paragraph::new()
-                                    .numbering(NumberingId::new(1), IndentLevel::new(0));
-                                self.generate_inlines(&mut p, content);
-                                docx = docx.add_paragraph(p);
-                            }
-                            _ => {
-                                docx = self.generate_block(docx, sub_block);
-                            }
-                        }
-                    }
+                    docx = self.generate_list_item(docx, item, numbering_id, list_level);
                 }
             }
             Block::BlockQuote(content) => {
@@ -164,12 +183,50 @@ impl DocxGenerator {
                             docx = docx.add_paragraph(p);
                         }
                         _ => {
-                            docx = self.generate_block(docx, sub_block);
+                            docx = self.generate_block(docx, sub_block, list_level);
                         }
                     }
                 }
             }
         }
+        docx
+    }
+
+    fn generate_list_item(
+        &self,
+        mut docx: Docx,
+        item: &crate::core::ast::ListItem,
+        numbering_id: usize,
+        level: usize,
+    ) -> Docx {
+        // 生成列表项的内容段落
+        for sub_block in &item.content {
+            match sub_block {
+                Block::Paragraph(content) => {
+                    let mut p = Paragraph::new()
+                        .numbering(NumberingId::new(numbering_id), IndentLevel::new(level as usize));
+                    self.generate_inlines(&mut p, content);
+                    docx = docx.add_paragraph(p);
+                }
+                _ => {
+                    docx = self.generate_block(docx, sub_block, level);
+                }
+            }
+        }
+
+        // 生成嵌套列表
+        for nested_list in &item.nested_lists {
+            if let Block::List { items: nested_items, list_type } = nested_list {
+                let nested_numbering_id = match list_type {
+                    ListType::Ordered => ORDERED_LIST_NUMBERING_ID,
+                    ListType::Unordered => UNORDERED_LIST_NUMBERING_ID,
+                };
+                for nested_item in nested_items {
+                    docx = self.generate_list_item(docx, nested_item, nested_numbering_id, level + 1);
+                }
+            }
+        }
+
         docx
     }
 
