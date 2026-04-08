@@ -443,6 +443,15 @@ async function init() {
     statusElement: !!statusElement,
   });
 
+  // 初始化主题
+  try {
+    const { initTheme } = await import("../../services/theme-service.js");
+    await initTheme();
+    console.log("主题初始化完成");
+  } catch (e) {
+    console.warn("初始化主题失败:", e);
+  }
+
   // 加载设置到 localStorage（供图片预览等功能使用）
   try {
     const settings = await invoke("load_settings_command");
@@ -519,8 +528,16 @@ async function init() {
 
   // 监听设置变化事件，重新渲染列表
   try {
-    await listen("settings-changed", (event) => {
+    await listen("settings-changed", async (event) => {
       console.log("收到设置变化事件，重新渲染列表");
+      // 重新应用界面设置
+      try {
+        const { applyInterfaceSettings } = await import("../../services/theme-service.js");
+        applyInterfaceSettings(event.payload?.interface);
+        console.log("界面设置已更新:", event.payload?.interface);
+      } catch (e) {
+        console.warn("更新界面设置失败:", e);
+      }
       // 重新应用筛选，这会重新渲染整个列表
       applyFilters(container, statusElement);
     });

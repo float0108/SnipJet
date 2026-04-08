@@ -2,6 +2,7 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
+import { applyTheme, applyFontSize, applyPreviewLines } from '../../services/theme-service.js';
 
 export let settings = {};
 // 原始设置备份（用于取消时恢复）
@@ -24,8 +25,9 @@ function getDefaultSettings() {
     interface: {
       theme: "light",
       language: "cn",
+      font_size: 14,
       auto_hide: true,
-      preview_size: "small",
+      preview_lines: 5,
       image_preview_size: "medium",
       max_history_items: 100,
     },
@@ -77,6 +79,9 @@ export async function loadSettings() {
       console.log("设置文件不存在，使用默认设置");
       settings = getDefaultSettings();
     }
+
+    // 同步系统自启动状态到设置
+    await syncAutostartStatus();
   } catch (error) {
     console.error("加载设置时出错:", error);
     // 尝试从前端目录加载 (非Tauri环境)
@@ -98,6 +103,22 @@ export async function loadSettings() {
   originalSettings = JSON.parse(JSON.stringify(settings));
 }
 
+// 同步系统自启动状态到设置
+async function syncAutostartStatus() {
+  try {
+    const systemAutostartEnabled = await invoke("get_autostart_status");
+    if (!settings.software) settings.software = {};
+
+    // 如果系统状态与设置不一致，以系统状态为准
+    if (settings.software.startup_launch !== systemAutostartEnabled) {
+      console.log("同步自启动状态，系统状态:", systemAutostartEnabled);
+      settings.software.startup_launch = systemAutostartEnabled;
+    }
+  } catch (e) {
+    console.warn("获取系统自启动状态失败:", e);
+  }
+}
+
 // 保存设置（通过后端命令）
 export async function saveSettings() {
   try {
@@ -106,11 +127,25 @@ export async function saveSettings() {
     // 检测快捷键变化并更新注册
     await updateShortcutRegistrations();
 
+    // 检测自启动设置变化并更新
+    await updateAutostartSetting();
+
     // 调用后端命令保存设置（会触发后端调试输出）
     await invoke("save_settings", { settings: settings });
 
     // 同时保存到 localStorage 供前端快速访问
     localStorage.setItem('snipjet-settings', JSON.stringify(settings));
+
+    // 应用界面设置
+    if (settings.interface?.theme) {
+      applyTheme(settings.interface.theme);
+    }
+    if (settings.interface?.font_size) {
+      applyFontSize(settings.interface.font_size);
+    }
+    if (settings.interface?.preview_lines) {
+      applyPreviewLines(settings.interface.preview_lines);
+    }
 
     // 更新原始设置备份（保存成功后）
     originalSettings = JSON.parse(JSON.stringify(settings));
@@ -177,6 +212,21 @@ async function updateShortcutRegistrations() {
   }
 }
 
+// 更新自启动设置
+async function updateAutostartSetting() {
+  const oldEnabled = originalSettings.software?.startup_launch ?? true;
+  const newEnabled = settings.software?.startup_launch ?? true;
+
+  if (oldEnabled !== newEnabled) {
+    try {
+      await invoke("set_autostart", { enable: newEnabled });
+      console.log("自启动设置已更新:", newEnabled);
+    } catch (e) {
+      console.error("更新自启动设置失败:", e);
+    }
+  }
+}
+
 // 更新软件设置
 export function updateSoftwareSettings() {
   // 更新开机启动
@@ -227,16 +277,22 @@ export function updateInterfaceSettings() {
     language.value = settings.interface?.language ?? "cn";
   }
 
+  // 更新基础字号
+  const fontSize = document.getElementById("font-size");
+  if (fontSize) {
+    fontSize.value = settings.interface?.font_size ?? 14;
+  }
+
   // 更新自动隐藏
   const autoHide = document.getElementById("auto-hide");
   if (autoHide) {
     autoHide.checked = settings.interface?.auto_hide ?? true;
   }
 
-  // 更新预览大小
-  const previewSize = document.getElementById("preview-size");
-  if (previewSize) {
-    previewSize.value = settings.interface?.preview_size ?? "small";
+  // 更新预览行数
+  const previewLines = document.getElementById("preview-lines");
+  if (previewLines) {
+    previewLines.value = settings.interface?.preview_lines ?? 5;
   }
 
   // 更新图片预览大小
@@ -329,11 +385,19 @@ export function bindSettingsListeners() {
     });
   }
 
-  const previewSize = document.getElementById("preview-size");
-  if (previewSize) {
-    previewSize.addEventListener("change", function () {
+  const fontSize = document.getElementById("font-size");
+  if (fontSize) {
+    fontSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.preview_size = this.value;
+      settings.interface.font_size = parseInt(this.value);
+    });
+  }
+
+  const previewLines = document.getElementById("preview-lines");
+  if (previewLines) {
+    previewLines.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.preview_lines = parseInt(this.value);
     });
   }
 

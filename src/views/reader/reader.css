@@ -214,12 +214,22 @@
 }
 
 .favorite-btn:hover {
-  background-color: #2563eb;
-  border-color: #2563eb;
+  opacity: 0.9;
 }
 
 .favorite-btn:active {
   transform: translateY(1px);
+}
+
+/* 收藏按钮激活状态 */
+.favorite-btn.active {
+  background-color: var(--favorite-color);
+  border-color: var(--favorite-color);
+  color: white;
+}
+
+.favorite-btn.active:hover {
+  opacity: 0.9;
 }
 
 /* 关闭按钮 (次要按钮) */

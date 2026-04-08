@@ -264,8 +264,8 @@
 }
 
 .delete-btn:hover {
-  background: #fee2e2;
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger-color);
   opacity: 1;
 }
 
@@ -361,7 +361,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #f59e0b;
+  color: var(--warning-color);
   margin-right: 4px;
   cursor: help;
 }
@@ -531,7 +531,7 @@
 }
 
 .btn-confirm:hover {
-  background-color: #2563eb;
+  opacity: 0.9;
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
@@ -559,17 +559,17 @@
 }
 
 .toast.success {
-  background-color: #10b981;
+  background-color: var(--success-color);
   color: white;
 }
 
 .toast.error {
-  background-color: #ef4444;
+  background-color: var(--danger-color);
   color: white;
 }
 
 .toast.warning {
-  background-color: #f59e0b;
+  background-color: var(--warning-color);
   color: white;
 }
 
@@ -662,25 +662,40 @@
 }
 
 .dialog-btn-confirm {
-  background: #ef4444;
+  background: var(--danger-color);
   color: white;
 }
 
 .dialog-btn-confirm:hover {
-  background: #dc2626;
+  opacity: 0.9;
 }
 
 /* --- 深色主题适配 --- */
 @media (prefers-color-scheme: dark) {
-  .rule-item:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    .rule-item:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
 
-  .btn-confirm:hover {
-    box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
-  }
+    .btn-confirm:hover {
+      box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
+    }
 
-  .dialog-overlay {
-    background: rgba(0, 0, 0, 0.6);
+    .dialog-overlay {
+      background: rgba(0, 0, 0, 0.6);
+    }
   }
+}
+
+/* 手动深色主题 */
+[data-theme="dark"] .rule-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .btn-confirm:hover {
+  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
+}
+
+[data-theme="dark"] .dialog-overlay {
+  background: rgba(0, 0, 0, 0.6);
 }

@@ -61,7 +61,7 @@
 
 /* 收藏按钮激活状态 */
 .toolbar-btn.favorites-active {
-  color: #eab308;
+  color: var(--favorite-color);
   background-color: rgba(234, 179, 8, 0.1);
 }
 

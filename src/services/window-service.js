@@ -135,6 +135,8 @@ export async function openReaderWindow(element) {
   const imageHeight = element.getAttribute("data-image-height");
   const imageSize = element.getAttribute("data-image-size");
   const imageFormat = element.getAttribute("data-image-format");
+  // 收藏状态
+  const isFavorite = element.classList.contains("is-favorite");
 
   // 3. 使用 localStorage 传递大数据内容，避免 URL 长度限制
   const storageKey = `transfer-${contentId}`;
@@ -161,6 +163,8 @@ export async function openReaderWindow(element) {
   if (imageHeight) params.set("imageHeight", imageHeight);
   if (imageSize) params.set("imageSize", imageSize);
   if (imageFormat) params.set("imageFormat", imageFormat);
+  // 添加收藏状态
+  params.set("isFavorite", isFavorite);
 
   console.log(`尝试打开窗口: ${label}`);
 
