@@ -173,7 +173,7 @@
   z-index: 20;
 
   /* 浅灰色蒙版 + 毛玻璃 */
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(128, 128, 128, 0.3);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 
@@ -280,13 +280,14 @@
   bottom: 48px;
   /* 位于复制按钮上方 */
   right: 12px;
-  background: rgba(31, 41, 55, 0.9);
-  color: white;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
   pointer-events: none;
   z-index: 30;
+  box-shadow: var(--shadow-md);
 
   opacity: 0;
   transform: translateY(5px);

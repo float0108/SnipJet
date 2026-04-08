@@ -557,3 +557,42 @@ pub async fn get_image_path(
     let absolute_path = data_store.get_image_absolute_path(&relative_path);
     Ok(absolute_path.to_string_lossy().to_string())
 }
+
+// --- 自启动命令 ---
+
+/// 设置开机自启动
+#[tauri::command]
+pub async fn set_autostart(
+    app_handle: tauri::AppHandle,
+    enable: bool,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let autolaunch = app_handle.autolaunch();
+
+    if enable {
+        autolaunch.enable()
+            .map_err(|e| format!("Failed to enable autostart: {:?}", e))?;
+        info!("Autostart enabled");
+    } else {
+        autolaunch.disable()
+            .map_err(|e| format!("Failed to disable autostart: {:?}", e))?;
+        info!("Autostart disabled");
+    }
+
+    Ok(())
+}
+
+/// 获取开机自启动状态
+#[tauri::command]
+pub async fn get_autostart_status(
+    app_handle: tauri::AppHandle,
+) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let autolaunch = app_handle.autolaunch();
+    let is_enabled = autolaunch.is_enabled()
+        .map_err(|e| format!("Failed to get autostart status: {:?}", e))?;
+
+    Ok(is_enabled)
+}

@@ -14,6 +14,7 @@ use tauri::{
 
 use tauri_plugin_fs;
 use tauri_plugin_global_shortcut;
+use tauri_plugin_autostart::MacosLauncher;
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, SHORTCUT_ACTION_MAP};
@@ -66,6 +67,7 @@ where
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(history.clone())
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -83,12 +85,35 @@ where
 
             // 加载持久化数据
             match load_all_data(&app_handle) {
-                Ok((loaded_history, _settings, _text_expand_rules)) => {
+                Ok((loaded_history, loaded_settings, _text_expand_rules)) => {
                     info!("Loaded {} history items from storage", loaded_history.len());
                     // 将加载的数据存入history
                     {
                         let mut history_lock = history_for_setup.lock().unwrap();
                         *history_lock = loaded_history;
+                    }
+
+                    // 根据设置启用/禁用自启动
+                    let startup_launch = loaded_settings.get("software")
+                        .and_then(|s| s.get("startup_launch"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+
+                    use tauri_plugin_autostart::ManagerExt;
+                    let autolaunch = app_handle.autolaunch();
+
+                    if startup_launch {
+                        if let Err(e) = autolaunch.enable() {
+                            error!("Failed to enable autostart on startup: {:?}", e);
+                        } else {
+                            info!("Autostart enabled on startup (setting: {})", startup_launch);
+                        }
+                    } else {
+                        if let Err(e) = autolaunch.disable() {
+                            error!("Failed to disable autostart on startup: {:?}", e);
+                        } else {
+                            info!("Autostart disabled on startup (setting: {})", startup_launch);
+                        }
                     }
                 }
                 Err(e) => {
@@ -243,7 +268,9 @@ where
             commands::save_text_expand_rules,
             commands::reload_text_expand_rules,
             commands::read_image_as_base64,
-            commands::get_image_path
+            commands::get_image_path,
+            commands::set_autostart,
+            commands::get_autostart_status
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

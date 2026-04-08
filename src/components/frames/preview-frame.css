@@ -8,7 +8,7 @@
   height: 100%;
   border: none;
   display: block;
-  background-color: #ffffff;
+  background-color: var(--bg-surface);
   /* iframe 内部通常强制为白色，防止深色模式下网页看不清 */
   overflow: hidden;
   /* 隐藏iframe本身的滚动条，使用内部body的滚动条 */

@@ -5,6 +5,10 @@ async function init() {
   try {
     console.log("开始初始化设置页面");
 
+    // 初始化主题
+    const { initTheme } = await import("../../services/theme-service.js");
+    await initTheme();
+
     // 加载设置
     const {loadSettings} = await import("./handlers.js");
     await loadSettings();

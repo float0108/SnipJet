@@ -15,7 +15,7 @@
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
     /* 移除 min-height，允许更紧凑 */
     font-family: var(--font-family);
-    font-size: 14px;
+    font-size: var(--font-size-base);
 }
 
 .clipboard-item:hover {
@@ -36,15 +36,15 @@
 
 .item-preview {
     font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     /* 保持可读性 */
     line-height: 1.5;
     color: var(--text-primary);
     font-family: var(--font-family);
 
-    /* 文本截断优化 */
+    /* 文本截断优化 - 使用CSS变量控制行数 */
     display: -webkit-box;
-    -webkit-line-clamp: 5;
+    -webkit-line-clamp: var(--preview-lines, 5);
 
     /* 根据需要调整行数 */
     -webkit-box-orient: vertical;
@@ -74,7 +74,7 @@
 
 /* 图片加载状态 */
 .preview-image.loading {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--bg-hover) 25%, var(--border-color) 50%, var(--bg-hover) 75%);
     background-size: 200% 100%;
     animation: loading 1.5s infinite;
     min-height: 60px;
@@ -119,7 +119,7 @@
     background: var(--bg-body);
     border-radius: 4px;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-sm);
 }
 
 .image-placeholder .placeholder-icon {
@@ -136,7 +136,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     color: var(--text-tertiary);
     margin-top: 2px;
 }
@@ -146,7 +146,7 @@
     padding: 2px 6px;
     border-radius: 4px;
     font-weight: 600;
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     letter-spacing: 0.3px;
     background: var(--bg-hover);
     /* 默认灰色背景，不抢眼 */
@@ -231,8 +231,8 @@
 }
 
 .card-btn.btn-delete:hover {
-    background: #fee2e2;
-    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
 }
 
 /* 收藏按钮样式 */
@@ -243,11 +243,11 @@
 
 .card-btn.btn-favorite:hover {
     background: rgba(234, 179, 8, 0.1);
-    color: #eab308;
+    color: var(--favorite-color);
 }
 
 .card-btn.btn-favorite.active {
-    color: #eab308;
+    color: var(--favorite-color);
 }
 
 .card-btn.btn-favorite.active:hover {
@@ -260,6 +260,6 @@
 }
 
 .clipboard-item.is-favorite:hover {
-    border-color: #eab308;
+    border-color: var(--favorite-color);
     box-shadow: 0 4px 12px rgba(234, 179, 8, 0.1);
 }

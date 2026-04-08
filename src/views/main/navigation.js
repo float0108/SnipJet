@@ -51,6 +51,8 @@ async function handleNavigation(payload, container) {
       const imageHeight = targetItem.getAttribute("data-image-height");
       const imageSize = targetItem.getAttribute("data-image-size");
       const imageFormat = targetItem.getAttribute("data-image-format");
+      // 收藏状态
+      const isFavorite = targetItem.classList.contains("is-favorite");
 
       console.log("目标项目数据:", { content, format, timestamp, targetId });
 
@@ -65,6 +67,7 @@ async function handleNavigation(payload, container) {
         cacheKey: storageKey,
         format: format,
         timestamp: timestamp,
+        isFavorite: isFavorite,
       };
       // 添加图片元数据
       if (imageWidth) payload.imageWidth = imageWidth;
