@@ -12,8 +12,8 @@ body {
 .settings-container {
   display: flex;
   height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
   /* 全局字体变小 */
   color: var(--text-primary);
   background: var(--bg-surface);
@@ -22,7 +22,7 @@ body {
 /* --- 侧边栏 --- */
 .sidebar {
   width: var(--sidebar-width);
-  background-color: #f9fafb;
+  background-color: var(--bg-body);
   /* 稍微深一点的背景区分 */
   border-right: 1px solid var(--border-color);
   padding: 10px 0;
@@ -73,7 +73,7 @@ body {
 }
 
 .section-title {
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   margin: 0;
   font-weight: 600;
 }
@@ -101,7 +101,7 @@ body {
   align-items: center;
   padding: 10px 0;
   /* 减少垂直间距 */
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--border-color);
   /* 极淡的分割线 */
 }
 
@@ -122,7 +122,7 @@ body {
 }
 
 .setting-description {
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   /* 描述文字更小 */
   color: var(--text-tertiary);
   line-height: 1.2;
@@ -143,8 +143,8 @@ body {
   /* 极小的内边距 */
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
-  font-size: 12px;
-  background: white;
+  font-size: var(--font-size-sm);
+  background: var(--bg-body);
   color: var(--text-primary);
   height: 28px;
   /* 固定高度 */
@@ -184,16 +184,16 @@ body {
   padding: 4px 10px;
   height: 28px;
   background-color: transparent;
-  color: #ef4444;
-  border: 1px solid #fee2e2;
+  color: var(--danger-color);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .clear-btn:hover {
-  background-color: #fef2f2;
-  border-color: #fecaca;
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: var(--danger-color);
 }
 
 /* --- 开关 (Toggle) 紧凑版 --- */
@@ -219,7 +219,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #e5e7eb;
+  background-color: var(--border-color);
   transition: .3s;
   border-radius: 20px;
 }
@@ -263,7 +263,7 @@ input:checked+.toggle-slider:before {
 .btn {
   padding: 8px 24px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -287,5 +287,5 @@ input:checked+.toggle-slider:before {
 }
 
 .btn-confirm:hover {
-  background-color: #2563eb;
+  opacity: 0.9;
 }

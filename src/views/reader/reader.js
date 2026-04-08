@@ -90,6 +90,15 @@ function formatSize(bytes) {
 
 // 初始化页面
 async function init() {
+  // 初始化主题
+  try {
+    const { initTheme } = await import("../../services/theme-service.js");
+    await initTheme();
+    console.log("主题初始化完成");
+  } catch (e) {
+    console.warn("初始化主题失败:", e);
+  }
+
   const params = getUrlParams();
   console.log("初始化参数:", params);
 
@@ -111,6 +120,10 @@ async function init() {
 
     // 保存解码后的内容到全局以便复制
     currentContent = decodedContent;
+
+    // 初始化收藏按钮状态
+    const isFavorite = params.isFavorite === "true";
+    updateFavoriteButton(isFavorite);
 
     // 1. 更新元数据
     document.getElementById("meta-type").textContent = (
@@ -343,14 +356,46 @@ async function copyContent() {
   }
 }
 
+// 当前条目是否已收藏
+let isCurrentFavorite = false;
+
+// 更新收藏按钮状态
+function updateFavoriteButton(isFavorite) {
+  isCurrentFavorite = isFavorite;
+  const btn = document.querySelector(".favorite-btn");
+  if (btn) {
+    btn.classList.toggle("active", isFavorite);
+    const icon = btn.querySelector(".icon");
+    if (icon) {
+      icon.className = isFavorite ? "icon icon-favorite-solid" : "icon icon-favorite";
+    }
+  }
+}
+
 // 添加到收藏
 async function addToFavorites() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("id");
+
+  if (!id) {
+    showToast("无法获取条目ID", "error");
+    return;
+  }
+
   try {
-    await invoke("add_to_favorites", { content: currentContent });
-    showToast("已添加到收藏", "success");
+    const newState = await invoke("toggle_favorite", { id });
+    updateFavoriteButton(newState);
+    showToast(newState ? "已添加到收藏" : "已取消收藏", "success");
+
+    // 保存数据到文件
+    try {
+      await invoke("save_clipboard_history");
+    } catch (saveError) {
+      console.error("保存数据失败:", saveError);
+    }
   } catch (error) {
-    console.error("添加到收藏失败:", error);
-    showToast("添加到收藏失败，请重试", "error");
+    console.error("切换收藏状态失败:", error);
+    showToast("操作失败，请重试", "error");
   }
 }
 
@@ -509,13 +554,13 @@ async function initEventListeners() {
     refreshEventListener = await listen("refresh-reader", (event) => {
       console.log("收到刷新事件:", event);
       if (event && event.payload) {
-        const { error, id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat } = event.payload;
+        const { error, id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat, isFavorite } = event.payload;
         if (error) {
           // 显示错误提示
           showToast(error, "error");
         } else {
           // 刷新页面内容
-          refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat);
+          refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat, isFavorite);
         }
       }
     });
@@ -526,8 +571,8 @@ async function initEventListeners() {
 }
 
 // 刷新页面内容
-function refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat) {
-  console.log("刷新页面内容:", { id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat });
+function refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat, isFavorite) {
+  console.log("刷新页面内容:", { id, cacheKey, format, timestamp, imageWidth, imageHeight, imageSize, imageFormat, isFavorite });
 
   // 更新URL参数
   const params = new URLSearchParams(window.location.search);
@@ -540,6 +585,8 @@ function refreshContent(id, cacheKey, format, timestamp, imageWidth, imageHeight
   if (imageHeight) params.set("imageHeight", imageHeight);
   if (imageSize) params.set("imageSize", imageSize);
   if (imageFormat) params.set("imageFormat", imageFormat);
+  // 添加收藏状态
+  params.set("isFavorite", isFavorite || false);
   window.history.replaceState({}, document.title, `?${params.toString()}`);
 
   // 重新初始化页面

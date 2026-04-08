@@ -11,11 +11,11 @@ let toggleWindowDebounceTimer = null;
 const DEBOUNCE_MS = 300; // 窗口显示/隐藏的防抖时间
 const PLAIN_TEXT_DEBOUNCE_MS = 300; // 纯文本粘贴的防抖时间（300ms）
 
-// 默认硬编码设置
+// 默认设置（空值）
 const DEFAULT_SETTINGS = {
   shortcuts: {
-    toggle_interface: "Win+V",
-    function_paste: "F2",
+    toggle_interface: "",
+    function_paste: "",
     quick_paste_mode: "ctrl",
   },
 };

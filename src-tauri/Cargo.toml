@@ -48,6 +48,7 @@ nanohtml2text = "0.1"
 tauri-plugin-fs = "2.4.5"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 tauri-plugin-global-shortcut = "2.3.1"
+tauri-plugin-autostart = "2"
 docx-rs = "0.4"
 pulldown-cmark = "0.9"
 rusqlite = { version = "0.32", features = ["bundled"] }

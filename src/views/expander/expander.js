@@ -172,6 +172,15 @@ function selectSuggestion(group) {
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("[expander] 初始化文本扩展管理器");
 
+  // 初始化主题
+  try {
+    const { initTheme } = await import("../../services/theme-service.js");
+    await initTheme();
+    console.log("[expander] 主题初始化完成");
+  } catch (e) {
+    console.warn("[expander] 初始化主题失败:", e);
+  }
+
   // 点击其他地方关闭建议
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.group-tag-input') && !e.target.closest('.group-suggestions')) {
