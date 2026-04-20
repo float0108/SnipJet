@@ -161,6 +161,7 @@ if (typeof window !== "undefined") {
               content: plainText,
               format: "plain",
               isPinned: pinState.isPinned, // 使用当前 pin 状态
+              contentType: "plain", // 明确指定按纯文本处理
             });
             console.log("后端粘贴命令执行成功");
           } catch (tauriError) {

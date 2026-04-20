@@ -289,3 +289,37 @@ input:checked+.toggle-slider:before {
 .btn-confirm:hover {
   opacity: 0.9;
 }
+
+/* --- 设置分隔线 --- */
+.setting-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 16px 0;
+}
+
+/* --- 设置区块标题 --- */
+.setting-section-title {
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+/* --- 状态标签 --- */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.status-running {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: #16a34a;
+}
+
+.status-stopped {
+  background-color: rgba(156, 163, 175, 0.1);
+  color: #6b7280;
+}

@@ -11,15 +11,15 @@
   <body>
     <div class="settings-container">
       <div class="sidebar">
-        <div class="sidebar-item">软件设置</div>
-        <div class="sidebar-item active">快捷键设置</div>
+        <div class="sidebar-item active">软件设置</div>
+        <div class="sidebar-item">快捷键设置</div>
         <div class="sidebar-item">复制设置</div>
         <div class="sidebar-item">界面设置</div>
       </div>
 
       <div class="content">
         <div class="header-top" data-tauri-drag-region>
-          <h1 class="section-title">快捷键设置</h1>
+          <h1 class="section-title">软件设置</h1>
           <div class="header-actions" data-tauri-drag-region="false">
             <button class="window-close-btn" id="close-button">
               <svg
@@ -37,7 +37,83 @@
           </div>
         </div>
 
-        <div id="shortcuts-content">
+        <!-- 软件设置 -->
+        <div id="software-content">
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">开机启动</div>
+              <div class="setting-description">启动电脑时自动运行 SnipJet</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="startup-launch" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">自动检查更新</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="check-updates" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-title">MCP 服务</div>
+          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
+            Model Context Protocol 服务允许 AI 助手（如 Claude）访问和管理您的剪贴板历史。
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">启用 MCP 服务</div>
+              <div class="setting-description">开启后 AI 助手可以访问剪贴板历史</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="mcp-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="mcp-port-item">
+            <div class="setting-info">
+              <div class="setting-label">服务端口</div>
+              <div class="setting-description">MCP 服务的监听端口</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="mcp-port"
+                min="1024"
+                max="65535"
+                step="1"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <div class="setting-item" id="mcp-status-item">
+            <div class="setting-info">
+              <div class="setting-label">服务状态</div>
+            </div>
+            <div class="setting-control">
+              <span id="mcp-status" class="status-badge status-stopped">未运行</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 快捷键设置 -->
+        <div id="shortcuts-content" style="display: none">
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">显示/隐藏界面</div>
@@ -94,33 +170,7 @@
           </div>
         </div>
 
-        <div id="software-content" style="display: none">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">开机启动</div>
-              <div class="setting-description">启动电脑时自动运行 SnipJet</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="startup-launch" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">自动检查更新</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="check-updates" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
+        <!-- 复制设置 -->
         <div id="copy-content" style="display: none">
           <div class="setting-item">
             <div class="setting-info">
@@ -162,6 +212,7 @@
           </div>
         </div>
 
+        <!-- 界面设置 -->
         <div id="interface-content" style="display: none">
           <div class="setting-item">
             <div class="setting-info">

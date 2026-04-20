@@ -97,6 +97,9 @@ pub async fn paste_to_active_window(
     content: String,
     format: String,
     _is_pinned: bool,
+    // 可选参数：明确指定剪贴板内容类型，覆盖 format 字段
+    // 用于前端已处理好格式转换的场景，如纯文本粘贴
+    content_type: Option<String>,
 ) -> Result<(), String> {
     // 1. 计算 Hash
     let hash = ClipboardManager::generate_hash(content.as_bytes());
@@ -124,6 +127,16 @@ pub async fn paste_to_active_window(
         content.clone()
     };
 
+    // 确定剪贴板内容类型（优先使用 content_type 参数，否则根据 format 判断）
+    let clipboard_type = content_type.unwrap_or_else(|| {
+        match format_clone.as_str() {
+            "image" => "image".to_string(),
+            "html" | "markdown" => "html".to_string(),
+            "rtf" => "rtf".to_string(),
+            _ => "text".to_string(),
+        }
+    });
+
     let clipboard_handle = thread::spawn(move || -> Result<(), String> {
         // 创建上下文
         let ctx = ClipboardContext::new().map_err(|e| {
@@ -131,7 +144,7 @@ pub async fn paste_to_active_window(
             e.to_string()
         })?;
 
-        let res: Result<(), String> = match format_clone.as_str() {
+        let res: Result<(), String> = match clipboard_type.as_str() {
             "image" => {
                 // 从预先读取的数据加载图片
                 if let Some(data) = image_data {
@@ -145,7 +158,7 @@ pub async fn paste_to_active_window(
                     Err("No image data".to_string())
                 }
             }
-            "html" | "markdown" => {
+            "html" => {
                 ctx.set_html(content_for_clipboard)
                     .map_err(|e| format!("Set HTML error: {:?}", e))
             }
@@ -154,6 +167,7 @@ pub async fn paste_to_active_window(
                     .map_err(|e| format!("Set RTF error: {:?}", e))
             }
             _ => {
+                // text 或 plain 都按纯文本处理
                 ctx.set_text(content_for_clipboard)
                     .map_err(|e| format!("Set text error: {:?}", e))
             }
@@ -321,12 +335,10 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
         "html" | "markdown" => {
             ctx.set_html(content_for_clipboard)
                 .map_err(|e| format!("Failed to set clipboard html: {:?}", e))?;
-            info!("Copied HTML content to clipboard without history update");
         }
         _ => {
             ctx.set_text(content_for_clipboard)
                 .map_err(|e| format!("Failed to set clipboard text: {:?}", e))?;
-            info!("Copied text content to clipboard without history update");
         }
     }
 
@@ -337,8 +349,8 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
 }
 
 #[tauri::command]
-pub async fn print_message(message: String) -> Result<(), String> {
-    println!("Frontend message: {}", message);
+pub async fn print_message(_message: String) -> Result<(), String> {
+    // 静默处理，不输出日志
     Ok(())
 }
 
@@ -595,4 +607,84 @@ pub async fn get_autostart_status(
         .map_err(|e| format!("Failed to get autostart status: {:?}", e))?;
 
     Ok(is_enabled)
+}
+
+// --- MCP 服务命令 ---
+
+/// 获取 MCP 服务状态
+#[tauri::command]
+pub fn get_mcp_status() -> Result<serde_json::Value, String> {
+    use crate::common::globals::MCP_SERVER_HANDLE;
+
+    let handle = MCP_SERVER_HANDLE.lock().map_err(|e| e.to_string())?;
+    let is_running = handle.is_some();
+
+    Ok(serde_json::json!({
+        "is_running": is_running
+    }))
+}
+
+/// 启动 MCP 服务
+#[tauri::command]
+pub async fn start_mcp_service(
+    app_handle: tauri::AppHandle,
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    port: u16,
+) -> Result<String, String> {
+    use crate::common::globals::MCP_SERVER_HANDLE;
+    use crate::mcp::start_mcp_server;
+
+    // 检查是否已经在运行
+    {
+        let handle = MCP_SERVER_HANDLE.lock().map_err(|e| e.to_string())?;
+        if handle.is_some() {
+            return Err("MCP 服务已经在运行".to_string());
+        }
+    }
+
+    // 启动服务
+    let history_arc = history.inner().clone();
+    let handle = start_mcp_server(port, Some(Arc::new(app_handle)), history_arc)?;
+
+    // 保存句柄
+    {
+        let mut mcp_handle = MCP_SERVER_HANDLE.lock().map_err(|e| e.to_string())?;
+        *mcp_handle = Some(handle);
+    }
+
+    info!("MCP service started on port {}", port);
+    Ok(format!("MCP 服务已启动，端口: {}", port))
+}
+
+/// 停止 MCP 服务
+#[tauri::command]
+pub fn stop_mcp_service() -> Result<(), String> {
+    use crate::common::globals::MCP_SERVER_HANDLE;
+
+    let mut handle = MCP_SERVER_HANDLE.lock().map_err(|e| e.to_string())?;
+
+    if let Some(mut h) = handle.take() {
+        h.cancel_token.cancel();
+        info!("MCP service stopped");
+        Ok(())
+    } else {
+        Err("MCP 服务未在运行".to_string())
+    }
+}
+
+/// 重启 MCP 服务（用于更改端口后重启）
+#[tauri::command]
+pub async fn restart_mcp_service(
+    app_handle: tauri::AppHandle,
+    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    port: u16,
+) -> Result<String, String> {
+    // 先停止
+    let _ = stop_mcp_service();
+
+    // 等待一小段时间确保端口释放
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // 再启动
+    start_mcp_service(app_handle, history, port).await
 }

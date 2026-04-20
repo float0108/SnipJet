@@ -23,35 +23,36 @@ export function html2text(html) {
     // 移除 CSS 类定义（简单的花括号匹配）
     .replace(/[.#][^{]+\{[^}]*\}/g, "");
 
-  // 1. 预处理：将 HTML 中的换行标签显式替换为换行符 \n
-  // 这是为了保证 <div>A</div><div>B</div> 变成 "A\nB" 而不是 "AB"
+  // 1. 预处理：使用占位符标记块级元素边界，避免与 DOM 结构换行重复
+  // 使用特殊字符 §¶ 作为换行标记（不太可能在正常文本中出现）
+  const NEWLINE_MARKER = "\u00A7\u00B6";
+
   let processedHtml = cleanedHtml
-    .replace(/<br\s*\/?>/gi, "\n") // <br> 换行
-    .replace(/<\/p>/gi, "\n") // 段落结束 换行
-    .replace(/<\/div>/gi, "\n") // div结束 换行
-    .replace(/<\/li>/gi, "\n") // 列表项结束 换行
-    .replace(/<\/h[1-6]>/gi, "\n") // 标题结束 换行
-    .replace(/<tr>/gi, "\n") // 表格行开始 换行
-    .replace(/<\/tr>/gi, "\n") // 表格行结束 换行
-    .replace(/<td>/gi, "\t") // 表格单元格开始 制表符
-    .replace(/<\/td>/gi, " "); // 表格单元格结束 空格
+    .replace(/<br\s*\/?>/gi, "\n") // <br> 直接换行
+    // 块级元素结束标签替换为换行标记（后续统一处理）
+    .replace(/<\/p>/gi, NEWLINE_MARKER)
+    .replace(/<\/div>/gi, NEWLINE_MARKER)
+    .replace(/<\/li>/gi, NEWLINE_MARKER)
+    .replace(/<\/h[1-6]>/gi, NEWLINE_MARKER)
+    // 表格相关
+    .replace(/<\/tr>/gi, NEWLINE_MARKER)
+    .replace(/<td[^>]*>/gi, "\t") // td 开始用制表符
+    .replace(/<\/td>/gi, " "); // td 结束用空格
 
   // 2. 创建临时 DOM
   const temp = document.createElement("div");
   temp.innerHTML = processedHtml;
 
-  // 3. 获取 textContent
-  // textContent 的特性是：
-  // - 它会自动解码 HTML 实体 (如 &nbsp; 变成空格, &lt; 变成 <)
-  // - 它会原样保留所有空格、制表符和我们刚才插入的 \n
-  // - 它不会像 innerText 那样受 CSS 样式影响导致文本合并
+  // 3. 获取 textContent（自动解码 HTML 实体）
   let text = temp.textContent || "";
 
-  // 4. 后处理：清理多余的空白
+  // 4. 后处理：统一处理换行标记和清理空白
   text = text
-    // 将多个连续换行合并为最多两个
+    // 将所有换行标记替换为单个换行
+    .replace(new RegExp(NEWLINE_MARKER, "g"), "\n")
+    // 合并连续的 3 个及以上换行为 2 个（保留段落间隔）
     .replace(/\n{3,}/g, "\n\n")
-    // 将行首行尾的空格去除
+    // 每行去除首尾空格
     .split("\n")
     .map(line => line.trim())
     .join("\n")

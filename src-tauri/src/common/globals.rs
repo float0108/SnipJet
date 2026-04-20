@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use tauri::AppHandle;
 
+use crate::mcp::McpServerHandle;
+
 // 全局变量，用于存储最后一次复制的内容hash，防止重复更新
 pub static LAST_HASH: LazyLock<Arc<Mutex<String>>> =
     LazyLock::new(|| Arc::new(Mutex::new(String::new())));
@@ -25,6 +27,10 @@ pub static CLIPBOARD_IGNORE_UNTIL: LazyLock<Arc<Mutex<u64>>> =
 // key: 快捷键字符串 (如 "Super+V"), value: 动作名称 (如 "显示/隐藏")
 pub static SHORTCUT_ACTION_MAP: LazyLock<Arc<Mutex<HashMap<String, String>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+// 全局变量，用于存储 MCP 服务器句柄
+pub static MCP_SERVER_HANDLE: LazyLock<Arc<Mutex<Option<McpServerHandle>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(None)));
 
 /// 设置剪贴板忽略截止时间（从现在起忽略指定毫秒）
 pub fn set_clipboard_ignore_for(millis: u64) {

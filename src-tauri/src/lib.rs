@@ -22,6 +22,8 @@ use crate::common::models::ClipboardItem;
 use crate::core::data_store::{start_auto_save, load_all_data, save_all_data, AUTO_SAVE_INTERVAL_SECS};
 use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
+use crate::mcp::start_mcp_server;
+use crate::common::globals::MCP_SERVER_HANDLE;
 use tauri::{Emitter, Listener};
 
 mod clipboard_manager;
@@ -29,6 +31,7 @@ mod commands;
 mod common;
 mod core;
 mod generators;
+mod mcp;
 
 /// 加载 PNG 图标文件并转换为 Tauri Image
 fn load_icon(path: &std::path::Path) -> Result<tauri::image::Image<'static>, Box<dyn std::error::Error>> {
@@ -177,6 +180,40 @@ where
             // 将 TextExpander 存入 Tauri 状态管理
             app.manage(Arc::new(Mutex::new(text_expander)));
 
+            // 从设置中读取 MCP 配置并启动服务
+            {
+                let settings = load_all_data(&app_handle)
+                    .map(|(_, settings, _)| settings)
+                    .unwrap_or_else(|_| serde_json::json!({}));
+
+                let mcp_enabled = settings.get("mcp")
+                    .and_then(|m| m.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let mcp_port = settings.get("mcp")
+                    .and_then(|m| m.get("port"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(3000) as u16;
+
+                if mcp_enabled {
+                    let history_for_mcp = history_for_setup.clone();
+                    let app_handle_for_mcp = app_handle.clone();
+                    match start_mcp_server(mcp_port, Some(Arc::new(app_handle_for_mcp)), history_for_mcp) {
+                        Ok(handle) => {
+                            info!("MCP server started successfully on port {}", mcp_port);
+                            let mut mcp_handle = MCP_SERVER_HANDLE.lock().unwrap();
+                            *mcp_handle = Some(handle);
+                        }
+                        Err(e) => {
+                            error!("Failed to start MCP server: {}", e);
+                        }
+                    }
+                } else {
+                    info!("MCP server not started (disabled in settings)");
+                }
+            }
+
             // 创建托盘图标 - 使用 32x32 图标以确保在 Windows 上显示清晰
             let quit = MenuItem::with_id(app, "quit", "退出程序", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit])?;
@@ -270,7 +307,11 @@ where
             commands::read_image_as_base64,
             commands::get_image_path,
             commands::set_autostart,
-            commands::get_autostart_status
+            commands::get_autostart_status,
+            commands::get_mcp_status,
+            commands::start_mcp_service,
+            commands::stop_mcp_service,
+            commands::restart_mcp_service
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

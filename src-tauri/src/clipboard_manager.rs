@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use clipboard_rs::{Clipboard, ClipboardContext, ClipboardHandler};
 use clipboard_rs::common::RustImage;
@@ -14,11 +15,16 @@ use crate::generators::html_generator::markdown_to_html;
 // 图片处理常量
 const MAX_IMAGE_SIZE_BYTES: usize = 5 * 1024 * 1024;  // 5MB
 
+// 时间窗口：同一操作的多个格式在此时间内到达（毫秒）
+const FORMAT_DEDUP_WINDOW_MS: u64 = 500;
+
 pub struct ClipboardManager {
     pub ctx: ClipboardContext,
     pub app_handle: AppHandle,
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
     pub last_hash: String,
+    pub last_event_time: Instant,
+    pub last_event_has_html: bool,
 }
 
 impl ClipboardManager {
@@ -29,6 +35,8 @@ impl ClipboardManager {
             app_handle,
             history,
             last_hash: String::new(),
+            last_event_time: Instant::now(),
+            last_event_has_html: false,
         }
     }
 
@@ -75,10 +83,16 @@ impl ClipboardHandler for ClipboardManager {
             return;
         }
 
+        let now = Instant::now();
+        let time_since_last = now.duration_since(self.last_event_time);
+        let is_within_dedup_window = time_since_last < Duration::from_millis(FORMAT_DEDUP_WINDOW_MS);
+
         // --- 优先级 1: HTML ---
         if let Ok(html) = self.ctx.get_html() {
             if !html.trim().is_empty() {
-                let hash = Self::generate_hash(html.as_bytes());
+                // 先修复未闭合的 HTML 标签，再计算 hash（确保 hash 和内容一致）
+                let fixed_html = ClipboardItem::fix_unclosed_html_tags(&html);
+                let hash = Self::generate_hash(fixed_html.as_bytes());
                 // 只在需要时获取锁，并且尽快释放
                 let is_new_hash = {
                     let global_last_hash = LAST_HASH.lock().unwrap();
@@ -92,8 +106,11 @@ impl ClipboardHandler for ClipboardManager {
                         let mut global_last_hash = LAST_HASH.lock().unwrap();
                         *global_last_hash = hash.clone();
                     }
+                    // 更新时间戳和 HTML 标志
+                    self.last_event_time = now;
+                    self.last_event_has_html = true;
                     // models.rs 会自动处理预览，去掉标签显示 "[HTML] xxx"
-                    let item = ClipboardItem::new_html(&html, &hash);
+                    let item = ClipboardItem::new_html(&fixed_html, &hash);
                     self.process_new_item(item);
                     return;
                 }
@@ -101,6 +118,12 @@ impl ClipboardHandler for ClipboardManager {
         }
 
         // --- 优先级 2: RTF (富文本) ---
+        // 如果在时间窗口内已有 HTML，跳过 RTF（避免重复）
+        if is_within_dedup_window && self.last_event_has_html {
+            info!("Skipping RTF within dedup window (HTML already processed)");
+            return;
+        }
+
         if let Ok(rtf) = self.ctx.get_rich_text() {
             if !rtf.trim().is_empty() {
                 let hash = Self::generate_hash(rtf.as_bytes());
@@ -116,6 +139,9 @@ impl ClipboardHandler for ClipboardManager {
                         let mut global_last_hash = LAST_HASH.lock().unwrap();
                         *global_last_hash = hash.clone();
                     }
+                    // 更新时间戳，重置 HTML 标志
+                    self.last_event_time = now;
+                    self.last_event_has_html = false;
                     let item = ClipboardItem::new_rtf(&rtf, &hash);
                     self.process_new_item(item);
                     return;
@@ -142,6 +168,9 @@ impl ClipboardHandler for ClipboardManager {
                         let mut global_last_hash = LAST_HASH.lock().unwrap();
                         *global_last_hash = hash.clone();
                     }
+                    // 更新时间戳，重置 HTML 标志
+                    self.last_event_time = now;
+                    self.last_event_has_html = false;
                     let item = ClipboardItem::new_files(files, &hash);
                     self.process_new_item(item);
                     return;
@@ -165,6 +194,10 @@ impl ClipboardHandler for ClipboardManager {
                         let mut global_last_hash = LAST_HASH.lock().unwrap();
                         *global_last_hash = hash.clone();
                     }
+
+                    // 更新时间戳，重置 HTML 标志
+                    self.last_event_time = now;
+                    self.last_event_has_html = false;
 
                     // 检测是否包含 Markdown 标记，如果有则标记为 markdown 格式
                     let item = if let Some(_html) = markdown_to_html(&text) {
@@ -219,6 +252,10 @@ impl ClipboardHandler for ClipboardManager {
                     let mut global_last_hash = LAST_HASH.lock().unwrap();
                     *global_last_hash = hash.clone();
                 }
+
+                // 更新时间戳，重置 HTML 标志
+                self.last_event_time = now;
+                self.last_event_has_html = false;
 
                 // 保存图片文件
                 match DataStore::new(&self.app_handle) {
