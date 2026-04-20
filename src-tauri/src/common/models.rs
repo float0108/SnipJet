@@ -38,6 +38,40 @@ pub struct ClipboardItem {
 impl ClipboardItem {
     // --- 核心构造逻辑 ---
 
+    /// 修复未闭合的 HTML 文档
+    /// 如果以 <html> 开头但结尾有不完整的闭合标签（如 </htm），则删除并补全为 </html>
+    pub fn fix_unclosed_html_tags(content: &str) -> String {
+        let trimmed = content.trim();
+
+        // 检查是否以 <html> 开头（不区分大小写）
+        if !trimmed.to_lowercase().starts_with("<html>") {
+            return content.to_string();
+        }
+
+        // 检查是否以 </html> 结尾（不区分大小写）
+        if trimmed.to_lowercase().ends_with("</html>") {
+            return content.to_string();
+        }
+
+        // 查找最后一个 "<" 的位置
+        let last_lt_pos = match content.rfind('<') {
+            Some(pos) => pos,
+            None => return content.to_string(),
+        };
+
+        // 获取最后一个 "<" 之后的内容
+        let after_lt = &content[last_lt_pos..];
+
+        // 检查是否是不完整的闭合标签（以 "</" 开始，但没有 ">" 结尾）
+        if after_lt.starts_with("</") && !after_lt.contains('>') {
+            // 删除未闭合的标签，补上完整的 </html>
+            return format!("{}</html>", &content[..last_lt_pos]);
+        }
+
+        // 其他情况，直接追加闭合标签
+        format!("{}</html>", content)
+    }
+
     /// 通用基础构造器
     /// 修改：word_count 现在作为参数传入，避免在 base 内部重复计算或解析
     fn base(
@@ -73,9 +107,12 @@ impl ClipboardItem {
     }
 
     pub fn new_html(content: &str, hash: &str) -> Self {
+        // 0. 修复末尾未闭合的 HTML 标签（如 "</htm" -> "</htm>"）
+        let fixed_content = Self::fix_unclosed_html_tags(content);
+
         // 1. 使用 nanohtml2text 获取纯文本
         // 这里的开销比手写解析稍大，但准确度高（处理了实体转义等）
-        let plain_text = html2text(content);
+        let plain_text = html2text(&fixed_content);
 
         // 2. 基于纯文本生成预览
         let preview = Self::make_text_preview(&plain_text);
@@ -86,7 +123,7 @@ impl ClipboardItem {
         Self::base(
             hash,
             ClipboardFormat::Html,
-            content.to_string(),
+            fixed_content,
             preview,
             word_count,
         )

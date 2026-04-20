@@ -40,6 +40,10 @@ function getDefaultSettings() {
       startup_launch: true,
       check_updates: true,
     },
+    mcp: {
+      enabled: false,
+      port: 3000,
+    },
   };
 }
 
@@ -129,6 +133,9 @@ export async function saveSettings() {
 
     // 检测自启动设置变化并更新
     await updateAutostartSetting();
+
+    // 检测 MCP 服务设置变化并更新
+    await updateMcpService();
 
     // 调用后端命令保存设置（会触发后端调试输出）
     await invoke("save_settings", { settings: settings });
@@ -227,6 +234,36 @@ async function updateAutostartSetting() {
   }
 }
 
+// 更新 MCP 服务设置
+async function updateMcpService() {
+  const oldEnabled = originalSettings.mcp?.enabled ?? false;
+  const newEnabled = settings.mcp?.enabled ?? false;
+  const oldPort = originalSettings.mcp?.port ?? 3000;
+  const newPort = settings.mcp?.port ?? 3000;
+
+  // 如果启用状态或端口发生变化
+  if (oldEnabled !== newEnabled || (newEnabled && oldPort !== newPort)) {
+    try {
+      if (newEnabled) {
+        // 启用服务（如果端口变化需要重启）
+        if (oldEnabled && oldPort !== newPort) {
+          await invoke("restart_mcp_service", { port: newPort });
+          console.log("MCP 服务已重启，新端口:", newPort);
+        } else if (!oldEnabled) {
+          await invoke("start_mcp_service", { port: newPort });
+          console.log("MCP 服务已启动，端口:", newPort);
+        }
+      } else if (oldEnabled && !newEnabled) {
+        // 禁用服务
+        await invoke("stop_mcp_service");
+        console.log("MCP 服务已停止");
+      }
+    } catch (e) {
+      console.error("更新 MCP 服务失败:", e);
+    }
+  }
+}
+
 // 更新软件设置
 export function updateSoftwareSettings() {
   // 更新开机启动
@@ -239,6 +276,43 @@ export function updateSoftwareSettings() {
   const checkUpdates = document.getElementById("check-updates");
   if (checkUpdates) {
     checkUpdates.checked = settings.software?.check_updates ?? true;
+  }
+
+  // 更新 MCP 设置
+  updateMcpSettings();
+}
+
+// 更新 MCP 设置
+async function updateMcpSettings() {
+  const mcpEnabled = document.getElementById("mcp-enabled");
+  const mcpPort = document.getElementById("mcp-port");
+  const mcpStatus = document.getElementById("mcp-status");
+
+  if (mcpEnabled) {
+    mcpEnabled.checked = settings.mcp?.enabled ?? false;
+  }
+
+  if (mcpPort) {
+    mcpPort.value = settings.mcp?.port ?? 3000;
+  }
+
+  // 获取 MCP 服务状态
+  if (mcpStatus) {
+    try {
+      const status = await invoke("get_mcp_status");
+      console.log("MCP status:", status);
+      if (status.is_running) {
+        mcpStatus.textContent = "运行中";
+        mcpStatus.className = "status-badge status-running";
+      } else {
+        mcpStatus.textContent = "未运行";
+        mcpStatus.className = "status-badge status-stopped";
+      }
+    } catch (e) {
+      console.error("获取 MCP 状态失败:", e);
+      mcpStatus.textContent = "未运行";
+      mcpStatus.className = "status-badge status-stopped";
+    }
   }
 }
 
@@ -406,6 +480,23 @@ export function bindSettingsListeners() {
     imagePreviewSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.image_preview_size = this.value;
+    });
+  }
+
+  // 监听 MCP 设置变化
+  const mcpEnabled = document.getElementById("mcp-enabled");
+  if (mcpEnabled) {
+    mcpEnabled.addEventListener("change", function () {
+      if (!settings.mcp) settings.mcp = {};
+      settings.mcp.enabled = this.checked;
+    });
+  }
+
+  const mcpPort = document.getElementById("mcp-port");
+  if (mcpPort) {
+    mcpPort.addEventListener("change", function () {
+      if (!settings.mcp) settings.mcp = {};
+      settings.mcp.port = parseInt(this.value);
     });
   }
 }

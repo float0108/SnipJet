@@ -267,16 +267,9 @@ async function init() {
         const textContent = textFallback.querySelector(".text-content");
         textContent.textContent = decodedContent;
       } else {
-        // HTML 需要转换为纯文本
-        try {
-          const plainText = await invoke("html_to_text", { html: decodedContent });
-          const textContent = textFallback.querySelector(".text-content");
-          textContent.textContent = plainText;
-        } catch (error) {
-          console.error("调用后端html_to_text API失败:", error);
-          const textContent = textFallback.querySelector(".text-content");
-          textContent.textContent = html2text(decodedContent);
-        }
+        // HTML 需要转换为纯文本 - 统一使用前端 formatter
+        const textContent = textFallback.querySelector(".text-content");
+        textContent.textContent = html2text(decodedContent);
       }
 
       // D. 填充源码视图 (Text)

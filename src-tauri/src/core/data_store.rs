@@ -419,6 +419,10 @@ impl DataStore {
                 "theme": "system",
                 "font_size": 14,
                 "window_opacity": 1.0
+            },
+            "mcp": {
+                "enabled": false,
+                "port": 3000
             }
         })
     }

@@ -19,5 +19,9 @@
   "software": {
     "startup_launch": true,
     "check_updates": true
+  },
+  "mcp": {
+    "enabled": false,
+    "port": 3000
   }
 }

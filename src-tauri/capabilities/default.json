@@ -57,6 +57,8 @@
     "allow-register-global-shortcut",
     "allow-unregister-global-shortcut",
     "allow-text-expand-operations",
-    "allow-image-operations"
+    "allow-image-operations",
+    "allow-autostart-operations",
+    "allow-mcp-operations"
   ]
 }

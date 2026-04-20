@@ -4,6 +4,7 @@ import { getClipboardHistory, listen } from "./tauri-api.js";
 import { pinState } from "../views/main/titlebar.js";
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
+import { html2text } from "../utils/formatter.js";
 
 // 防抖动计时器
 let plainTextPasteDebounceTimer = null;
@@ -83,45 +84,6 @@ function convertShortcutFormat(shortcut) {
   return shortcut.trim().replace(/Win/i, "Super");
 }
 
-/**
- * HTML 转纯文本（使用后端 API）
- * @param {string} html - HTML 内容
- * @returns {string} - 纯文本内容
- */
-async function html2text(html) {
-  if (!html) return "";
-  try {
-    // 使用后端 API 转换 HTML 到纯文本
-    const text = await invoke("html_to_text", { html });
-    return text || "";
-  } catch (e) {
-    // 如果后端 API 失败，使用简单的正则移除标签和 CSS
-    await debug("后端 html_to_text 失败，使用正则 fallback:");
-
-    // 先移除 CSS、脚本和注释
-    let cleaned = html
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/@font-face\s*\{[^}]*\}/gi, "")
-      .replace(/@page\s*\{[^}]*\}/gi, "")
-      .replace(/[.#][^{]+\{[^}]*\}/g, "");
-
-    return cleaned
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/p>/gi, "\n")
-      .replace(/<\/div>/gi, "\n")
-      .replace(/<\/li>/gi, "\n")
-      .replace(/<[^>]+>/g, "")  // 移除所有 HTML 标签
-      .replace(/&nbsp;/g, " ")   // 解码 &nbsp;
-      .replace(/&lt;/g, "<")     // 解码 &lt;
-      .replace(/&gt;/g, ">")     // 解码 &gt;
-      .replace(/&amp;/g, "&")    // 解码 &amp;
-      .replace(/&quot;/g, '"')   // 解码 &quot;
-      .replace(/\n{3,}/g, "\n\n") // 清理多余换行
-      .trim();
-  }
-}
 
 /**
  * 统一的粘贴后处理：根据 pin 状态决定是否隐藏窗口
@@ -170,10 +132,10 @@ async function handlePlainTextPaste() {
       return;
     }
 
-    // 3. 转换为纯文本（如果是 HTML）
+    // 3. 转换为纯文本（如果是 HTML）- 使用与 listitem 点击相同的处理方式
     let plainText = content;
     if (format === "html") {
-      plainText = await html2text(content);
+      plainText = html2text(content);
     }
 
     await debug(`准备粘贴纯文本: ${plainText.substring(0, 50)}...`);
@@ -194,10 +156,13 @@ async function handlePlainTextPaste() {
 
     // 5. 执行粘贴到活动窗口
     try {
+      // 传入 content_type: "plain" 明确告知后端按纯文本处理
+      // 前端已完成 HTML 到纯文本的转换，后端只需设置剪贴板并模拟粘贴
       await invoke("paste_to_active_window", {
         content: plainText,
         format: "plain",
         isPinned: pinState.isPinned,
+        contentType: "plain",
       });
       await log("纯文本粘贴成功");
     } catch (e) {

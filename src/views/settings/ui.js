@@ -72,18 +72,21 @@ export function setupSidebar() {
       document.querySelector(".section-title").textContent = title;
 
       // 隐藏所有内容
-      document.getElementById("shortcuts-content").style.display = "none";
       document.getElementById("software-content").style.display = "none";
+      document.getElementById("shortcuts-content").style.display = "none";
       document.getElementById("copy-content").style.display = "none";
       document.getElementById("interface-content").style.display = "none";
 
       // 显示对应内容
-      if (title === "快捷键设置") {
-        document.getElementById("shortcuts-content").style.display = "block";
-      } else if (title === "软件设置") {
+      if (title === "软件设置") {
         document.getElementById("software-content").style.display = "block";
         import("./handlers.js").then(({updateSoftwareSettings}) => {
           updateSoftwareSettings();
+        });
+      } else if (title === "快捷键设置") {
+        document.getElementById("shortcuts-content").style.display = "block";
+        import("./shortcuts.js").then(({updateShortcutInputs}) => {
+          updateShortcutInputs();
         });
       } else if (title === "复制设置") {
         document.getElementById("copy-content").style.display = "block";
