@@ -374,7 +374,6 @@ let allClipboardItems = [];
 function getFilteredItems() {
   // 确保 allClipboardItems 是数组
   if (!Array.isArray(allClipboardItems)) {
-    console.warn("[getFilteredItems] allClipboardItems 不是数组:", allClipboardItems);
     return [];
   }
 
@@ -382,15 +381,7 @@ function getFilteredItems() {
 
   // 收藏筛选 - 使用布尔值转换确保兼容性
   if (filterState.showFavoritesOnly) {
-    console.log("[getFilteredItems] 启用收藏筛选，检查项目...");
-    items = items.filter(item => {
-      // 处理可能缺失的 is_favorite 字段（旧数据兼容）
-      // 后端返回 is_favorite (snake_case)
-      const isFavorite = item.is_favorite === true;
-      console.log("[getFilteredItems] 项目:", item.id, "is_favorite:", item.is_favorite, "结果:", isFavorite);
-      return isFavorite;
-    });
-    console.log("[getFilteredItems] 收藏筛选后数量:", items.length);
+    items = items.filter(item => item.is_favorite === true);
   }
 
   // 搜索筛选
@@ -409,28 +400,16 @@ function getFilteredItems() {
 // 应用筛选并重新渲染
 async function applyFilters(container, statusElement) {
   if (!container) {
-    console.error("[applyFilters] 容器元素不存在");
     return;
   }
 
   const filteredItems = getFilteredItems();
-  console.log("[applyFilters] 应用筛选:", {
-    favoritesOnly: filterState.showFavoritesOnly,
-    searchQuery: filterState.searchQuery,
-    total: allClipboardItems.length,
-    filtered: filteredItems.length,
-    firstItemIsFavorite: allClipboardItems.length > 0 ? allClipboardItems[0].is_favorite : 'N/A'
-  });
-  console.log("[applyFilters] filteredItems 详细:", filteredItems.slice(0, 3));
 
   if (filteredItems.length > 0) {
     // 使用原始的渲染函数渲染筛选后的项目
-    console.log("[applyFilters] 开始渲染", filteredItems.length, "个项目");
     renderHistory(filteredItems, container, statusElement);
-    console.log("[applyFilters] 渲染完成，container.innerHTML 长度:", container.innerHTML.length);
   } else if (allClipboardItems.length === 0) {
     // 如果没有任何数据，显示默认空状态
-    console.log("[applyFilters] 没有数据，显示默认空状态");
     container.innerHTML = renderEmptyState("暂无剪贴板内容", "复制内容后将显示在这里");
   } else {
     // 有数据但筛选结果为空
@@ -451,30 +430,16 @@ async function applyFilters(container, statusElement) {
 
 // 更新所有项目数据
 function updateAllItems(history) {
-  console.log("[updateAllItems] 更新数据:", history ? history.length : 0, "条记录");
   if (Array.isArray(history)) {
     allClipboardItems = history;
-    console.log("[updateAllItems] 数据示例 (第一条):", history.length > 0 ? {
-      id: history[0].id,
-      is_favorite: history[0].is_favorite,
-      preview: history[0].preview?.substring(0, 50)
-    } : "无数据");
-
-    // 检查所有项目的 is_favorite 字段
-    const favoriteCount = history.filter(item => item.is_favorite === true).length;
-    console.log("[updateAllItems] 收藏项目数量:", favoriteCount, "/", history.length);
   } else {
-    console.warn("[updateAllItems] 传入的不是数组:", history);
     allClipboardItems = [];
   }
 }
 
 // 监听筛选状态变化
 function initFilterListener(container, statusElement) {
-  console.log("[initFilterListener] 初始化筛选监听器");
-  filterState.subscribe((state) => {
-    console.log("[initFilterListener] 筛选状态变化:", state);
-    console.log("[initFilterListener] 当前 allClipboardItems 数量:", allClipboardItems.length);
+  filterState.subscribe(() => {
     applyFilters(container, statusElement);
   });
 }
@@ -501,9 +466,8 @@ async function init() {
   try {
     const { initTheme } = await import("../../services/theme-service.js");
     await initTheme();
-    console.log("主题初始化完成");
   } catch (e) {
-    console.warn("初始化主题失败:", e);
+    // 主题初始化失败静默处理
   }
 
   // 加载设置到 localStorage（供图片预览等功能使用）
@@ -511,10 +475,9 @@ async function init() {
     const settings = await invoke("load_settings_command");
     if (settings) {
       localStorage.setItem('snipjet-settings', JSON.stringify(settings));
-      console.log("设置已加载到 localStorage:", settings);
     }
   } catch (e) {
-    console.warn("加载设置失败:", e);
+    // 设置加载失败静默处理
   }
 
   // 确保加载空状态样式
@@ -526,26 +489,20 @@ async function init() {
 
   // 初始化筛选监听器
   initFilterListener(container, statusElement);
-  console.log("筛选监听器已初始化");
 
   // 初始加载历史记录
-  console.log("开始加载初始数据");
   await loadRealData(container, statusElement, (history) => {
     updateAllItems(history);
     applyFilters(container, statusElement);
   });
-  console.log("初始数据加载完成");
 
   // 初始化自定义标题栏按钮事件
   initTitlebarButtons();
-  console.log("自定义标题栏按钮事件已初始化");
 
   // 初始化全局快捷键监听
   await initGlobalShortcuts();
-  console.log("全局快捷键监听已初始化");
 
   // 监听剪贴板更新事件
-  console.log("开始设置事件监听");
   try {
     await listenToClipboardUpdate(container, statusElement, (newItem) => {
       // 添加到所有项目列表的开头
@@ -562,7 +519,6 @@ async function init() {
         applyFilters(container, statusElement);
       }
     });
-    console.log("剪贴板更新事件监听已启动");
   } catch (error) {
     console.error("事件监听失败:", error);
   }
@@ -570,12 +526,10 @@ async function init() {
   // 监听导航剪贴板事件
   try {
     await listen("navigate-clipboard", (event) => {
-      console.log("收到导航剪贴板事件:", event);
       if (event && event.payload) {
         handleNavigation(event.payload, container);
       }
     });
-    console.log("导航剪贴板事件监听已启动");
   } catch (error) {
     console.error("导航事件监听失败:", error);
   }
@@ -583,39 +537,26 @@ async function init() {
   // 监听设置变化事件，重新渲染列表
   try {
     await listen("settings-changed", async (event) => {
-      console.log("收到设置变化事件，重新渲染列表");
       // 重新应用界面设置
       try {
         const { applyInterfaceSettings } = await import("../../services/theme-service.js");
         applyInterfaceSettings(event.payload?.interface);
-        console.log("界面设置已更新:", event.payload?.interface);
       } catch (e) {
-        console.warn("更新界面设置失败:", e);
+        // 设置更新失败静默处理
       }
       // 重新应用筛选，这会重新渲染整个列表
       applyFilters(container, statusElement);
     });
-    console.log("设置变化事件监听已启动");
   } catch (error) {
     console.error("设置变化事件监听失败:", error);
   }
 
-  console.log("SnipJet前端应用初始化完成");
-
   // 应用窗口不激活样式，防止抢夺焦点
   try {
-    console.log("应用窗口不激活样式...");
     await invoke("apply_no_activate_style");
-    console.log("窗口不激活样式应用成功");
   } catch (error) {
     console.error("应用窗口不激活样式失败:", error);
   }
-
-  // 测试手动触发事件处理
-  console.log("测试手动触发事件处理...");
-  setTimeout(() => {
-    console.log("测试完成，等待真实事件...");
-  }, 2000);
 }
 
 // 启动应用

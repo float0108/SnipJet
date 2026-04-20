@@ -181,9 +181,7 @@ function updateUIWithNewItem(newItem, container, statusElement, onNewItem) {
 
   // 直接更新状态，因为这是在收到剪贴板更新信号时执行的
   const currentItems = container.querySelectorAll(".clipboard-item");
-  const count = currentItems.length;
   updateStatus(statusElement, "");
-  console.log("Updated record count to:", count);
 }
 
 export {
