@@ -28,24 +28,50 @@ if (typeof window !== "undefined") {
       const content = element.getAttribute("data-content");
       const format = element.getAttribute("data-format");
       if (content) {
-        if (invoke) {
-          try {
-            // 使用后端命令复制，避免触发历史更新
-            await invoke("copy_to_clipboard_no_history", {
-              content: decodeURIComponent(content),
-              format: format,
-            });
-            await log("内容已复制到剪贴板（无历史更新）");
-          } catch (e) {
-            await error("后端调用失败:", e);
-            // 后端API调用失败，使用前端fallback
-            await navigator.clipboard.writeText(decodeURIComponent(content));
-            await log("内容已复制到剪贴板（前端fallback）");
-          }
+        const decodedContent = decodeURIComponent(content);
+
+        // 准备剪贴板数据 - 同时提供 HTML 和纯文本格式
+        let clipboardItems = [];
+
+        if (format === "html") {
+          // 如果是 HTML 格式，同时写入 HTML 和纯文本
+          const plainText = html2text(decodedContent);
+          const blobHTML = new Blob([decodedContent], { type: "text/html" });
+          const blobText = new Blob([plainText], { type: "text/plain" });
+          clipboardItems = [new ClipboardItem({
+            "text/html": blobHTML,
+            "text/plain": blobText
+          })];
         } else {
-          // 后端API不可用，使用前端fallback
-          await navigator.clipboard.writeText(decodeURIComponent(content));
-          await log("内容已复制到剪贴板（前端fallback）");
+          // 纯文本格式，只写入纯文本
+          const blobText = new Blob([decodedContent], { type: "text/plain" });
+          clipboardItems = [new ClipboardItem({ "text/plain": blobText })];
+        }
+
+        // 写入剪贴板
+        try {
+          await navigator.clipboard.write(clipboardItems);
+          await log("内容已复制到剪贴板（多格式）");
+        } catch (clipboardError) {
+          await error("Clipboard API 失败，尝试后端:", clipboardError);
+
+          // 降级到后端命令
+          if (invoke) {
+            try {
+              await invoke("copy_to_clipboard_no_history", {
+                content: decodedContent,
+                format: format,
+              });
+              await log("内容已复制到剪贴板（后端）");
+            } catch (e) {
+              await error("后端调用失败:", e);
+              await navigator.clipboard.writeText(decodedContent);
+              await log("内容已复制到剪贴板（前端 fallback）");
+            }
+          } else {
+            await navigator.clipboard.writeText(decodedContent);
+            await log("内容已复制到剪贴板（前端 fallback）");
+          }
         }
       }
     } catch (error) {
@@ -59,43 +85,70 @@ if (typeof window !== "undefined") {
       const content = element.getAttribute("data-content");
       const format = element.getAttribute("data-format");
       if (content) {
-        // 先复制到剪贴板，使用后端命令避免触发历史更新
-        if (invoke) {
-          try {
-            await invoke("copy_to_clipboard_no_history", {
-              content: decodeURIComponent(content),
-              format: format,
-            });
-            await log("内容已复制到剪贴板（无历史更新），准备模拟粘贴");
-          } catch (e) {
-            await error("后端复制命令执行失败:", e);
-            // 后端API不可用，使用前端fallback
-            await navigator.clipboard.writeText(decodeURIComponent(content));
-            await log("内容已复制到剪贴板（前端fallback），准备模拟粘贴");
-          }
+        const decodedContent = decodeURIComponent(content);
 
-          // 尝试使用后端的paste_to_active_window命令
+        // 准备剪贴板数据 - 同时提供 HTML 和纯文本格式
+        let clipboardItems = [];
+
+        if (format === "html") {
+          // 如果是 HTML 格式，同时写入 HTML 和纯文本
+          const plainText = html2text(decodedContent);
+          const blobHTML = new Blob([decodedContent], { type: "text/html" });
+          const blobText = new Blob([plainText], { type: "text/plain" });
+          clipboardItems = [new ClipboardItem({
+            "text/html": blobHTML,
+            "text/plain": blobText
+          })];
+        } else {
+          // 纯文本格式，只写入纯文本
+          const blobText = new Blob([decodedContent], { type: "text/plain" });
+          clipboardItems = [new ClipboardItem({ "text/plain": blobText })];
+        }
+
+        // 写入剪贴板
+        try {
+          await navigator.clipboard.write(clipboardItems);
+          await log("内容已复制到剪贴板（多格式），准备模拟粘贴");
+        } catch (clipboardError) {
+          await error("Clipboard API 失败，尝试后端:", clipboardError);
+
+          // 降级到后端命令
+          if (invoke) {
+            try {
+              await invoke("copy_to_clipboard_no_history", {
+                content: decodedContent,
+                format: format,
+              });
+              await log("内容已复制到剪贴板（后端），准备模拟粘贴");
+            } catch (e) {
+              await error("后端复制命令执行失败:", e);
+              await navigator.clipboard.writeText(decodedContent);
+              await log("内容已复制到剪贴板（前端 fallback），准备模拟粘贴");
+            }
+          } else {
+            await navigator.clipboard.writeText(decodedContent);
+            await log("内容已复制到剪贴板（前端 fallback），准备模拟粘贴");
+          }
+        }
+
+        // 尝试使用后端的paste_to_active_window命令
+        if (invoke) {
           try {
             await log("调用后端粘贴命令...");
             await invoke("paste_to_active_window", {
-              content: decodeURIComponent(content),
+              content: decodedContent,
               format: format,
-              isPinned: pinState.isPinned, // 使用当前 pin 状态
+              isPinned: pinState.isPinned,
             });
             await log("后端粘贴命令执行成功");
           } catch (tauriError) {
             await error("后端粘贴命令执行失败:", tauriError);
             // 后端命令失败，使用前端模拟作为 fallback
           }
-        } else {
-          // 后端API不可用，使用前端fallback
-          await navigator.clipboard.writeText(decodeURIComponent(content));
-          await log("内容已复制到剪贴板（前端fallback），准备模拟粘贴");
         }
 
         // 前端模拟作为 fallback
         const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-        const modifierKey = isMac ? "Meta" : "Control";
 
         // 创建键盘事件
         const pasteEvent = new KeyboardEvent("keydown", {

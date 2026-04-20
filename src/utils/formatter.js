@@ -1,4 +1,12 @@
 // 文本格式化工具
+import he from 'he';
+
+/**
+ * 生成随机占位符，避免与文本内容冲突
+ */
+function generateMarker() {
+  return `\x00${Math.random().toString(36).slice(2)}\x00`;
+}
 
 /**
  * 将 HTML 转换为纯文本
@@ -8,57 +16,88 @@
 export function html2text(html) {
   if (!html) return "";
 
-  // 0. 首先移除可能存在的 CSS 样式、脚本和注释
-  let cleanedHtml = html
-    // 移除 <style>...</style> 及其内容（非贪婪匹配）
+  // 生成唯一占位符
+  const NEWLINE_MARKER = generateMarker();
+  const TAB_MARKER = generateMarker();
+
+  // 1. 首先移除 CSS、脚本，但保留 <pre> 和 <code> 内容稍后处理
+  let cleaned = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    // 移除 <script>...</script> 及其内容
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    // 移除 HTML 注释 <!--...-->
-    .replace(/<!--[\s\S]*?-->/g, "")
-    // 移除 @font-face 相关（如果还有残留的）
-    .replace(/@font-face\s*\{[^}]*\}/gi, "")
-    // 移除 @page 相关
-    .replace(/@page\s*\{[^}]*\}/gi, "")
-    // 移除 CSS 类定义（简单的花括号匹配）
-    .replace(/[.#][^{]+\{[^}]*\}/g, "");
+    .replace(/<!--[\s\S]*?-->/g, "");
 
-  // 1. 预处理：使用占位符标记块级元素边界，避免与 DOM 结构换行重复
-  // 使用特殊字符 §¶ 作为换行标记（不太可能在正常文本中出现）
-  const NEWLINE_MARKER = "\u00A7\u00B6";
+  // 2. 保护 <pre> 和 <code> 内容（暂时替换为占位符）
+  const preBlocks = [];
+  const codeBlocks = [];
 
-  let processedHtml = cleanedHtml
-    .replace(/<br\s*\/?>/gi, "\n") // <br> 直接换行
-    // 块级元素结束标签替换为换行标记（后续统一处理）
-    .replace(/<\/p>/gi, NEWLINE_MARKER)
+  cleaned = cleaned
+    .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (match, content) => {
+      preBlocks.push(he.decode(content.replace(/<[^>]+>/g, "")));
+      return `\x00PRE${preBlocks.length - 1}\x00`;
+    })
+    .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (match, content) => {
+      codeBlocks.push(he.decode(content.replace(/<[^>]+>/g, "")));
+      return `\x00CODE${codeBlocks.length - 1}\x00`;
+    });
+
+  // 3. 处理表格：td/th 加制表符，tr 加换行
+  cleaned = cleaned
+    .replace(/<\/td>/gi, TAB_MARKER)
+    .replace(/<\/th>/gi, TAB_MARKER)
+    .replace(/<\/tr>/gi, NEWLINE_MARKER);
+
+  // 4. 处理其他换行标签
+  cleaned = cleaned
+    .replace(/<br\s*\/?>/gi, NEWLINE_MARKER)
     .replace(/<\/div>/gi, NEWLINE_MARKER)
+    .replace(/<\/p>/gi, NEWLINE_MARKER)
     .replace(/<\/li>/gi, NEWLINE_MARKER)
-    .replace(/<\/h[1-6]>/gi, NEWLINE_MARKER)
-    // 表格相关
-    .replace(/<\/tr>/gi, NEWLINE_MARKER)
-    .replace(/<td[^>]*>/gi, "\t") // td 开始用制表符
-    .replace(/<\/td>/gi, " "); // td 结束用空格
+    .replace(/<\/h[1-6]>/gi, (match) => match + NEWLINE_MARKER);
 
-  // 2. 创建临时 DOM
-  const temp = document.createElement("div");
-  temp.innerHTML = processedHtml;
+  // 5. 处理列表项前缀（<li> 前加 "- "）
+  cleaned = cleaned.replace(/<li[^>]*>/gi, "- ");
 
-  // 3. 获取 textContent（自动解码 HTML 实体）
-  let text = temp.textContent || "";
+  // 6. 移除所有 HTML 标签
+  cleaned = cleaned.replace(/<[^>]+>/g, "");
 
-  // 4. 后处理：统一处理换行标记和清理空白
-  text = text
-    // 将所有换行标记替换为单个换行
+  // 7. 解码 HTML 实体
+  cleaned = he.decode(cleaned);
+
+  // 8. 清理原始 HTML 中的换行（标签间的格式化换行）
+  // 这些换行不是内容，应该变成空格而不是分段
+  // 只有我们明确添加的 NEWLINE_MARKER 才是真正的换行
+  cleaned = cleaned.replace(/\n/g, " ");
+
+  // 9. 合并每段内部的连续空格，过滤空段
+  cleaned = cleaned
+    .split(NEWLINE_MARKER)
+    .map(segment => {
+      // 恢复制表符
+      let s = segment.replace(new RegExp(TAB_MARKER, "g"), "\t");
+      // 合并连续空格（保留制表符）
+      s = s.replace(/[ ]+/g, " ").trim();
+      return s;
+    })
+    .filter(segment => segment.length > 0)
+    .join(NEWLINE_MARKER);
+
+  // 10. 恢复 <pre> 和 <code> 块
+  preBlocks.forEach((content, i) => {
+    cleaned = cleaned.replace(
+      `\x00PRE${i}\x00`,
+      content.replace(/\n/g, NEWLINE_MARKER)
+    );
+  });
+  codeBlocks.forEach((content, i) => {
+    cleaned = cleaned.replace(
+      `\x00CODE${i}\x00`,
+      content.replace(/\n/g, NEWLINE_MARKER)
+    );
+  });
+
+  // 11. 还原换行标记并清理
+  return cleaned
     .replace(new RegExp(NEWLINE_MARKER, "g"), "\n")
-    // 合并连续的 3 个及以上换行为 2 个（保留段落间隔）
-    .replace(/\n{3,}/g, "\n\n")
-    // 每行去除首尾空格
-    .split("\n")
-    .map(line => line.trim())
-    .join("\n")
-    // 再次清理可能产生的多余换行
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-
-  return text;
 }
