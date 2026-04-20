@@ -24,11 +24,13 @@ async function init() {
     // 更新软件设置
     const {
       updateSoftwareSettings,
+      updatePasteSettings,
       updateCopySettings,
       updateInterfaceSettings,
       bindSettingsListeners,
     } = await import("./handlers.js");
     updateSoftwareSettings();
+    updatePasteSettings();
     updateCopySettings();
     updateInterfaceSettings();
 

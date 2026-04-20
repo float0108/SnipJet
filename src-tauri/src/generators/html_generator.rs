@@ -192,9 +192,13 @@ pub fn markdown_to_html(text: &str) -> Option<String> {
 
     let doc = crate::core::markdown_parser::parse(text);
     let generator = HtmlGenerator;
+    
+    // 🔥 直接生成，不要包装任何文档结构
     let html = generator.generate(&doc);
-
-    // 检查生成的 HTML 是否有效（不只是包装的纯文本）
+    
+    // 🔥 可选：添加一个隐藏的零宽空格或注释来“欺骗”Word
+    // 但这通常不需要
+    
     if html.contains('<') && html.contains('>') {
         Some(html)
     } else {
