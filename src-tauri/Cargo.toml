@@ -55,6 +55,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 rmcp = { version = "0.1", features = ["server", "macros", "transport-sse-server"] }
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+dirs = "5"
 
 # 仅在Windows平台下添加windows依赖
 [target.'cfg(windows)'.dependencies]

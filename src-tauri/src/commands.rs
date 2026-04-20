@@ -1,6 +1,10 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::process::Command;
+use std::path::PathBuf;
+use std::env;
+use std::fs;
 
 // 导入Windows API（仅Windows平台）
 #[cfg(target_os = "windows")]
@@ -127,6 +131,43 @@ pub async fn paste_to_active_window(
         content.clone()
     };
 
+    // 处理 docx 格式：如果 content_type 是 "docx" 且 format 是 "markdown"，使用 pandoc 转换
+    if content_type.as_deref() == Some("docx") && format == "markdown" {
+        // 使用 pandoc 转换 markdown 到 docx
+        let docx_path = markdown_to_docx_with_pandoc(&content).await?;
+
+        // 更新 hash
+        let docx_bytes = read_file_to_bytes(&docx_path)?;
+        let docx_hash = ClipboardManager::generate_hash(&docx_bytes);
+        {
+            let mut last_hash_lock = LAST_HASH.lock().map_err(|e| e.to_string())?;
+            *last_hash_lock = docx_hash;
+        }
+
+        // 在新线程中设置剪贴板为文件列表
+        let docx_path_str = docx_path.to_string_lossy().to_string();
+        let clipboard_handle = thread::spawn(move || -> Result<(), String> {
+            let ctx = ClipboardContext::new().map_err(|e| {
+                eprintln!("[ERROR] 剪贴板上下文创建失败: {}", e);
+                e.to_string()
+            })?;
+
+            ctx.set_files(vec![docx_path_str])
+                .map_err(|e| format!("设置剪贴板文件失败: {:?}", e))
+        });
+
+        // 等待剪贴板写入完成
+        if let Err(e) = clipboard_handle
+            .join()
+            .map_err(|_| "剪贴板线程 Panic".to_string())?
+        {
+            return Err(format!("剪贴板操作失败: {}", e));
+        }
+
+        // 继续执行粘贴操作
+        return execute_paste().await;
+    }
+
     // 确定剪贴板内容类型（优先使用 content_type 参数，否则根据 format 判断）
     let clipboard_type = content_type.unwrap_or_else(|| {
         match format_clone.as_str() {
@@ -184,7 +225,13 @@ pub async fn paste_to_active_window(
         return Err(format!("剪贴板操作失败: {}", e));
     }
 
-    // 5. 模拟组合键 (增强版)
+    // 执行粘贴操作
+    execute_paste().await
+}
+
+/// 执行粘贴操作（模拟 Ctrl+V / Cmd+V）
+async fn execute_paste() -> Result<(), String> {
+    // 模拟组合键 (增强版)
     let paste_handle = thread::spawn(move || {
         let mut enigo = Enigo::new();
 
@@ -687,4 +734,104 @@ pub async fn restart_mcp_service(
 
     // 再启动
     start_mcp_service(app_handle, history, port).await
+}
+
+// --- Markdown to Docx via Pandoc ---
+
+/// 获取缓存目录路径（用户目录下的 .snipjet/cache）
+fn get_cache_dir() -> Result<PathBuf, String> {
+    let home_dir = dirs::home_dir()
+        .ok_or("无法获取用户主目录")?;
+    let cache_dir = home_dir.join(".snipjet").join("cache");
+
+    // 确保目录存在
+    fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("创建缓存目录失败: {}", e))?;
+
+    Ok(cache_dir)
+}
+
+/// 使用 Pandoc 将 Markdown 转换为 Docx
+/// 优先从环境变量 PANDOC_PATH 读取 pandoc 路径
+async fn markdown_to_docx_with_pandoc(markdown_content: &str) -> Result<PathBuf, String> {
+    // 获取 pandoc 路径（从环境变量或系统 PATH）
+    let pandoc_path = env::var("PANDOC_PATH")
+        .unwrap_or_else(|_| {
+            if cfg!(windows) {
+                "pandoc.exe".to_string()
+            } else {
+                "pandoc".to_string()
+            }
+        });
+
+    // 获取缓存目录
+    let cache_dir = get_cache_dir()?;
+
+    // 生成临时文件名（使用内容哈希）
+    let content_hash = ClipboardManager::generate_hash(markdown_content.as_bytes());
+    let docx_path = cache_dir.join(format!("{}.docx", content_hash));
+    let md_path = cache_dir.join(format!("{}.md", content_hash));
+
+    // 写入 markdown 文件
+    fs::write(&md_path, markdown_content)
+        .map_err(|e| format!("写入临时 markdown 文件失败: {}", e))?;
+
+    // 执行 pandoc 转换
+    let output = Command::new(&pandoc_path)
+        .arg(&md_path)
+        .arg("-o")
+        .arg(&docx_path)
+        .arg("-f")
+        .arg("markdown")
+        .arg("-t")
+        .arg("docx")
+        .arg("--wrap=none")
+        .output()
+        .map_err(|e| format!("执行 pandoc 失败: {}。请确保 pandoc 已安装，或设置 PANDOC_PATH 环境变量", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Pandoc 转换失败: {}", stderr));
+    }
+
+    // 删除临时 markdown 文件
+    let _ = fs::remove_file(&md_path);
+
+    Ok(docx_path)
+}
+
+/// 读取文件内容为字节
+fn read_file_to_bytes(path: &PathBuf) -> Result<Vec<u8>, String> {
+    fs::read(path)
+        .map_err(|e| format!("读取文件失败: {}", e))
+}
+
+/// 复制 Markdown 为 Docx 格式到剪贴板
+#[tauri::command]
+pub async fn copy_markdown_as_docx(content: String) -> Result<String, String> {
+    // 1. 生成 docx 文件
+    let docx_path = markdown_to_docx_with_pandoc(&content).await?;
+
+    // 2. 计算 Hash 并更新全局 LAST_HASH
+    let docx_bytes = read_file_to_bytes(&docx_path)?;
+    let hash = ClipboardManager::generate_hash(&docx_bytes);
+    {
+        let mut last_hash_lock = LAST_HASH.lock().map_err(|e| e.to_string())?;
+        *last_hash_lock = hash.clone();
+    }
+
+    // 3. 将 docx 文件内容设置到剪贴板（使用 clipboard-rs 的文件设置功能）
+    let ctx = ClipboardContext::new()
+        .map_err(|e| format!("初始化剪贴板失败: {:?}", e))?;
+
+    // 设置文件列表到剪贴板
+    let file_path_str = docx_path.to_string_lossy().to_string();
+    ctx.set_files(vec![file_path_str.clone()])
+        .map_err(|e| format!("设置剪贴板文件失败: {:?}", e))?;
+
+    // 设置剪贴板忽略时间
+    set_clipboard_ignore_for(500);
+
+    info!("Markdown 已转换为 Docx 并复制到剪贴板: {}", file_path_str);
+    Ok(file_path_str)
 }
