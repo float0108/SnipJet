@@ -311,7 +311,8 @@ where
             commands::get_mcp_status,
             commands::start_mcp_service,
             commands::stop_mcp_service,
-            commands::restart_mcp_service
+            commands::restart_mcp_service,
+            commands::copy_markdown_as_docx
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
