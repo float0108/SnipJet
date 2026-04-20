@@ -74,6 +74,7 @@ export function setupSidebar() {
       // 隐藏所有内容
       document.getElementById("software-content").style.display = "none";
       document.getElementById("shortcuts-content").style.display = "none";
+      document.getElementById("paste-content").style.display = "none";
       document.getElementById("copy-content").style.display = "none";
       document.getElementById("interface-content").style.display = "none";
 
@@ -87,6 +88,11 @@ export function setupSidebar() {
         document.getElementById("shortcuts-content").style.display = "block";
         import("./shortcuts.js").then(({updateShortcutInputs}) => {
           updateShortcutInputs();
+        });
+      } else if (title === "粘贴设置") {
+        document.getElementById("paste-content").style.display = "block";
+        import("./handlers.js").then(({updatePasteSettings}) => {
+          updatePasteSettings();
         });
       } else if (title === "复制设置") {
         document.getElementById("copy-content").style.display = "block";

@@ -20,7 +20,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use clipboard_rs::{Clipboard, ClipboardContext};
 use clipboard_rs::common::{RustImage, RustImageData};
 use enigo::{Enigo, Key, KeyboardControllable};
-use log::{error, info};
+use log::{error, info, warn};
 use tauri::{Manager, State, AppHandle};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
@@ -133,8 +133,12 @@ pub async fn paste_to_active_window(
 
     // 处理 docx 格式：如果 content_type 是 "docx" 且 format 是 "markdown"，使用 pandoc 转换
     if content_type.as_deref() == Some("docx") && format == "markdown" {
-        // 使用 pandoc 转换 markdown 到 docx
-        let docx_path = markdown_to_docx_with_pandoc(&content).await?;
+        // 使用 pandoc 转换 markdown 到 docx，支持模板路径
+        // 模板路径可以通过 content_type 传递，格式为 "docx:template_path"
+        let template_path = content_type.as_ref()
+            .and_then(|ct| ct.strip_prefix("docx:"))
+            .filter(|t| !t.is_empty());
+        let docx_path = markdown_to_docx_with_pandoc(&content, template_path).await?;
 
         // 更新 hash
         let docx_bytes = read_file_to_bytes(&docx_path)?;
@@ -144,7 +148,25 @@ pub async fn paste_to_active_window(
             *last_hash_lock = docx_hash;
         }
 
-        // 在新线程中设置剪贴板为文件列表
+        // 检查前台是否是 Word 或 WPS，如果是则使用 COM 插入
+        if crate::generators::office_automation::is_com_automation_available() {
+            match crate::generators::office_automation::insert_docx_into_office(&docx_path) {
+                Ok(msg) => {
+                    info!("Office 自动化结果: {}", msg);
+                    // 如果成功插入到 Office，直接返回
+                    if msg.contains("successfully") {
+                        return Ok(());
+                    }
+                    // 否则使用剪贴板 fallback
+                }
+                Err(e) => {
+                    error!("Office 自动化失败: {:?}", e);
+                    // 继续执行剪贴板 fallback
+                }
+            }
+        }
+
+        // 使用剪贴板作为 fallback（将文件路径放入剪贴板）
         let docx_path_str = docx_path.to_string_lossy().to_string();
         let clipboard_handle = thread::spawn(move || -> Result<(), String> {
             let ctx = ClipboardContext::new().map_err(|e| {
@@ -753,7 +775,11 @@ fn get_cache_dir() -> Result<PathBuf, String> {
 
 /// 使用 Pandoc 将 Markdown 转换为 Docx
 /// 优先从环境变量 PANDOC_PATH 读取 pandoc 路径
-async fn markdown_to_docx_with_pandoc(markdown_content: &str) -> Result<PathBuf, String> {
+/// 支持自定义参考模板（template_path）
+async fn markdown_to_docx_with_pandoc(
+    markdown_content: &str,
+    template_path: Option<&str>,
+) -> Result<PathBuf, String> {
     // 获取 pandoc 路径（从环境变量或系统 PATH）
     let pandoc_path = env::var("PANDOC_PATH")
         .unwrap_or_else(|_| {
@@ -776,21 +802,54 @@ async fn markdown_to_docx_with_pandoc(markdown_content: &str) -> Result<PathBuf,
     fs::write(&md_path, markdown_content)
         .map_err(|e| format!("写入临时 markdown 文件失败: {}", e))?;
 
-    // 执行 pandoc 转换
-    let output = Command::new(&pandoc_path)
-        .arg(&md_path)
+    // 验证模板文件（如果提供）
+    if let Some(template) = template_path {
+        if !template.is_empty() {
+            let template_path = std::path::Path::new(template);
+            if !template_path.exists() {
+                return Err(format!("模板文件不存在: {}", template));
+            }
+            // 检查文件扩展名
+            if let Some(ext) = template_path.extension() {
+                let ext = ext.to_string_lossy().to_lowercase();
+                if ext != "docx" {
+                    warn!("模板文件可能不是有效的 docx 格式: {}", template);
+                }
+            }
+        }
+    }
+
+    // 构建 pandoc 命令
+    let mut cmd = Command::new(&pandoc_path);
+    cmd.arg(&md_path)
         .arg("-o")
         .arg(&docx_path)
         .arg("-f")
         .arg("markdown")
         .arg("-t")
         .arg("docx")
-        .arg("--wrap=none")
-        .output()
+        .arg("--wrap=none");
+
+    // 如果提供了模板路径，添加 --reference-doc 参数
+    if let Some(template) = template_path {
+        if !template.is_empty() && std::path::Path::new(template).exists() {
+            info!("使用 Pandoc 参考模板: {}", template);
+            // 使用引用确保路径中的空格被正确处理
+            cmd.arg("--reference-doc").arg(std::ffi::OsStr::new(template));
+        } else {
+            warn!("模板路径无效或不存在: {:?}", template);
+        }
+    }
+
+    info!("执行 Pandoc 命令，参数: {:?}", cmd.get_args().collect::<Vec<_>>());
+
+    let output = cmd.output()
         .map_err(|e| format!("执行 pandoc 失败: {}。请确保 pandoc 已安装，或设置 PANDOC_PATH 环境变量", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        error!("Pandoc 转换失败:\nstderr: {}\nstdout: {}", stderr, stdout);
         return Err(format!("Pandoc 转换失败: {}", stderr));
     }
 
@@ -807,10 +866,14 @@ fn read_file_to_bytes(path: &PathBuf) -> Result<Vec<u8>, String> {
 }
 
 /// 复制 Markdown 为 Docx 格式到剪贴板
+/// 支持自定义参考模板
 #[tauri::command]
-pub async fn copy_markdown_as_docx(content: String) -> Result<String, String> {
-    // 1. 生成 docx 文件
-    let docx_path = markdown_to_docx_with_pandoc(&content).await?;
+pub async fn copy_markdown_as_docx(
+    content: String,
+    template_path: Option<String>,
+) -> Result<String, String> {
+    // 1. 生成 docx 文件（使用自定义模板）
+    let docx_path = markdown_to_docx_with_pandoc(&content, template_path.as_deref()).await?;
 
     // 2. 计算 Hash 并更新全局 LAST_HASH
     let docx_bytes = read_file_to_bytes(&docx_path)?;

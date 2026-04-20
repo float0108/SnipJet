@@ -13,6 +13,7 @@
       <div class="sidebar">
         <div class="sidebar-item active">软件设置</div>
         <div class="sidebar-item">快捷键设置</div>
+        <div class="sidebar-item">粘贴设置</div>
         <div class="sidebar-item">复制设置</div>
         <div class="sidebar-item">界面设置</div>
       </div>
@@ -168,6 +169,39 @@
               </select>
             </div>
           </div>
+        </div>
+
+        <!-- 粘贴设置 -->
+        <div id="paste-content" style="display: none">
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">使用 Pandoc 粘贴 Markdown</div>
+              <div class="setting-description">启用后将 Markdown 转换为 Docx 格式粘贴，禁用则转换为 HTML 格式</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="use-pandoc-for-markdown" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="pandoc-template-item">
+            <div class="setting-info">
+              <div class="setting-label">Pandoc 模板路径</div>
+              <div class="setting-description">自定义 Docx 模板文件路径（留空使用默认模板）</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="text"
+                class="text-input"
+                id="pandoc-template-path"
+                placeholder="C:\\path\\to\\template.docx"
+                style="width: 250px;"
+              />
+            </div>
+          </div>
+
         </div>
 
         <!-- 复制设置 -->
