@@ -74,3 +74,23 @@ commands.allow = [
     "read_image_as_base64",
     "get_image_path"
 ]
+
+[[permission]]
+identifier = "allow-autostart-operations"
+description = "允许前端管理开机自启动"
+
+commands.allow = [
+    "set_autostart",
+    "get_autostart_status"
+]
+
+[[permission]]
+identifier = "allow-mcp-operations"
+description = "允许前端管理 MCP 服务"
+
+commands.allow = [
+    "get_mcp_status",
+    "start_mcp_service",
+    "stop_mcp_service",
+    "restart_mcp_service"
+]
