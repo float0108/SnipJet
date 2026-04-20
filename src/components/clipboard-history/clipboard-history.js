@@ -21,10 +21,7 @@ if (
  * @param {HTMLElement} statusElement - 状态元素
  */
 export function renderHistory(history, container, statusElement) {
-  console.log("[renderHistory] 开始渲染, history:", history?.length, "container:", !!container);
-
   if (!container) {
-    console.error("[renderHistory] 容器元素不存在");
     return;
   }
 
@@ -32,20 +29,13 @@ export function renderHistory(history, container, statusElement) {
   container.innerHTML = "";
 
   if (history && history.length > 0) {
-    console.log("[renderHistory] 处理", history.length, "个项目");
-    console.log("[renderHistory] 第一个项目原始数据:", history[0]);
-
-    const htmlParts = history.map((item, index) => {
+    const htmlParts = history.map((item) => {
       // 解析剪贴板项目数据
       const parsedItem = parseClipboardItem(item);
-      if (index === 0) {
-        console.log("[renderHistory] 第一个项目解析后:", parsedItem);
-      }
       // 使用ClipboardItem.js中的renderClipboardItem函数渲染每个项目
       return renderClipboardItem(parsedItem);
     });
 
-    console.log("[renderHistory] 生成的 HTML 片段数:", htmlParts.length);
     container.innerHTML = htmlParts.join("");
 
     // 异步加载图片预览
@@ -53,11 +43,9 @@ export function renderHistory(history, container, statusElement) {
 
     if (statusElement) {
       statusElement.textContent = "";
-      console.log("[renderHistory] 渲染完成，共", history.length, "个项目");
     }
   } else {
     // 即使是空数组，也确保容器被清空
-    console.log("[renderHistory] history 为空或长度为 0");
     if (statusElement) {
       statusElement.textContent = "";
     }
