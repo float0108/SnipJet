@@ -36,6 +36,10 @@ function getDefaultSettings() {
       auto_copy: true,
       copy_on_select: false,
     },
+    paste: {
+      use_pandoc_for_markdown: false,
+      pandoc_template_path: "",
+    },
     software: {
       startup_launch: true,
       check_updates: true,
@@ -316,6 +320,27 @@ async function updateMcpSettings() {
   }
 }
 
+// 更新粘贴设置
+export function updatePasteSettings() {
+  // 更新使用 Pandoc 粘贴 Markdown
+  const usePandocForMarkdown = document.getElementById("use-pandoc-for-markdown");
+  if (usePandocForMarkdown) {
+    usePandocForMarkdown.checked = settings.paste?.use_pandoc_for_markdown ?? false;
+  }
+
+  // 更新 Pandoc 模板路径
+  const pandocTemplatePath = document.getElementById("pandoc-template-path");
+  if (pandocTemplatePath) {
+    pandocTemplatePath.value = settings.paste?.pandoc_template_path ?? "";
+  }
+
+  // 根据是否启用 Pandoc 来显示/隐藏模板路径设置
+  const pandocTemplateItem = document.getElementById("pandoc-template-item");
+  if (pandocTemplateItem) {
+    pandocTemplateItem.style.display = settings.paste?.use_pandoc_for_markdown ? "flex" : "none";
+  }
+}
+
 // 更新复制设置
 export function updateCopySettings() {
   // 更新去除格式
@@ -398,6 +423,28 @@ export function bindSettingsListeners() {
     checkUpdates.addEventListener("change", function () {
       if (!settings.software) settings.software = {};
       settings.software.check_updates = this.checked;
+    });
+  }
+
+  // 监听粘贴设置变化
+  const usePandocForMarkdown = document.getElementById("use-pandoc-for-markdown");
+  if (usePandocForMarkdown) {
+    usePandocForMarkdown.addEventListener("change", function () {
+      if (!settings.paste) settings.paste = {};
+      settings.paste.use_pandoc_for_markdown = this.checked;
+      // 切换模板路径输入框的显示/隐藏
+      const pandocTemplateItem = document.getElementById("pandoc-template-item");
+      if (pandocTemplateItem) {
+        pandocTemplateItem.style.display = this.checked ? "flex" : "none";
+      }
+    });
+  }
+
+  const pandocTemplatePath = document.getElementById("pandoc-template-path");
+  if (pandocTemplatePath) {
+    pandocTemplatePath.addEventListener("input", function () {
+      if (!settings.paste) settings.paste = {};
+      settings.paste.pandoc_template_path = this.value;
     });
   }
 
@@ -506,6 +553,7 @@ export async function restoreOriginalSettings() {
   settings = JSON.parse(JSON.stringify(originalSettings));
   // 更新UI
   updateSoftwareSettings();
+  updatePasteSettings();
   updateCopySettings();
   updateInterfaceSettings();
   // 更新快捷键UI

@@ -135,10 +135,29 @@ if (typeof window !== "undefined") {
         if (invoke) {
           try {
             await log("调用后端粘贴命令...");
+
+            // 检查是否需要使用 Pandoc 粘贴 Markdown
+            let contentType = null;
+            if (format === "markdown") {
+              const settings = JSON.parse(localStorage.getItem('snipjet-settings') || '{}');
+              if (settings.paste?.use_pandoc_for_markdown) {
+                // 构建 contentType，包含模板路径（如果有）
+                const templatePath = settings.paste?.pandoc_template_path;
+                if (templatePath && templatePath.trim()) {
+                  contentType = `docx:${templatePath.trim()}`;
+                  await log("使用 Pandoc (docx) 格式粘贴 Markdown，模板: " + templatePath);
+                } else {
+                  contentType = "docx";
+                  await log("使用 Pandoc (docx) 格式粘贴 Markdown（无模板）");
+                }
+              }
+            }
+
             await invoke("paste_to_active_window", {
               content: decodedContent,
               format: format,
               isPinned: pinState.isPinned,
+              contentType: contentType,
             });
             await log("后端粘贴命令执行成功");
           } catch (tauriError) {
