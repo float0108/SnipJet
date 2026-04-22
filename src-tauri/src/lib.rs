@@ -26,6 +26,21 @@ use crate::mcp::start_mcp_server;
 use crate::common::globals::MCP_SERVER_HANDLE;
 use tauri::{Emitter, Listener};
 
+/// 应用状态，包含剪贴板历史和收藏
+pub struct AppState {
+    pub history: Arc<Mutex<Vec<ClipboardItem>>>,
+    pub favorites: Arc<Mutex<Vec<ClipboardItem>>>,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self {
+            history: Arc::new(Mutex::new(Vec::new())),
+            favorites: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
 mod clipboard_manager;
 mod commands;
 mod common;
@@ -63,15 +78,15 @@ pub fn run_with_setup<F>(setup: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnOnce(&mut tauri::App) -> Result<(), Box<dyn std::error::Error>> + Send + Sync + 'static,
 {
-    let history = Arc::new(Mutex::new(Vec::<ClipboardItem>::new()));
-    let history_for_setup = history.clone();
+    let app_state = Arc::new(AppState::new());
+    let state_for_setup = app_state.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
-        .manage(history.clone())
+        .manage(app_state)
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
@@ -92,8 +107,21 @@ where
                     info!("Loaded {} history items from storage", loaded_history.len());
                     // 将加载的数据存入history
                     {
-                        let mut history_lock = history_for_setup.lock().unwrap();
+                        let mut history_lock = state_for_setup.history.lock().unwrap();
                         *history_lock = loaded_history;
+                    }
+
+                    // 加载收藏数据
+                    let data_store = crate::core::data_store::DataStore::new(&app_handle)?;
+                    match data_store.load_favorites() {
+                        Ok(loaded_favorites) => {
+                            info!("Loaded {} favorites from storage", loaded_favorites.len());
+                            let mut favorites_lock = state_for_setup.favorites.lock().unwrap();
+                            *favorites_lock = loaded_favorites;
+                        }
+                        Err(e) => {
+                            error!("Failed to load favorites: {}", e);
+                        }
                     }
 
                     // 根据设置启用/禁用自启动
@@ -134,7 +162,7 @@ where
             }
 
             // 启动自动保存任务
-            start_auto_save(app_handle.clone(), history_for_setup.clone(), AUTO_SAVE_INTERVAL_SECS);
+            start_auto_save(app_handle.clone(), state_for_setup.history.clone(), AUTO_SAVE_INTERVAL_SECS);
             info!("Auto-save task started with {} second interval", AUTO_SAVE_INTERVAL_SECS);
 
             // 设置全局快捷键事件监听（必须在剪贴板线程之前设置，避免app_handle被移动）
@@ -157,11 +185,11 @@ where
             info!("Global shortcut event listener registered");
 
             // 剪贴板监听独立线程
-            let history_for_clipboard = history_for_setup.clone();
-            let history_for_tray = history_for_setup.clone();
+            let state_for_clipboard = state_for_setup.clone();
+            let state_for_tray = state_for_setup.clone();
             let app_handle_for_clipboard = app_handle.clone();
             thread::spawn(move || {
-                let manager = ClipboardManager::new(app_handle_for_clipboard, history_for_clipboard);
+                let manager = ClipboardManager::new(app_handle_for_clipboard, state_for_clipboard.history.clone());
 
                 // 注意：clipboard-rs 的 Watcher 需要在特定线程模型下运行
                 // 这里的实现适用于大多数平台，但在某些严格 UI 线程要求的平台可能需要调整
@@ -197,7 +225,7 @@ where
                     .unwrap_or(3000) as u16;
 
                 if mcp_enabled {
-                    let history_for_mcp = history_for_setup.clone();
+                    let history_for_mcp = state_for_setup.history.clone();
                     let app_handle_for_mcp = app_handle.clone();
                     match start_mcp_server(mcp_port, Some(Arc::new(app_handle_for_mcp)), history_for_mcp) {
                         Ok(handle) => {
@@ -265,7 +293,7 @@ where
                     match event.id.as_ref() {
                         "quit" => {
                             // 保存数据后再退出
-                            if let Err(e) = save_all_data(app, history_for_tray.clone()) {
+                            if let Err(e) = save_all_data(app, state_for_tray.history.clone()) {
                                 error!("Failed to save data on exit: {}", e);
                             }
                             app.exit(0);
@@ -284,8 +312,10 @@ where
             commands::get_clipboard_history,
             commands::clear_history,
             commands::delete_clipboard_item,
+            commands::delete_favorite_item,
             commands::toggle_favorite,
             commands::get_favorite_items,
+            commands::load_favorites_from_db,
             commands::paste_to_active_window,
             commands::html_to_text,
             commands::markdown_to_html_command,

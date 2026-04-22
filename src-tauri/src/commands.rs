@@ -29,69 +29,134 @@ use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE, set_clipbo
 use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::DataStore;
+use crate::AppState;
 
 // 引入你的其他依赖，例如 ClipboardManager, LAST_HASH 等
 #[tauri::command]
 pub fn get_clipboard_history(
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    state: State<'_, Arc<AppState>>,
 ) -> Vec<ClipboardItem> {
-    history.lock().unwrap().clone()
+    state.history.lock().unwrap().clone()
 }
 
 #[tauri::command]
-pub fn clear_history(history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>) {
-    history.lock().unwrap().clear();
+pub fn clear_history(state: State<'_, Arc<AppState>>) {
+    state.history.lock().unwrap().clear();
 }
 
 #[tauri::command]
 pub fn delete_clipboard_item(
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    app_handle: AppHandle,
+    state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<(), String> {
-    let mut history_lock = history.lock().unwrap();
-    let initial_len = history_lock.len();
+    let data_store = DataStore::new(&app_handle)?;
 
-    // 从历史记录中移除指定ID的条目
+    // 从历史表删除（不影响收藏表）
+    data_store.delete_item(&id)?;
+
+    // 从内存中的历史记录移除
+    let mut history_lock = state.history.lock().unwrap();
+    let initial_len = history_lock.len();
     history_lock.retain(|item| item.id != id);
 
     if history_lock.len() < initial_len {
-        info!("Deleted clipboard item with id: {}", id);
+        info!("Deleted clipboard item with id: {} from history", id);
         Ok(())
     } else {
-        error!("Failed to delete clipboard item: id not found - {}", id);
-        Err(format!("Clipboard item not found: {}", id))
+        // 即使内存中没有，数据库操作已成功，也算成功
+        info!("Clipboard item {} not in memory, but deleted from database", id);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn delete_favorite_item(
+    app_handle: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<(), String> {
+    let data_store = DataStore::new(&app_handle)?;
+
+    // 从收藏表删除（不影响历史表）
+    data_store.delete_favorite_item(&id)?;
+
+    // 从内存中的收藏列表移除
+    let mut favorites_lock = state.favorites.lock().unwrap();
+    let initial_len = favorites_lock.len();
+    favorites_lock.retain(|item| item.id != id);
+
+    if favorites_lock.len() < initial_len {
+        info!("Deleted favorite item with id: {}", id);
+        Ok(())
+    } else {
+        info!("Favorite item {} not in memory, but deleted from database", id);
+        Ok(())
     }
 }
 
 #[tauri::command]
 pub fn toggle_favorite(
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    app_handle: AppHandle,
+    state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<bool, String> {
-    let mut history_lock = history.lock().unwrap();
+    let data_store = DataStore::new(&app_handle)?;
 
-    // 查找并切换收藏状态
-    if let Some(item) = history_lock.iter_mut().find(|item| item.id == id) {
-        item.is_favorite = !item.is_favorite;
-        let new_state = item.is_favorite;
-        info!("Toggled favorite for item {}: {}", id, new_state);
-        Ok(new_state)
-    } else {
-        error!("Failed to toggle favorite: id not found - {}", id);
-        Err(format!("Clipboard item not found: {}", id))
+    // 使用 data_store 切换收藏状态（在两个表之间复制/删除）
+    let new_state = data_store.toggle_favorite(&id)?;
+
+    // 更新内存中的历史记录状态
+    {
+        let mut history_lock = state.history.lock().unwrap();
+        if let Some(item) = history_lock.iter_mut().find(|item| item.id == id) {
+            item.is_favorite = new_state;
+        }
     }
+
+    // 更新内存中的收藏列表
+    {
+        let mut favorites_lock = state.favorites.lock().unwrap();
+        if new_state {
+            // 添加到收藏：从历史记录复制
+            let history_lock = state.history.lock().unwrap();
+            if let Some(item) = history_lock.iter().find(|item| item.id == id) {
+                // 检查是否已存在
+                if !favorites_lock.iter().any(|f| f.id == id) {
+                    favorites_lock.push(item.clone());
+                }
+            }
+        } else {
+            // 从收藏移除
+            favorites_lock.retain(|item| item.id != id);
+        }
+    }
+
+    info!("Toggled favorite for item {}: {}", id, new_state);
+    Ok(new_state)
 }
 
 #[tauri::command]
 pub fn get_favorite_items(
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    state: State<'_, Arc<AppState>>,
 ) -> Vec<ClipboardItem> {
-    let history_lock = history.lock().unwrap();
-    history_lock
-        .iter()
-        .filter(|item| item.is_favorite)
-        .cloned()
-        .collect()
+    state.favorites.lock().unwrap().clone()
+}
+
+#[tauri::command]
+pub fn load_favorites_from_db(
+    app_handle: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<ClipboardItem>, String> {
+    let data_store = DataStore::new(&app_handle)?;
+    let loaded_favorites = data_store.load_favorites()?;
+
+    // 更新内存中的收藏列表
+    let mut favorites_lock = state.favorites.lock().unwrap();
+    *favorites_lock = loaded_favorites.clone();
+
+    info!("Loaded {} favorites from database", loaded_favorites.len());
+    Ok(loaded_favorites)
 }
 
 #[tauri::command]
@@ -450,11 +515,11 @@ pub async fn get_mouse_position() -> Result<(i32, i32), String> {
 #[tauri::command]
 pub async fn save_clipboard_history(
     app_handle: tauri::AppHandle,
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let data_store = DataStore::new(&app_handle)?;
     let history_data = {
-        let history_lock = history.lock().unwrap();
+        let history_lock = state.history.lock().unwrap();
         history_lock.clone()
     };
     data_store.save_clipboard_history(&history_data)?;
@@ -466,14 +531,14 @@ pub async fn save_clipboard_history(
 #[tauri::command]
 pub async fn load_clipboard_history_command(
     app_handle: tauri::AppHandle,
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ClipboardItem>, String> {
     let data_store = DataStore::new(&app_handle)?;
     let loaded_history = data_store.load_clipboard_history()?;
 
     // 更新内存中的历史记录
     {
-        let mut history_lock = history.lock().unwrap();
+        let mut history_lock = state.history.lock().unwrap();
         *history_lock = loaded_history.clone();
     }
 
@@ -697,7 +762,7 @@ pub fn get_mcp_status() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn start_mcp_service(
     app_handle: tauri::AppHandle,
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    state: State<'_, Arc<AppState>>,
     port: u16,
 ) -> Result<String, String> {
     use crate::common::globals::MCP_SERVER_HANDLE;
@@ -712,7 +777,7 @@ pub async fn start_mcp_service(
     }
 
     // 启动服务
-    let history_arc = history.inner().clone();
+    let history_arc = state.history.clone();
     let handle = start_mcp_server(port, Some(Arc::new(app_handle)), history_arc)?;
 
     // 保存句柄
@@ -745,7 +810,7 @@ pub fn stop_mcp_service() -> Result<(), String> {
 #[tauri::command]
 pub async fn restart_mcp_service(
     app_handle: tauri::AppHandle,
-    history: State<'_, Arc<Mutex<Vec<ClipboardItem>>>>,
+    state: State<'_, Arc<AppState>>,
     port: u16,
 ) -> Result<String, String> {
     // 先停止
@@ -755,7 +820,7 @@ pub async fn restart_mcp_service(
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // 再启动
-    start_mcp_service(app_handle, history, port).await
+    start_mcp_service(app_handle, state, port).await
 }
 
 // --- Markdown to Docx via Pandoc ---
