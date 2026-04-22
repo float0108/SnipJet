@@ -257,12 +257,17 @@ impl DataStore {
         Ok(history)
     }
 
-    /// 切换收藏状态
+    /// 切换收藏状态（在两个表之间复制/删除）
     pub fn toggle_favorite(&self, id: &str) -> Result<bool, String> {
         self.db.toggle_favorite(id)
     }
 
-    /// 删除单个项目
+    /// 从数据库加载所有收藏
+    pub fn load_favorites(&self) -> Result<Vec<ClipboardItem>, String> {
+        self.db.load_favorites()
+    }
+
+    /// 从历史表删除单个项目（不影响收藏表）
     pub fn delete_item(&self, id: &str) -> Result<(), String> {
         // 先获取条目信息，检查是否是图片类型
         if let Some(item) = self.db.get_item(id)? {
@@ -275,8 +280,30 @@ impl DataStore {
             }
         }
 
-        // 从数据库删除
+        // 从历史表删除（不影响收藏表）
         self.db.delete_item(id)
+    }
+
+    /// 从收藏表删除单个项目（不影响历史表）
+    pub fn delete_favorite_item(&self, id: &str) -> Result<(), String> {
+        // 先获取收藏项信息，检查是否是图片类型
+        if let Some(item) = self.db.get_favorite_item(id)? {
+            // 如果是图片类型，需要特别处理（收藏和历史可能共享同一张图片）
+            // 检查历史表中是否还有引用同一张图片的项
+            if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
+                // 只有当历史表中也没有使用这张图片时，才删除图片文件
+                let history = self.db.load_clipboard_history()?;
+                let still_in_use = history.iter().any(|h| h.content == item.content);
+                if !still_in_use {
+                    if let Err(e) = self.delete_image(&item.content) {
+                        log::warn!("Failed to delete image file: {}", e);
+                    }
+                }
+            }
+        }
+
+        // 从收藏表删除
+        self.db.delete_favorite_item(id)
     }
 
     /// 清空所有历史
@@ -394,7 +421,7 @@ impl DataStore {
             return true;
         }
         for (last, curr) in last_saved.iter().zip(current.iter()) {
-            if last.id != curr.id || last.is_favorite != curr.is_favorite {
+            if last.id != curr.id {
                 return true;
             }
         }
@@ -491,11 +518,15 @@ pub fn save_all_data(
 ) -> Result<(), String> {
     let data_store = DataStore::new(app_handle)?;
 
+    // 保存历史记录
     let history_data = {
         let history_lock = history.lock().unwrap();
         history_lock.clone()
     };
     data_store.save_clipboard_history(&history_data)?;
+
+    // 收藏数据在 toggle_favorite 时已经实时保存到数据库
+    // 这里不需要额外保存
 
     info!("All data saved successfully");
     Ok(())
