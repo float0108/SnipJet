@@ -57,11 +57,7 @@ pub fn start_global_click_listener(app: AppHandle) {
             }
 
             // 3. 检查 Pin 状态
-            let is_pinned = if let Ok(lock) = WINDOW_PIN_STATE.lock() {
-                *lock
-            } else {
-                false
-            };
+            let is_pinned = *WINDOW_PIN_STATE.lock().unwrap();
             if is_pinned {
                 continue;
             }
