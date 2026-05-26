@@ -19,7 +19,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, SHORTCUT_ACTION_MAP};
 use crate::common::models::ClipboardItem;
-use crate::core::data_store::{start_auto_save, load_all_data, save_all_data, AUTO_SAVE_INTERVAL_SECS};
+use crate::core::data_store::{load_all_data, save_all_data};
 use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
 use crate::mcp::start_mcp_server;
@@ -30,6 +30,7 @@ use tauri::{Emitter, Listener};
 pub struct AppState {
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
     pub favorites: Arc<Mutex<Vec<ClipboardItem>>>,
+    pub max_history_items: Arc<Mutex<Option<usize>>>,
 }
 
 impl AppState {
@@ -37,6 +38,7 @@ impl AppState {
         Self {
             history: Arc::new(Mutex::new(Vec::new())),
             favorites: Arc::new(Mutex::new(Vec::new())),
+            max_history_items: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -124,6 +126,17 @@ where
                         }
                     }
 
+                    // 加载最大历史条目数设置
+                    let max_items = loaded_settings.get("interface")
+                        .and_then(|i| i.get("max_history_items"))
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as usize);
+                    {
+                        let mut max_lock = state_for_setup.max_history_items.lock().unwrap();
+                        *max_lock = max_items;
+                        info!("Max history items set to: {:?}", max_items);
+                    }
+
                     // 根据设置启用/禁用自启动
                     let startup_launch = loaded_settings.get("software")
                         .and_then(|s| s.get("startup_launch"))
@@ -161,9 +174,7 @@ where
                 }
             }
 
-            // 启动自动保存任务
-            start_auto_save(app_handle.clone(), state_for_setup.history.clone(), AUTO_SAVE_INTERVAL_SECS);
-            info!("Auto-save task started with {} second interval", AUTO_SAVE_INTERVAL_SECS);
+            // 自动保存已由实时保存替代，不再需要定时任务
 
             // 设置全局快捷键事件监听（必须在剪贴板线程之前设置，避免app_handle被移动）
             let app_handle_for_shortcut = app_handle.clone();
@@ -189,7 +200,11 @@ where
             let state_for_tray = state_for_setup.clone();
             let app_handle_for_clipboard = app_handle.clone();
             thread::spawn(move || {
-                let manager = ClipboardManager::new(app_handle_for_clipboard, state_for_clipboard.history.clone());
+                let manager = ClipboardManager::new(
+                    app_handle_for_clipboard,
+                    state_for_clipboard.history.clone(),
+                    state_for_clipboard.max_history_items.clone()
+                );
 
                 // 注意：clipboard-rs 的 Watcher 需要在特定线程模型下运行
                 // 这里的实现适用于大多数平台，但在某些严格 UI 线程要求的平台可能需要调整
@@ -342,7 +357,8 @@ where
             commands::start_mcp_service,
             commands::stop_mcp_service,
             commands::restart_mcp_service,
-            commands::copy_markdown_as_docx
+            commands::copy_markdown_as_docx,
+            commands::update_max_history_items
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

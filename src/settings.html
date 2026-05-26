@@ -332,7 +332,8 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">最大历史记录</div>
+              <div class="setting-label">最大历史条目数</div>
+              <div class="setting-description">留空表示不限制，超出时自动清理旧条目</div>
             </div>
             <div class="setting-control">
               <input
@@ -340,8 +341,10 @@
                 class="number-input"
                 id="max-history-items"
                 min="10"
-                max="1000"
+                max="10000"
                 step="10"
+                placeholder="无限制"
+                style="width: 100px;"
               />
             </div>
           </div>
