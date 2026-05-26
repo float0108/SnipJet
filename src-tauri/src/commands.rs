@@ -678,17 +678,42 @@ pub async fn reload_text_expand_rules(
 
 // --- 图片相关命令 ---
 
+use std::sync::OnceLock;
+use std::collections::HashMap;
+
+// 图片缓存：relative_path -> base64 编码的图片数据
+static IMAGE_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn get_image_cache() -> &'static Mutex<HashMap<String, String>> {
+    IMAGE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 /// 读取图片并返回 base64（供前端显示）
 #[tauri::command]
 pub async fn read_image_as_base64(
     app_handle: tauri::AppHandle,
     relative_path: String,
 ) -> Result<String, String> {
+    // 先检查缓存
+    {
+        let cache = get_image_cache().lock().map_err(|e| e.to_string())?;
+        if let Some(cached) = cache.get(&relative_path) {
+            return Ok(cached.clone());
+        }
+    }
+
+    // 缓存未命中，从磁盘加载
     let data_store = DataStore::new(&app_handle)?;
     let image_data = data_store.load_image(&relative_path)?;
 
     // 转换为 base64
     let base64_str = STANDARD.encode(&image_data);
+
+    // 加入缓存
+    {
+        let mut cache = get_image_cache().lock().map_err(|e| e.to_string())?;
+        cache.insert(relative_path, base64_str.clone());
+    }
 
     Ok(base64_str)
 }
@@ -962,4 +987,16 @@ pub async fn copy_markdown_as_docx(
 
     info!("Markdown 已转换为 Docx 并复制到剪贴板: {}", file_path_str);
     Ok(file_path_str)
+}
+
+/// 更新最大历史条目数设置
+#[tauri::command]
+pub fn update_max_history_items(
+    state: State<'_, Arc<AppState>>,
+    max_items: Option<usize>,
+) -> Result<(), String> {
+    let mut max_lock = state.max_history_items.lock().unwrap();
+    *max_lock = max_items;
+    info!("Max history items updated to: {:?}", max_items);
+    Ok(())
 }

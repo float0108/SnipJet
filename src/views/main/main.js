@@ -661,6 +661,16 @@ async function init() {
       } catch (e) {
         // 设置更新失败静默处理
       }
+
+      // 更新后端的最大历史条目数设置
+      try {
+        const maxItems = event.payload?.interface?.max_history_items;
+        await invoke("update_max_history_items", { maxItems: maxItems || null });
+        console.log("[settings-changed] 最大历史条目数已更新:", maxItems);
+      } catch (e) {
+        console.error("[settings-changed] 更新最大历史条目数失败:", e);
+      }
+
       // 重新应用筛选，这会重新渲染整个列表
       applyFilters(container, statusElement);
     });

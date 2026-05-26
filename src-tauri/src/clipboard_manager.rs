@@ -22,18 +22,24 @@ pub struct ClipboardManager {
     pub ctx: ClipboardContext,
     pub app_handle: AppHandle,
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
+    pub max_history_items: Arc<Mutex<Option<usize>>>,
     pub last_hash: String,
     pub last_event_time: Instant,
     pub last_event_has_html: bool,
 }
 
 impl ClipboardManager {
-    pub fn new(app_handle: AppHandle, history: Arc<Mutex<Vec<ClipboardItem>>>) -> Self {
+    pub fn new(
+        app_handle: AppHandle,
+        history: Arc<Mutex<Vec<ClipboardItem>>>,
+        max_history_items: Arc<Mutex<Option<usize>>>,
+    ) -> Self {
         let ctx = ClipboardContext::new().expect("Failed to init clipboard context");
         ClipboardManager {
             ctx,
             app_handle,
             history,
+            max_history_items,
             last_hash: String::new(),
             last_event_time: Instant::now(),
             last_event_has_html: false,
@@ -50,7 +56,7 @@ impl ClipboardManager {
         format!("{:016x}", hash)
     }
 
-    // 处理并广播新条目
+    // 处理并广播新条目（实时保存到数据库）
     pub fn process_new_item(&self, item: ClipboardItem) {
         let mut history_lock = self.history.lock().unwrap();
 
@@ -60,12 +66,52 @@ impl ClipboardManager {
         // 2. 插入到最前面
         history_lock.insert(0, item.clone());
 
-        // 3. 限制长度
-        if history_lock.len() > 50 {
-            history_lock.truncate(50);
+        // 3. 根据设置限制长度（留空表示不限制）
+        let max_items = *self.max_history_items.lock().unwrap();
+        if let Some(max) = max_items {
+            if history_lock.len() > max {
+                // 获取超出限制的条目，准备删除关联的图片文件
+                let items_to_remove: Vec<_> = history_lock.drain(max..).collect();
+
+                // 删除被移除条目的图片文件
+                match DataStore::new(&self.app_handle) {
+                    Ok(data_store) => {
+                        for item in &items_to_remove {
+                            if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
+                                if let Err(e) = data_store.delete_image(&item.content) {
+                                    warn!("Failed to delete image file for item {}: {}", item.id, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to create DataStore for cleanup: {}", e);
+                    }
+                }
+
+                info!("Auto-cleaned {} old items (max: {})", items_to_remove.len(), max);
+            }
         }
 
-        // 4. 发送事件给前端
+        // 4. 实时保存到数据库
+        let history_to_save = history_lock.clone();
+        let app_handle = self.app_handle.clone();
+        std::thread::spawn(move || {
+            match DataStore::new(&app_handle) {
+                Ok(data_store) => {
+                    if let Err(e) = data_store.save_clipboard_history(&history_to_save) {
+                        error!("Real-time save failed: {}", e);
+                    } else {
+                        info!("Real-time save completed ({} items)", history_to_save.len());
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to create DataStore for real-time save: {}", e);
+                }
+            }
+        });
+
+        // 5. 发送事件给前端
         info!(
             "New clipboard item detected: {:?} ({})",
             item.format, item.id
