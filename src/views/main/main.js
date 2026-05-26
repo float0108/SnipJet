@@ -15,7 +15,9 @@ import {
   renderEmptyState,
   ensureEmptyStateStyles,
 } from "../../components/empty-state/empty-state.js";
-import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
+import { renderHistory, initVirtualList, prependClipboardItem } from "../../components/clipboard-history/clipboard-history.js";
+import { renderClipboardItem } from "../../components/clipboard-history/clipboard-item.js";
+import { parseClipboardItem } from "../../utils/content-parser.js";
 import {log, debug, error, event} from "../../utils/logger.js";
 
 // 确保函数被暴露到全局作用域
@@ -296,21 +298,9 @@ if (typeof window !== "undefined") {
         console.log("已从 allClipboardItems 中移除项目");
       }
 
-      // 从 UI 中移除
-      const elementId = `item-${id}`;
-      const element = document.getElementById(elementId);
-      if (element) {
-        element.remove();
-        console.log("元素已从 UI 中移除");
-      }
-
-      // 检查是否还有其他元素
-      const remainingItems = document.querySelectorAll(".clipboard-item");
-      if (remainingItems.length === 0) {
-        const container = document.getElementById("clipboard-history");
-        if (container) {
-          container.innerHTML = renderEmptyState();
-        }
+      // 如果虚拟列表存在，更新它
+      if (vList) {
+        vList.filterItems(filterState.showFavoritesOnly ? allFavorites : allClipboardItems);
       }
 
       // 调用后端删除命令（从收藏表删除）
@@ -334,21 +324,9 @@ if (typeof window !== "undefined") {
         console.log("已从 allClipboardItems 中移除项目，剩余:", allClipboardItems.length);
       }
 
-      // 从 UI 中移除
-      const elementId = `item-${id}`;
-      const element = document.getElementById(elementId);
-      if (element) {
-        element.remove();
-        console.log("元素已从 UI 中移除");
-      }
-
-      // 检查是否还有其他元素
-      const remainingItems = document.querySelectorAll(".clipboard-item");
-      if (remainingItems.length === 0) {
-        const container = document.getElementById("clipboard-history");
-        if (container) {
-          container.innerHTML = renderEmptyState();
-        }
+      // 如果虚拟列表存在，更新它
+      if (vList) {
+        vList.filterItems(filterState.showFavoritesOnly ? allFavorites : allClipboardItems);
       }
 
       // 调用后端删除命令
@@ -489,6 +467,9 @@ function getFilteredItems() {
   return items;
 }
 
+// Virtual list instance
+let vList = null;
+
 // 应用筛选并重新渲染
 async function applyFilters(container, statusElement) {
   if (!container) {
@@ -498,8 +479,16 @@ async function applyFilters(container, statusElement) {
   const filteredItems = getFilteredItems();
 
   if (filteredItems.length > 0) {
-    // 使用原始的渲染函数渲染筛选后的项目
-    renderHistory(filteredItems, container, statusElement);
+    // 使用虚拟列表渲染（只在第一次调用时初始化）
+    if (!vList) {
+      vList = initVirtualList(container, {
+        onRenderItem: (item, index) => {
+          const parsedItem = parseClipboardItem(item);
+          return renderClipboardItem(parsedItem);
+        },
+      });
+    }
+    vList.filterItems(filteredItems);
   } else if (filterState.showFavoritesOnly && allFavorites.length === 0) {
     // 收藏视图且没有收藏数据
     container.innerHTML = renderEmptyState("暂无收藏内容", "点击卡片上的爱心图标收藏内容");
@@ -624,6 +613,7 @@ async function init() {
     await listenToClipboardUpdate(container, statusElement, (newItem) => {
       // 添加到所有项目列表的开头
       allClipboardItems.unshift(newItem);
+
       // 应用筛选（如果当前显示的是收藏列表或搜索结果，可能需要决定是否显示新项目）
       const shouldShowNewItem =
         !filterState.showFavoritesOnly &&
@@ -632,7 +622,7 @@ async function init() {
          newItem.preview?.toLowerCase().includes(filterState.searchQuery.toLowerCase()));
 
       if (shouldShowNewItem) {
-        // 如果新项目应该显示在当前视图中，则重新渲染
+        // 重新应用筛选来更新虚拟列表
         applyFilters(container, statusElement);
       }
     });

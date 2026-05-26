@@ -149,6 +149,9 @@ export function renderClipboardItem(item) {
   `;
 }
 
+// Frontend image cache
+const imageCache = new Map();
+
 /**
  * 异步加载图片元素
  * @param {HTMLImageElement} imgElement - 图片元素
@@ -157,17 +160,36 @@ export async function loadItemImage(imgElement) {
   const relativePath = imgElement.dataset.imagePath;
   if (!relativePath) return;
 
+  // Skip if already loaded
+  if (!imgElement.classList.contains('loading')) return;
+
+  // Check cache first
+  if (imageCache.has(relativePath)) {
+    imgElement.src = imageCache.get(relativePath);
+    imgElement.classList.remove('loading');
+    return;
+  }
+
   try {
     // 动态导入 Tauri invoke
     const { invoke } = await import('@tauri-apps/api/core');
     const base64 = await invoke('read_image_as_base64', { relativePath });
-    imgElement.src = `data:image/png;base64,${base64}`;
+    const dataUrl = `data:image/png;base64,${base64}`;
+    imageCache.set(relativePath, dataUrl);
+    imgElement.src = dataUrl;
     imgElement.classList.remove('loading');
   } catch (e) {
     console.error('Failed to load image:', e);
     // 显示占位符文本
     imgElement.replaceWith(document.createTextNode('[图片加载失败]'));
   }
+}
+
+/**
+ * 清除图片缓存
+ */
+export function clearImageCache() {
+  imageCache.clear();
 }
 
 /**

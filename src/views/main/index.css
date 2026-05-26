@@ -148,9 +148,17 @@
 #clipboard-history {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  /* 卡片间距 */
+  /* 移除 gap，使用 margin 代替 */
   padding-top: 4px;
+}
+
+/* 用 margin 代替 gap，这样首项可以单独控制 */
+#clipboard-history > .clipboard-item {
+  margin-bottom: 10px;
+}
+
+#clipboard-history > .clipboard-item:last-child {
+  margin-bottom: 0;
 }
 
 /* 状态提示 */
