@@ -489,14 +489,29 @@ async function applyFilters(container, statusElement) {
       });
     }
     vList.filterItems(filteredItems);
+    updateStatus(statusElement, "");
   } else if (filterState.showFavoritesOnly && allFavorites.length === 0) {
     // 收藏视图且没有收藏数据
+    if (vList) {
+      vList.destroy();
+      vList = null;
+    }
     container.innerHTML = renderEmptyState("暂无收藏内容", "点击卡片上的爱心图标收藏内容");
+    updateStatus(statusElement, "");
   } else if (!filterState.showFavoritesOnly && allClipboardItems.length === 0) {
     // 历史视图且没有历史数据
+    if (vList) {
+      vList.destroy();
+      vList = null;
+    }
     container.innerHTML = renderEmptyState("暂无剪贴板内容", "复制内容后将显示在这里");
+    updateStatus(statusElement, "");
   } else {
     // 有数据但筛选结果为空
+    if (vList) {
+      vList.destroy();
+      vList = null;
+    }
     let emptyText = "没有找到匹配的内容";
     let emptyDescription = "";
 
@@ -506,6 +521,7 @@ async function applyFilters(container, statusElement) {
 
     console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
     container.innerHTML = renderEmptyState(emptyText, emptyDescription);
+    updateStatus(statusElement, "");
   }
 }
 
