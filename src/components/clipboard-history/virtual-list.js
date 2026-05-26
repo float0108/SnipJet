@@ -216,7 +216,10 @@ export class VirtualListManager {
     if (this.renderedStart > 0) {
       this.container.appendChild(this.spacerTop);
       this.spacerTop.style.height = `${this.getItemTop(this.renderedStart)}px`;
+      console.log(`[VirtualList] spacerTop added: height=${this.getItemTop(this.renderedStart)}`);
     }
+
+    console.log(`[VirtualList] render: items ${this.renderedStart}-${this.renderedEnd} of ${this.filteredItems.length}, containerH=${this.containerHeight}`);
 
     const fragment = document.createDocumentFragment();
 
@@ -234,16 +237,19 @@ export class VirtualListManager {
 
     this.container.appendChild(fragment);
 
-    const bottomSpacer = document.createElement("div");
-    const remainingItems = this.filteredItems.length - this.renderedEnd;
-    let remainingHeight = 0;
-    for (let i = this.renderedEnd; i < this.filteredItems.length; i++) {
-      remainingHeight += this.itemHeights.get(i) || ESTIMATED_ITEM_HEIGHT;
+    // 只有在还有更多项目时才添加 bottomSpacer
+    if (this.renderedEnd < this.filteredItems.length) {
+      const bottomSpacer = document.createElement("div");
+      let remainingHeight = 0;
+      for (let i = this.renderedEnd; i < this.filteredItems.length; i++) {
+        remainingHeight += this.itemHeights.get(i) || ESTIMATED_ITEM_HEIGHT;
+      }
+      bottomSpacer.style.height = `${remainingHeight}px`;
+      this.container.appendChild(bottomSpacer);
+      console.log(`[VirtualList] bottomSpacer added: height=${remainingHeight}`);
+      // sentinel 只在需要无限滚动时添加
+      this.container.appendChild(this.sentinel);
     }
-    bottomSpacer.style.height = `${remainingHeight}px`;
-    this.container.appendChild(bottomSpacer);
-
-    this.container.appendChild(this.sentinel);
 
     this.itemResizeObserver.disconnect();
     const renderedItems = this.container.querySelectorAll("[data-index]");
