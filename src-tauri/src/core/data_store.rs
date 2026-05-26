@@ -54,8 +54,6 @@ impl DataStore {
         // 初始化数据库
         let db = Database::new(&app_data_dir)?;
 
-        info!("Data store initialized at: {:?}", app_data_dir);
-
         Ok(Self {
             app_data_dir,
             db,
