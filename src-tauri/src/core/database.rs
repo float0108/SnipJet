@@ -18,7 +18,6 @@ impl Database {
     /// 创建新的数据库连接
     pub fn new(app_data_dir: &PathBuf) -> Result<Self, String> {
         let db_path = app_data_dir.join(DB_FILE);
-        info!("Opening database at: {:?}", db_path);
 
         let conn = Connection::open(&db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
@@ -32,7 +31,6 @@ impl Database {
         };
 
         db.init_schema()?;
-        info!("Database initialized successfully");
 
         Ok(db)
     }
