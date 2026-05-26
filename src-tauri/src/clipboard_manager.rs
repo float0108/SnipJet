@@ -56,69 +56,49 @@ impl ClipboardManager {
         format!("{:016x}", hash)
     }
 
-    // 处理并广播新条目（实时保存到数据库）
+    // 处理并广播新条目
     pub fn process_new_item(&self, item: ClipboardItem) {
-        let mut history_lock = self.history.lock().unwrap();
+        let app_handle = self.app_handle.clone();
+        let item_id = item.id.clone();
 
-        // 1. 逻辑去重与置顶：如果 ID (Hash) 已存在，先移除旧的
-        history_lock.retain(|i| i.id != item.id);
+        // 1. 更新 State（先在内存中操作）
+        {
+            let mut history_lock = self.history.lock().unwrap();
+            let max_items = *self.max_history_items.lock().unwrap();
 
-        // 2. 插入到最前面
-        history_lock.insert(0, item.clone());
+            // 去重：移除相同 ID 的旧条目
+            history_lock.retain(|i| i.id != item.id);
 
-        // 3. 根据设置限制长度（留空表示不限制）
-        let max_items = *self.max_history_items.lock().unwrap();
-        if let Some(max) = max_items {
-            if history_lock.len() > max {
-                // 获取超出限制的条目，准备删除关联的图片文件
-                let items_to_remove: Vec<_> = history_lock.drain(max..).collect();
+            // 插入到最前面
+            history_lock.insert(0, item);
 
-                // 删除被移除条目的图片文件
-                match DataStore::new(&self.app_handle) {
-                    Ok(data_store) => {
-                        for item in &items_to_remove {
-                            if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
-                                if let Err(e) = data_store.delete_image(&item.content) {
-                                    warn!("Failed to delete image file for item {}: {}", item.id, e);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to create DataStore for cleanup: {}", e);
-                    }
+            // 限制长度
+            if let Some(max) = max_items {
+                if history_lock.len() > max {
+                    history_lock.truncate(max);
                 }
-
-                info!("Auto-cleaned {} old items (max: {})", items_to_remove.len(), max);
             }
         }
 
-        // 4. 实时保存到数据库
-        let history_to_save = history_lock.clone();
-        let app_handle = self.app_handle.clone();
-        std::thread::spawn(move || {
-            match DataStore::new(&app_handle) {
-                Ok(data_store) => {
-                    if let Err(e) = data_store.save_clipboard_history(&history_to_save) {
-                        error!("Real-time save failed: {}", e);
-                    } else {
-                        info!("Real-time save completed ({} items)", history_to_save.len());
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to create DataStore for real-time save: {}", e);
-                }
-            }
-        });
+        // 2. 同步保存到数据库
+        let history_to_save = self.history.lock().unwrap().clone();
+        if let Err(e) = DataStore::new(&app_handle)
+            .and_then(|ds| ds.save_clipboard_history(&history_to_save).map(|_| ds))
+        {
+            error!("Failed to save clipboard history: {}", e);
+            return;
+        }
 
-        // 5. 发送事件给前端
-        info!(
-            "New clipboard item detected: {:?} ({})",
-            item.format, item.id
-        );
-        if let Err(e) = self.app_handle.emit("clipboard-update", &item) {
+        // 3. 发送全量状态给前端
+        let payload = serde_json::json!({
+            "type": "state-changed",
+            "items": history_to_save
+        });
+        if let Err(e) = app_handle.emit("clipboard-update", &payload) {
             error!("Event emit error: {:?}", e);
         }
+
+        info!("clipboard updated, history_count={}", history_to_save.len());
     }
 }
 
@@ -139,27 +119,21 @@ impl ClipboardHandler for ClipboardManager {
                 // 先修复未闭合的 HTML 标签，再计算 hash（确保 hash 和内容一致）
                 let fixed_html = ClipboardItem::fix_unclosed_html_tags(&html);
                 let hash = Self::generate_hash(fixed_html.as_bytes());
-                // 只在需要时获取锁，并且尽快释放
-                let is_new_hash = {
-                    let global_last_hash = LAST_HASH.lock().unwrap();
-                    hash != self.last_hash && hash != *global_last_hash
-                };
-                if is_new_hash {
-                    // 立即更新 last_hash，防止竞态条件
-                    self.last_hash = hash.clone();
-                    // 更新全局 last_hash
-                    {
-                        let mut global_last_hash = LAST_HASH.lock().unwrap();
-                        *global_last_hash = hash.clone();
-                    }
-                    // 更新时间戳和 HTML 标志
-                    self.last_event_time = now;
-                    self.last_event_has_html = true;
-                    // models.rs 会自动处理预览，去掉标签显示 "[HTML] xxx"
-                    let item = ClipboardItem::new_html(&fixed_html, &hash);
-                    self.process_new_item(item);
-                    return;
+
+                // 立即更新 last_hash，防止竞态条件
+                self.last_hash = hash.clone();
+                {
+                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    *global_last_hash = hash.clone();
                 }
+
+                // 更新时间戳和 HTML 标志
+                self.last_event_time = now;
+                self.last_event_has_html = true;
+                // models.rs 会自动处理预览，去掉标签显示 "[HTML] xxx"
+                let item = ClipboardItem::new_html(&fixed_html, &hash);
+                self.process_new_item(item);
+                return;
             }
         }
 
@@ -173,25 +147,20 @@ impl ClipboardHandler for ClipboardManager {
         if let Ok(rtf) = self.ctx.get_rich_text() {
             if !rtf.trim().is_empty() {
                 let hash = Self::generate_hash(rtf.as_bytes());
-                let is_new_hash = {
-                    let global_last_hash = LAST_HASH.lock().unwrap();
-                    hash != self.last_hash && hash != *global_last_hash
-                };
-                if is_new_hash {
-                    // 立即更新 last_hash，防止竞态条件
-                    self.last_hash = hash.clone();
-                    // 更新全局 last_hash
-                    {
-                        let mut global_last_hash = LAST_HASH.lock().unwrap();
-                        *global_last_hash = hash.clone();
-                    }
-                    // 更新时间戳，重置 HTML 标志
-                    self.last_event_time = now;
-                    self.last_event_has_html = false;
-                    let item = ClipboardItem::new_rtf(&rtf, &hash);
-                    self.process_new_item(item);
-                    return;
+
+                // 立即更新 last_hash，防止竞态条件
+                self.last_hash = hash.clone();
+                {
+                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    *global_last_hash = hash.clone();
                 }
+
+                // 更新时间戳，重置 HTML 标志
+                self.last_event_time = now;
+                self.last_event_has_html = false;
+                let item = ClipboardItem::new_rtf(&rtf, &hash);
+                self.process_new_item(item);
+                return;
             }
         }
 
@@ -202,25 +171,19 @@ impl ClipboardHandler for ClipboardManager {
                 let joined_paths = files.join("|");
                 let hash = Self::generate_hash(joined_paths.as_bytes());
 
-                let is_new_hash = {
-                    let global_last_hash = LAST_HASH.lock().unwrap();
-                    hash != self.last_hash && hash != *global_last_hash
-                };
-                if is_new_hash {
-                    // 立即更新 last_hash，防止竞态条件
-                    self.last_hash = hash.clone();
-                    // 更新全局 last_hash
-                    {
-                        let mut global_last_hash = LAST_HASH.lock().unwrap();
-                        *global_last_hash = hash.clone();
-                    }
-                    // 更新时间戳，重置 HTML 标志
-                    self.last_event_time = now;
-                    self.last_event_has_html = false;
-                    let item = ClipboardItem::new_files(files, &hash);
-                    self.process_new_item(item);
-                    return;
+                // 立即更新 last_hash，防止竞态条件
+                self.last_hash = hash.clone();
+                {
+                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    *global_last_hash = hash.clone();
                 }
+
+                // 更新时间戳，重置 HTML 标志
+                self.last_event_time = now;
+                self.last_event_has_html = false;
+                let item = ClipboardItem::new_files(files, &hash);
+                self.process_new_item(item);
+                return;
             }
         }
 
@@ -228,34 +191,28 @@ impl ClipboardHandler for ClipboardManager {
         if let Ok(text) = self.ctx.get_text() {
             if !text.trim().is_empty() {
                 let hash = Self::generate_hash(text.as_bytes());
-                let is_new_hash = {
-                    let global_last_hash = LAST_HASH.lock().unwrap();
-                    hash != self.last_hash && hash != *global_last_hash
-                };
-                if is_new_hash {
-                    // 立即更新 last_hash，防止竞态条件
-                    self.last_hash = hash.clone();
-                    // 更新全局 last_hash
-                    {
-                        let mut global_last_hash = LAST_HASH.lock().unwrap();
-                        *global_last_hash = hash.clone();
-                    }
 
-                    // 更新时间戳，重置 HTML 标志
-                    self.last_event_time = now;
-                    self.last_event_has_html = false;
-
-                    // 检测是否包含 Markdown 标记，如果有则标记为 markdown 格式
-                    let item = if let Some(_html) = markdown_to_html(&text) {
-                        info!("Detected Markdown syntax, storing as markdown");
-                        ClipboardItem::new_markdown(&text, &hash)
-                    } else {
-                        ClipboardItem::new_text(&text, &hash)
-                    };
-
-                    self.process_new_item(item);
-                    return;
+                // 立即更新 last_hash，防止竞态条件
+                self.last_hash = hash.clone();
+                {
+                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    *global_last_hash = hash.clone();
                 }
+
+                // 更新时间戳，重置 HTML 标志
+                self.last_event_time = now;
+                self.last_event_has_html = false;
+
+                // 检测是否包含 Markdown 标记，如果有则标记为 markdown 格式
+                let item = if let Some(_html) = markdown_to_html(&text) {
+                    info!("Detected Markdown syntax, storing as markdown");
+                    ClipboardItem::new_markdown(&text, &hash)
+                } else {
+                    ClipboardItem::new_text(&text, &hash)
+                };
+
+                self.process_new_item(item);
+                return;
             }
         }
 
@@ -285,50 +242,42 @@ impl ClipboardHandler for ClipboardManager {
             // 使用图片数据计算 hash
             let hash = Self::generate_hash(&bytes);
 
-            let is_new_hash = {
-                let global_last_hash = LAST_HASH.lock().unwrap();
-                hash != self.last_hash && hash != *global_last_hash
-            };
+            // 立即更新 last_hash，防止竞态条件
+            self.last_hash = hash.clone();
+            {
+                let mut global_last_hash = LAST_HASH.lock().unwrap();
+                *global_last_hash = hash.clone();
+            }
 
-            if is_new_hash {
-                // 立即更新 last_hash，防止竞态条件
-                self.last_hash = hash.clone();
-                // 更新全局 last_hash
-                {
-                    let mut global_last_hash = LAST_HASH.lock().unwrap();
-                    *global_last_hash = hash.clone();
-                }
+            // 更新时间戳，重置 HTML 标志
+            self.last_event_time = now;
+            self.last_event_has_html = false;
 
-                // 更新时间戳，重置 HTML 标志
-                self.last_event_time = now;
-                self.last_event_has_html = false;
-
-                // 保存图片文件
-                match DataStore::new(&self.app_handle) {
-                    Ok(data_store) => {
-                        match data_store.save_image(&hash, &bytes) {
-                            Ok(relative_path) => {
-                                // 创建图片条目
-                                let item = ClipboardItem::new_image(
-                                    &relative_path,
-                                    &hash,
-                                    Some(width as usize),
-                                    Some(height as usize),
-                                    Some(bytes.len()),
-                                );
-                                self.process_new_item(item);
-                            }
-                            Err(e) => {
-                                error!("Failed to save image file: {}", e);
-                            }
+            // 保存图片文件
+            match DataStore::new(&self.app_handle) {
+                Ok(data_store) => {
+                    match data_store.save_image(&hash, &bytes) {
+                        Ok(relative_path) => {
+                            // 创建图片条目
+                            let item = ClipboardItem::new_image(
+                                &relative_path,
+                                &hash,
+                                Some(width as usize),
+                                Some(height as usize),
+                                Some(bytes.len()),
+                            );
+                            self.process_new_item(item);
+                        }
+                        Err(e) => {
+                            error!("Failed to save image file: {}", e);
                         }
                     }
-                    Err(e) => {
-                        error!("Failed to create DataStore: {}", e);
-                    }
                 }
-                return; // 捕获到图片后，不再处理后续格式
+                Err(e) => {
+                    error!("Failed to create DataStore: {}", e);
+                }
             }
+            return; // 捕获到图片后，不再处理后续格式
         }
     }
 }

@@ -624,24 +624,21 @@ async function init() {
   // 初始化全局快捷键监听
   await initGlobalShortcuts();
 
-  // 监听剪贴板更新事件
+  // 监听剪贴板更新事件（全量状态推送）
   try {
-    await listenToClipboardUpdate(container, statusElement, (newItem) => {
-      // 添加到所有项目列表的开头
-      allClipboardItems.unshift(newItem);
+    const unlisten = await listen("clipboard-update", (event) => {
+      if (!event || !event.payload) return;
 
-      // 应用筛选（如果当前显示的是收藏列表或搜索结果，可能需要决定是否显示新项目）
-      const shouldShowNewItem =
-        !filterState.showFavoritesOnly &&
-        (!filterState.searchQuery ||
-         newItem.content?.toLowerCase().includes(filterState.searchQuery.toLowerCase()) ||
-         newItem.preview?.toLowerCase().includes(filterState.searchQuery.toLowerCase()));
+      const payload = event.payload;
 
-      if (shouldShowNewItem) {
-        // 重新应用筛选来更新虚拟列表
+      if (payload.type === "state-changed") {
+        // 全量替换
+        allClipboardItems = payload.items;
+        console.log("收到全量状态推送，items count:", allClipboardItems.length);
         applyFilters(container, statusElement);
       }
     });
+    window.unlistenClipboardUpdate = unlisten;
   } catch (error) {
     console.error("事件监听失败:", error);
   }

@@ -74,6 +74,7 @@ ehthumbs.db
 .cache
 .temp
 .tmp
+temp/
 
 # IDE specific
 .trae/
