@@ -95,9 +95,9 @@ async function listenToClipboardUpdate(container, statusElement, onNewItem) {
     // 使用导入的 listen 函数来监听事件
     console.log("尝试调用 listen 函数");
     const unlisten = await listen("clipboard-update", (event) => {
-      console.log("收到剪贴板更新信号，开始更新UI:", event);
+      console.log("收到剪贴板更新信号:", event);
       if (event && event.payload) {
-        updateUIWithNewItem(event.payload, container, statusElement, onNewItem);
+        handleClipboardEvent(event.payload, container, statusElement, onNewItem);
       } else {
         console.error("事件对象无效，没有 payload 属性:", event);
       }
@@ -106,19 +106,32 @@ async function listenToClipboardUpdate(container, statusElement, onNewItem) {
     window.unlistenClipboardUpdate = unlisten;
   } catch (error) {
     console.error("事件监听设置失败:", error);
-    // 作为备用方案，尝试使用标准的DOM事件监听
-    if (window.addEventListener) {
-      console.log("尝试使用标准DOM事件监听");
-      window.addEventListener("clipboard-update", (event) => {
-        console.log("收到DOM剪贴板更新事件:", event.detail);
-        updateUIWithNewItem(event.detail, container, statusElement, onNewItem);
-      });
-    } else {
-      console.error("无法设置事件监听，没有可用的API");
-    }
   }
 
   console.log("事件监听设置完成");
+}
+
+/**
+ * 处理剪贴板事件
+ * @param {Object} payload - 事件 payload，格式为 {type: "add"|"remove", item?, id?}
+ * @param {HTMLElement} container - 容器元素
+ * @param {HTMLElement} statusElement - 状态元素
+ * @param {Function} onNewItem - 新项目的回调
+ */
+function handleClipboardEvent(payload, container, statusElement, onNewItem) {
+  console.log("处理剪贴板事件:", payload);
+
+  if (payload.type === "remove") {
+    // 删除旧项
+    const removedElement = container.querySelector(`[data-id="${payload.id}"]`);
+    if (removedElement) {
+      removedElement.remove();
+      console.log("删除了旧项:", payload.id);
+    }
+  } else if (payload.type === "add") {
+    // 添加新项
+    updateUIWithNewItem(payload.item, container, statusElement, onNewItem);
+  }
 }
 
 /**

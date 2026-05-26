@@ -21,7 +21,7 @@ use clipboard_rs::{Clipboard, ClipboardContext};
 use clipboard_rs::common::{RustImage, RustImageData};
 use enigo::{Enigo, Key, KeyboardControllable};
 use log::{error, info, warn};
-use tauri::{Manager, State, AppHandle};
+use tauri::{Manager, State, AppHandle, Emitter};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::clipboard_manager::ClipboardManager;
@@ -71,18 +71,24 @@ pub fn delete_clipboard_item(
     data_store.delete_item(&id)?;
 
     // 从内存中的历史记录移除
-    let mut history_lock = state.history.lock().unwrap();
-    let initial_len = history_lock.len();
-    history_lock.retain(|item| item.id != id);
-
-    if history_lock.len() < initial_len {
+    let history_to_save: Vec<ClipboardItem>;
+    {
+        let mut history_lock = state.history.lock().unwrap();
+        history_lock.retain(|item| item.id != id);
+        history_to_save = history_lock.clone();
         info!("Deleted clipboard item with id: {} from history", id);
-        Ok(())
-    } else {
-        // 即使内存中没有，数据库操作已成功，也算成功
-        info!("Clipboard item {} not in memory, but deleted from database", id);
-        Ok(())
     }
+
+    // 发送全量状态给前端
+    let payload = serde_json::json!({
+        "type": "state-changed",
+        "items": history_to_save
+    });
+    if let Err(e) = app_handle.emit("clipboard-update", &payload) {
+        error!("Event emit error: {:?}", e);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -136,7 +142,6 @@ pub fn toggle_favorite(
             // 添加到收藏：从历史记录复制
             let history_lock = state.history.lock().unwrap();
             if let Some(item) = history_lock.iter().find(|item| item.id == id) {
-                // 检查是否已存在
                 if !favorites_lock.iter().any(|f| f.id == id) {
                     favorites_lock.push(item.clone());
                 }
@@ -145,6 +150,16 @@ pub fn toggle_favorite(
             // 从收藏移除
             favorites_lock.retain(|item| item.id != id);
         }
+    }
+
+    // 发送全量状态给前端
+    let history_to_save = state.history.lock().unwrap().clone();
+    let payload = serde_json::json!({
+        "type": "state-changed",
+        "items": history_to_save
+    });
+    if let Err(e) = app_handle.emit("clipboard-update", &payload) {
+        error!("Event emit error: {:?}", e);
     }
 
     info!("Toggled favorite for item {}: {}", id, new_state);
@@ -189,7 +204,7 @@ pub async fn paste_to_active_window(
     let hash = ClipboardManager::generate_hash(content.as_bytes());
     {
         // 这里假设 LAST_HASH 是个全局 Mutex
-        let mut last_hash_lock = LAST_HASH.lock().map_err(|e| e.to_string())?;
+        let mut last_hash_lock = LAST_HASH.lock().unwrap();
         *last_hash_lock = hash.clone();
     }
 
@@ -224,7 +239,7 @@ pub async fn paste_to_active_window(
         let docx_bytes = read_file_to_bytes(&docx_path)?;
         let docx_hash = ClipboardManager::generate_hash(&docx_bytes);
         {
-            let mut last_hash_lock = LAST_HASH.lock().map_err(|e| e.to_string())?;
+            let mut last_hash_lock = LAST_HASH.lock().unwrap();
             *last_hash_lock = docx_hash;
         }
 
@@ -532,13 +547,25 @@ pub async fn save_clipboard_history(
     app_handle: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    let data_store = DataStore::new(&app_handle)?;
+    // 获取历史数据（在锁外获取，避免长时间持有锁）
     let history_data = {
         let history_lock = state.history.lock().unwrap();
         history_lock.clone()
     };
-    data_store.save_clipboard_history(&history_data)?;
-    info!("Clipboard history saved on demand ({} items)", history_data.len());
+    let history_len = history_data.len();
+
+    // 将同步 I/O 操作放到 spawn_blocking 中执行
+    tokio::task::spawn_blocking(move || {
+        let data_store = DataStore::new(&app_handle)
+            .map_err(|e| format!("Failed to create data store: {}", e))?;
+        data_store.save_clipboard_history(&history_data)
+            .map_err(|e| format!("Failed to save clipboard history: {}", e))?;
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
+    info!("Clipboard history saved on demand ({} items)", history_len);
     Ok(())
 }
 
@@ -548,8 +575,20 @@ pub async fn load_clipboard_history_command(
     app_handle: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ClipboardItem>, String> {
-    let data_store = DataStore::new(&app_handle)?;
-    let loaded_history = data_store.load_clipboard_history()?;
+    // 将同步 I/O 操作放到 spawn_blocking 中执行
+    let loaded_history = tokio::task::spawn_blocking({
+        let app_handle = app_handle.clone();
+        move || {
+            let data_store = DataStore::new(&app_handle)
+                .map_err(|e| format!("Failed to create data store: {}", e))?;
+            data_store.load_clipboard_history()
+                .map_err(|e| format!("Failed to load clipboard history: {}", e))
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
+    let loaded_len = loaded_history.len();
 
     // 更新内存中的历史记录
     {
@@ -557,7 +596,7 @@ pub async fn load_clipboard_history_command(
         *history_lock = loaded_history.clone();
     }
 
-    info!("Clipboard history loaded on demand ({} items)", loaded_history.len());
+    info!("Clipboard history loaded on demand ({} items)", loaded_len);
     Ok(loaded_history)
 }
 
@@ -567,8 +606,20 @@ pub async fn save_settings(
     app_handle: tauri::AppHandle,
     settings: serde_json::Value,
 ) -> Result<(), String> {
-    let data_store = DataStore::new(&app_handle)?;
-    data_store.save_settings(&settings)?;
+    // 将同步 I/O 操作放到 spawn_blocking 中执行
+    tokio::task::spawn_blocking({
+        let app_handle = app_handle.clone();
+        let settings = settings.clone();
+        move || {
+            let data_store = DataStore::new(&app_handle)
+                .map_err(|e| format!("Failed to create data store: {}", e))?;
+            data_store.save_settings(&settings)
+                .map_err(|e| format!("Failed to save settings: {}", e))
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
     info!("Settings saved successfully");
     Ok(())
 }
@@ -578,8 +629,19 @@ pub async fn save_settings(
 pub async fn load_settings_command(
     app_handle: tauri::AppHandle,
 ) -> Result<serde_json::Value, String> {
-    let data_store = DataStore::new(&app_handle)?;
-    let settings = data_store.load_settings()?;
+    // 将同步 I/O 操作放到 spawn_blocking 中执行
+    let settings = tokio::task::spawn_blocking({
+        let app_handle = app_handle.clone();
+        move || {
+            let data_store = DataStore::new(&app_handle)
+                .map_err(|e| format!("Failed to create data store: {}", e))?;
+            data_store.load_settings()
+                .map_err(|e| format!("Failed to load settings: {}", e))
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
     info!("Settings loaded successfully");
     Ok(settings)
 }
@@ -984,7 +1046,7 @@ pub async fn copy_markdown_as_docx(
     let docx_bytes = read_file_to_bytes(&docx_path)?;
     let hash = ClipboardManager::generate_hash(&docx_bytes);
     {
-        let mut last_hash_lock = LAST_HASH.lock().map_err(|e| e.to_string())?;
+        let mut last_hash_lock = LAST_HASH.lock().unwrap();
         *last_hash_lock = hash.clone();
     }
 
