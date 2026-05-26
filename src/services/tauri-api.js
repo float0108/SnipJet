@@ -19,12 +19,19 @@ export async function invoke(command, args = {}) {
 
 /**
  * 获取剪贴板历史记录
+ * @param {number} limit - 可选，每次返回的数量限制
+ * @param {number} offset - 可选，跳过的条目数
  * @returns {Promise<Array>} - 剪贴板历史记录
  */
-export async function getClipboardHistory() {
+export async function getClipboardHistory(limit = 0, offset = 0) {
   try {
     console.log("[getClipboardHistory] 正在获取剪贴板历史...");
-    const result = await tauriInvoke("get_clipboard_history");
+    const args = {};
+    if (limit > 0) {
+      args.limit = limit;
+      args.offset = offset;
+    }
+    const result = await tauriInvoke("get_clipboard_history", args);
     console.log("[getClipboardHistory] 获取成功，记录数:", result?.length || 0);
     if (result && result.length > 0) {
       console.log("[getClipboardHistory] 第一条记录示例:", {

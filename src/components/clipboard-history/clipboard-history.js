@@ -1,6 +1,8 @@
 // 剪贴板历史记录组件
 import {parseClipboardItem} from "../../utils/content-parser.js";
 import {renderClipboardItem, loadAllImagePreviews} from "./clipboard-item.js";
+import {VirtualListManager} from "./virtual-list.js";
+import {getClipboardHistory} from "../../services/tauri-api.js";
 
 // 确保加载样式文件
 if (
@@ -12,6 +14,48 @@ if (
   link.rel = "stylesheet";
   link.href = "./components/clipboard-history/clipboard-item.css";
   document.head.appendChild(link);
+}
+
+// Virtual list singleton instance
+let virtualList = null;
+
+/**
+ * 初始化虚拟列表
+ * @param {HTMLElement} container - 容器元素
+ * @param {object} options - 配置选项
+ * @returns {VirtualListManager}
+ */
+export function initVirtualList(container, options = {}) {
+  if (virtualList) {
+    virtualList.destroy();
+  }
+
+  virtualList = new VirtualListManager(container, {
+    onLoadMore: async (offset) => {
+      const items = await getClipboardHistory(20, offset);
+      return {
+        items,
+        has_more: items.length === 20,
+      };
+    },
+    onRenderItem: (item, index) => {
+      const parsedItem = parseClipboardItem(item);
+      return renderClipboardItem(parsedItem);
+    },
+    ...options,
+  });
+
+  return virtualList;
+}
+
+/**
+ * 预置新剪贴板项目到列表开头
+ * @param {object} item - 剪贴板项目
+ */
+export function prependClipboardItem(item) {
+  if (virtualList) {
+    virtualList.prependItem(item);
+  }
 }
 
 /**

@@ -35,8 +35,23 @@ use crate::AppState;
 #[tauri::command]
 pub fn get_clipboard_history(
     state: State<'_, Arc<AppState>>,
+    limit: Option<usize>,
+    offset: Option<usize>,
 ) -> Vec<ClipboardItem> {
-    state.history.lock().unwrap().clone()
+    let history = state.history.lock().unwrap();
+    let total = history.len();
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(total).min(500);
+
+    if limit == 0 {
+        return history.clone();
+    }
+
+    history.iter()
+        .skip(offset)
+        .take(limit)
+        .cloned()
+        .collect()
 }
 
 #[tauri::command]
