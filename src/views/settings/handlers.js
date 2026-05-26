@@ -400,10 +400,11 @@ export function updateInterfaceSettings() {
     imagePreviewSize.value = settings.interface?.image_preview_size ?? "medium";
   }
 
-  // 更新最大历史记录数
+  // 更新最大历史条目数（空值表示不限制）
   const maxHistoryItems = document.getElementById("max-history-items");
   if (maxHistoryItems) {
-    maxHistoryItems.value = settings.interface?.max_history_items ?? 100;
+    const value = settings.interface?.max_history_items;
+    maxHistoryItems.value = value ? value : "";
   }
 }
 
@@ -494,7 +495,8 @@ export function bindSettingsListeners() {
   if (maxHistoryItems) {
     maxHistoryItems.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.max_history_items = parseInt(this.value);
+      const value = this.value.trim();
+      settings.interface.max_history_items = value ? parseInt(value) : null;
     });
   }
 

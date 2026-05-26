@@ -62,7 +62,7 @@ export const filterState = {
 };
 
 // 导入窗口服务
-import { createWindow } from "../../services/window-service.js";
+import { createWindow, setWindowFocusable } from "../../services/window-service.js";
 // 导入日志工具
 import { log, error } from "../../utils/logger.js";
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -188,8 +188,9 @@ export async function initTitlebarButtons() {
   if (searchBtn && searchBox && searchInput) {
     console.log("[titlebar] 绑定搜索按钮事件");
 
-    searchBtn.addEventListener("click", () => {
+    searchBtn.addEventListener("click", async () => {
       console.log("[titlebar] 搜索按钮被点击");
+      await setWindowFocusable(true);
       searchBox.classList.add("active");
       searchInput.focus();
     });
@@ -205,10 +206,11 @@ export async function initTitlebarButtons() {
       }
     });
 
-    const closeSearch = () => {
+    const closeSearch = async () => {
       searchBox.classList.remove("active");
       searchInput.value = "";
       filterState.setSearchQuery("");
+      await setWindowFocusable(false);
     };
 
     if (searchClose) {
