@@ -36,7 +36,7 @@ fn apply_no_activate_style(window: WebviewWindow) {
 }
 
 fn main() {
-    app_lib::run_with_setup(|app| {
+    let _ = app_lib::run_with_setup(|app| {
         // 应用“不抢焦点”样式
         if let Some(window) = app.get_webview_window("main") {
             apply_no_activate_style(window);

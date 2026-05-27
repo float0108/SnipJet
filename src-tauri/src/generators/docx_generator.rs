@@ -3,13 +3,18 @@ use crate::core::generator::Generator;
 use docx_rs::{AbstractNumbering, BreakType, Docx, IndentLevel, Level, LevelJc, LevelText, NumberFormat, Numbering, NumberingId, Paragraph, Run, RunFonts, Start, Style, StyleType, Table, TableCell, TableRow};
 use std::io::Cursor;
 
+/// Docx 文档生成器（保留供将来使用）
+#[allow(dead_code)]
 pub struct DocxGenerator;
 
 // 编号ID常量
+#[allow(dead_code)]
 const UNORDERED_LIST_NUMBERING_ID: usize = 1;
+#[allow(dead_code)]
 const ORDERED_LIST_NUMBERING_ID: usize = 2;
 
 impl Generator for DocxGenerator {
+    #[allow(dead_code)]
     fn generate(&self, doc: &Document) -> Result<Vec<u8>, std::io::Error> {
         let mut docx = Docx::new();
 
@@ -75,6 +80,7 @@ impl Generator for DocxGenerator {
 }
 
 impl DocxGenerator {
+    #[allow(dead_code)]
     fn generate_block(&self, mut docx: Docx, block: &Block, list_level: usize) -> Docx {
         match block {
             Block::Heading { level, content } => {
@@ -192,6 +198,7 @@ impl DocxGenerator {
         docx
     }
 
+    #[allow(dead_code)]
     fn generate_list_item(
         &self,
         mut docx: Docx,
@@ -230,6 +237,7 @@ impl DocxGenerator {
         docx
     }
 
+    #[allow(dead_code)]
     fn generate_inline_run(&self, inline: &Inline) -> Run {
         let mut run = Run::new();
 
@@ -271,6 +279,7 @@ impl DocxGenerator {
         run
     }
 
+    #[allow(dead_code)]
     fn generate_inlines(&self, p: &mut Paragraph, inlines: &[Inline]) {
         for inline in inlines {
             match inline {
@@ -324,6 +333,7 @@ impl DocxGenerator {
         }
     }
 
+    #[allow(dead_code)]
     fn collect_inline_text(&self, mut run: Run, inlines: &[Inline]) -> Run {
         for inline in inlines {
             match inline {
@@ -357,6 +367,7 @@ impl DocxGenerator {
         run
     }
 
+    #[allow(dead_code)]
     fn collect_inline_string(&self, result: &mut String, inlines: &[Inline]) {
         for inline in inlines {
             match inline {
