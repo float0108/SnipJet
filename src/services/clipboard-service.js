@@ -178,16 +178,20 @@ function updateUIWithNewItem(newItem, container, statusElement, onNewItem) {
   const actualItemElement = newItemElement.firstElementChild;
 
   // 在顶部插入新项目
-  container.insertBefore(actualItemElement, container.firstChild);
+  if (actualItemElement) {
+    container.insertBefore(actualItemElement, container.firstChild);
 
-  // 如果是图片，加载图片预览
-  if (parsedItem.format === "image") {
-    const imgElement = actualItemElement.querySelector(".preview-image");
-    if (imgElement && imgElement.dataset.imagePath) {
-      import("../components/clipboard-history/clipboard-item.js")
-        .then(({ loadItemImage }) => loadItemImage(imgElement))
-        .catch((e) => console.error("Failed to load image preview:", e));
+    // 如果是图片，加载图片预览
+    if (parsedItem.format === "image") {
+      const imgElement = actualItemElement.querySelector(".preview-image");
+      if (imgElement && imgElement.dataset.imagePath) {
+        import("../components/clipboard-history/clipboard-item.js")
+          .then(({ loadItemImage }) => loadItemImage(imgElement))
+          .catch((e) => console.error("Failed to load image preview:", e));
+      }
     }
+  } else {
+    console.warn("updateUIWithNewItem: renderClipboardItem returned empty element, skipping insert");
   }
 
   // 通知新项目
