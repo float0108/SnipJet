@@ -28,6 +28,21 @@
     z-index: 10;
 }
 
+/* 键盘焦点样式（可访问性） */
+.clipboard-item:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.clipboard-item:focus:not(:focus-visible) {
+    outline: none;
+}
+
+.clipboard-item:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
 /* --- 内容区域 (核心) --- */
 .item-body {
     flex: 1;
@@ -184,6 +199,17 @@
     font-family: var(--font-family);
 
     /* 数字等宽，对齐更整齐 */
+}
+
+/* 元数据行信息容器（替换内联样式） */
+.meta-row-info {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.meta-word-count {
+    opacity: 0.5;
 }
 
 /* --- 悬浮操作栏 (绝对定位) --- */
