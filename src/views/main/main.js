@@ -22,6 +22,19 @@ import {log, debug, error, event} from "../../utils/logger.js";
 if (typeof window !== "undefined") {
   window.openReaderWindow = openReaderWindow;
 
+  // 构建剪贴板项目（共享逻辑）
+  function buildClipboardItems(decodedContent, format) {
+    if (format === "html") {
+      const plainText = html2text(decodedContent);
+      const blobHTML = new Blob([decodedContent], { type: "text/html" });
+      const blobText = new Blob([plainText], { type: "text/plain" });
+      return [new ClipboardItem({ "text/html": blobHTML, "text/plain": blobText })];
+    } else {
+      const blobText = new Blob([decodedContent], { type: "text/plain" });
+      return [new ClipboardItem({ "text/plain": blobText })];
+    }
+  }
+
   // 复制到剪贴板
   window.copyToClipboard = async function (element) {
     try {
@@ -29,24 +42,7 @@ if (typeof window !== "undefined") {
       const format = element.getAttribute("data-format");
       if (content) {
         const decodedContent = decodeURIComponent(content);
-
-        // 准备剪贴板数据 - 同时提供 HTML 和纯文本格式
-        let clipboardItems = [];
-
-        if (format === "html") {
-          // 如果是 HTML 格式，同时写入 HTML 和纯文本
-          const plainText = html2text(decodedContent);
-          const blobHTML = new Blob([decodedContent], { type: "text/html" });
-          const blobText = new Blob([plainText], { type: "text/plain" });
-          clipboardItems = [new ClipboardItem({
-            "text/html": blobHTML,
-            "text/plain": blobText
-          })];
-        } else {
-          // 纯文本格式，只写入纯文本
-          const blobText = new Blob([decodedContent], { type: "text/plain" });
-          clipboardItems = [new ClipboardItem({ "text/plain": blobText })];
-        }
+        const clipboardItems = buildClipboardItems(decodedContent, format);
 
         // 写入剪贴板
         try {
@@ -86,24 +82,7 @@ if (typeof window !== "undefined") {
       const format = element.getAttribute("data-format");
       if (content) {
         const decodedContent = decodeURIComponent(content);
-
-        // 准备剪贴板数据 - 同时提供 HTML 和纯文本格式
-        let clipboardItems = [];
-
-        if (format === "html") {
-          // 如果是 HTML 格式，同时写入 HTML 和纯文本
-          const plainText = html2text(decodedContent);
-          const blobHTML = new Blob([decodedContent], { type: "text/html" });
-          const blobText = new Blob([plainText], { type: "text/plain" });
-          clipboardItems = [new ClipboardItem({
-            "text/html": blobHTML,
-            "text/plain": blobText
-          })];
-        } else {
-          // 纯文本格式，只写入纯文本
-          const blobText = new Blob([decodedContent], { type: "text/plain" });
-          clipboardItems = [new ClipboardItem({ "text/plain": blobText })];
-        }
+        const clipboardItems = buildClipboardItems(decodedContent, format);
 
         // 写入剪贴板
         try {
