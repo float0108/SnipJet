@@ -49,6 +49,18 @@ export function initVirtualList(container, options = {}) {
 }
 
 /**
+ * 从列表中移除剪贴板项目
+ * @param {string} id - 项目 ID
+ * @returns {boolean} - 是否移除成功
+ */
+export function removeClipboardItem(id) {
+  if (virtualList) {
+    return virtualList.removeItem(id);
+  }
+  return false;
+}
+
+/**
  * 预置新剪贴板项目到列表开头
  * @param {object} item - 剪贴板项目
  */

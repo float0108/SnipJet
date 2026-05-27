@@ -157,6 +157,34 @@ export class VirtualListManager {
     }
   }
 
+  removeItem(id) {
+    const index = this.items.findIndex(item => item.id === id);
+    if (index === -1) {
+      console.log(`[VirtualList] removeItem: item ${id} not found`);
+      return false;
+    }
+
+    console.log(`[VirtualList] removeItem: index=${index}, items before=${this.items.length}`);
+    this.items.splice(index, 1);
+    this.filteredItems.splice(index, 1);
+
+    // 删除高度缓存（后续索引会自动重新测量）
+    this.itemHeights.delete(index);
+
+    // 重新渲染（如果删除的项目在可视区域内）
+    if (index >= this.renderedStart && index < this.renderedEnd) {
+      this.renderedEnd = Math.min(this.filteredItems.length, this.renderedEnd);
+      this.render();
+    } else if (index < this.renderedStart) {
+      // 删除的在可视区域之前，需要调整起始位置
+      this.renderedStart = Math.max(0, this.renderedStart - 1);
+      this.renderedEnd = Math.min(this.filteredItems.length, this.renderedEnd);
+      this.render();
+    }
+    console.log(`[VirtualList] removeItem: items after=${this.items.length}`);
+    return true;
+  }
+
   async loadMore() {
     if (this.isLoading || !this.hasMore) return;
 
