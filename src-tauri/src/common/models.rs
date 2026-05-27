@@ -22,6 +22,43 @@ pub enum ClipboardFormat {
     Custom(String),
 }
 
+impl ClipboardFormat {
+    /// 将格式转换为字符串（用于 JSON 序列化等场景）
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ClipboardFormat::Plain => "text",
+            ClipboardFormat::Html => "html",
+            ClipboardFormat::Markdown => "markdown",
+            ClipboardFormat::Rtf => "rtf",
+            ClipboardFormat::Image => "image",
+            ClipboardFormat::Files => "files",
+            ClipboardFormat::Custom(_) => "custom",
+        }
+    }
+
+    /// 将格式转换为数据库存储字符串
+    pub fn to_db_string(&self) -> String {
+        match self {
+            ClipboardFormat::Custom(s) => format!("custom:{}", s),
+            _ => self.as_str().to_string(),
+        }
+    }
+
+    /// 从数据库存储字符串解析格式
+    pub fn from_db_string(s: &str) -> Self {
+        match s {
+            "text" => ClipboardFormat::Plain,
+            "html" => ClipboardFormat::Html,
+            "markdown" => ClipboardFormat::Markdown,
+            "rtf" => ClipboardFormat::Rtf,
+            "image" => ClipboardFormat::Image,
+            "files" => ClipboardFormat::Files,
+            s if s.starts_with("custom:") => ClipboardFormat::Custom(s[7..].to_string()),
+            _ => ClipboardFormat::Plain,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClipboardItem {
     pub id: String,

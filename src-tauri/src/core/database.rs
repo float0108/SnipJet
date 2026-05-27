@@ -436,31 +436,14 @@ impl Database {
     }
 }
 
-/// 将 ClipboardFormat 转换为字符串
+/// 将 ClipboardFormat 转换为字符串（已迁移到 ClipboardFormat::to_db_string）
+#[allow(dead_code)]
 fn format_to_string(format: &ClipboardFormat) -> String {
-    match format {
-        ClipboardFormat::Plain => "text".to_string(),
-        ClipboardFormat::Html => "html".to_string(),
-        ClipboardFormat::Markdown => "markdown".to_string(),
-        ClipboardFormat::Rtf => "rtf".to_string(),
-        ClipboardFormat::Image => "image".to_string(),
-        ClipboardFormat::Files => "files".to_string(),
-        ClipboardFormat::Custom(s) => format!("custom:{}", s),
-    }
+    format.to_db_string()
 }
 
-/// 将字符串解析为 ClipboardFormat
+/// 将字符串解析为 ClipboardFormat（已迁移到 ClipboardFormat::from_db_string）
+#[allow(dead_code)]
 fn parse_format(s: &str) -> ClipboardFormat {
-    match s {
-        "text" => ClipboardFormat::Plain,
-        "html" => ClipboardFormat::Html,
-        "markdown" => ClipboardFormat::Markdown,
-        "rtf" => ClipboardFormat::Rtf,
-        "image" => ClipboardFormat::Image,
-        "files" => ClipboardFormat::Files,
-        s if s.starts_with("custom:") => {
-            ClipboardFormat::Custom(s[7..].to_string())
-        }
-        _ => ClipboardFormat::Plain,
-    }
+    ClipboardFormat::from_db_string(s)
 }
