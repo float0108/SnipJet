@@ -81,9 +81,6 @@ export function renderHistory(history, container, statusElement) {
     return;
   }
 
-  // 始终清空容器内容
-  container.innerHTML = "";
-
   if (history && history.length > 0) {
     const htmlParts = history.map((item) => {
       // 解析剪贴板项目数据
@@ -101,7 +98,7 @@ export function renderHistory(history, container, statusElement) {
       statusElement.textContent = "";
     }
   } else {
-    // 即使是空数组，也确保容器被清空
+    container.innerHTML = "";
     if (statusElement) {
       statusElement.textContent = "";
     }
