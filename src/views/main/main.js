@@ -168,39 +168,24 @@ if (typeof window !== "undefined") {
         }
         console.log("纯文本内容:", plainText.substring(0, 50) + "...");
 
-        // 先复制纯文本到剪贴板，使用后端命令避免触发历史更新
-        if (invoke) {
-          try {
-            await invoke("copy_to_clipboard_no_history", {
-              content: plainText,
-              format: "plain",
-            });
-            console.log("纯文本已复制到剪贴板（无历史更新），准备模拟粘贴");
-          } catch (e) {
-            console.error("后端复制命令执行失败:", e);
-            // 后端API不可用，使用前端fallback
-            await navigator.clipboard.writeText(plainText);
-            console.log("纯文本已复制到剪贴板（前端fallback），准备模拟粘贴");
-          }
+        // 写入剪贴板
+        const writeResult = await writeClipboardWithFallback(plainText, "plain");
+        console.log(`纯文本已复制到剪贴板（${writeResult}），准备模拟粘贴`);
 
-          // 尝试使用后端的paste_to_active_window命令
+        // 调用后端paste命令
+        if (invoke) {
           try {
             console.log("调用后端粘贴命令...");
             await invoke("paste_to_active_window", {
               content: plainText,
               format: "plain",
-              isPinned: pinState.isPinned, // 使用当前 pin 状态
-              contentType: "plain", // 明确指定按纯文本处理
+              isPinned: pinState.isPinned,
+              contentType: "plain",
             });
             console.log("后端粘贴命令执行成功");
           } catch (tauriError) {
             console.error("后端粘贴命令执行失败:", tauriError);
-            // 后端命令失败，使用前端模拟作为 fallback
           }
-        } else {
-          // 后端API不可用，使用前端fallback
-          await navigator.clipboard.writeText(plainText);
-          console.log("纯文本已复制到剪贴板（前端fallback），准备模拟粘贴");
         }
 
         // 前端模拟作为 fallback
