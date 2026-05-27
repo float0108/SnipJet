@@ -21,6 +21,7 @@ export class VirtualListManager {
     this.isLoading = false;
     this.hasMore = true;
     this.offset = 0;
+    this._scrollHandler = null;
 
     this.onLoadMore = options.onLoadMore || (() => {});
     this.onRenderItem = options.onRenderItem || (() => "");
@@ -48,10 +49,8 @@ export class VirtualListManager {
     );
     this.scrollObserver.observe(this.sentinel);
 
-    this.scrollContainer.addEventListener(
-      "scroll",
-      this.throttle(() => this.handleScroll(), 16)
-    );
+    this._scrollHandler = this.throttle(() => this.handleScroll(), 16);
+    this.scrollContainer.addEventListener("scroll", this._scrollHandler);
 
     this.resizeObserver = new ResizeObserver(() => this.updateContainerHeight());
     this.resizeObserver.observe(this.scrollContainer);
@@ -323,6 +322,10 @@ export class VirtualListManager {
   }
 
   destroy() {
+    if (this._scrollHandler) {
+      this.scrollContainer.removeEventListener("scroll", this._scrollHandler);
+      this._scrollHandler = null;
+    }
     this.scrollObserver?.disconnect();
     this.resizeObserver?.disconnect();
     this.itemResizeObserver?.disconnect();
