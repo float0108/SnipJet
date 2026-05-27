@@ -53,6 +53,45 @@ if (typeof window !== "undefined") {
     return false;
   }
 
+  // 写入剪贴板（带降级逻辑）
+  async function writeClipboardWithFallback(decodedContent, format) {
+    const clipboardItems = buildClipboardItems(decodedContent, format);
+    try {
+      await navigator.clipboard.write(clipboardItems);
+      return "clipboard-api";
+    } catch (clipboardError) {
+      await error("Clipboard API 失败，尝试后端:", clipboardError);
+      if (invoke) {
+        try {
+          await invoke("copy_to_clipboard_no_history", {
+            content: decodedContent,
+            format: format,
+          });
+          return "backend";
+        } catch (e) {
+          await error("后端复制命令执行失败:", e);
+          await navigator.clipboard.writeText(decodedContent);
+          return "fallback";
+        }
+      } else {
+        await navigator.clipboard.writeText(decodedContent);
+        return "fallback";
+      }
+    }
+  }
+
+  // 构建 Pandoc contentType
+  function buildPandocContentType(format) {
+    if (format !== "markdown") return null;
+    const settings = JSON.parse(localStorage.getItem('snipjet-settings') || '{}');
+    if (!settings.paste?.use_pandoc_for_markdown) return null;
+    const templatePath = settings.paste?.pandoc_template_path;
+    if (templatePath && templatePath.trim()) {
+      return `docx:${templatePath.trim()}`;
+    }
+    return "docx";
+  }
+
   // 复制到剪贴板
   window.copyToClipboard = async function (element) {
     try {
@@ -60,33 +99,8 @@ if (typeof window !== "undefined") {
       const format = element.getAttribute("data-format");
       if (content) {
         const decodedContent = decodeURIComponent(content);
-        const clipboardItems = buildClipboardItems(decodedContent, format);
-
-        // 写入剪贴板
-        try {
-          await navigator.clipboard.write(clipboardItems);
-          await log("内容已复制到剪贴板（多格式）");
-        } catch (clipboardError) {
-          await error("Clipboard API 失败，尝试后端:", clipboardError);
-
-          // 降级到后端命令
-          if (invoke) {
-            try {
-              await invoke("copy_to_clipboard_no_history", {
-                content: decodedContent,
-                format: format,
-              });
-              await log("内容已复制到剪贴板（后端）");
-            } catch (e) {
-              await error("后端调用失败:", e);
-              await navigator.clipboard.writeText(decodedContent);
-              await log("内容已复制到剪贴板（前端 fallback）");
-            }
-          } else {
-            await navigator.clipboard.writeText(decodedContent);
-            await log("内容已复制到剪贴板（前端 fallback）");
-          }
-        }
+        const writeResult = await writeClipboardWithFallback(decodedContent, format);
+        await log(`内容已复制到剪贴板（${writeResult}）`);
       }
     } catch (error) {
       await error("复制失败:", error);
@@ -100,55 +114,16 @@ if (typeof window !== "undefined") {
       const format = element.getAttribute("data-format");
       if (content) {
         const decodedContent = decodeURIComponent(content);
-        const clipboardItems = buildClipboardItems(decodedContent, format);
 
         // 写入剪贴板
-        try {
-          await navigator.clipboard.write(clipboardItems);
-          await log("内容已复制到剪贴板（多格式），准备模拟粘贴");
-        } catch (clipboardError) {
-          await error("Clipboard API 失败，尝试后端:", clipboardError);
-
-          // 降级到后端命令
-          if (invoke) {
-            try {
-              await invoke("copy_to_clipboard_no_history", {
-                content: decodedContent,
-                format: format,
-              });
-              await log("内容已复制到剪贴板（后端），准备模拟粘贴");
-            } catch (e) {
-              await error("后端复制命令执行失败:", e);
-              await navigator.clipboard.writeText(decodedContent);
-              await log("内容已复制到剪贴板（前端 fallback），准备模拟粘贴");
-            }
-          } else {
-            await navigator.clipboard.writeText(decodedContent);
-            await log("内容已复制到剪贴板（前端 fallback），准备模拟粘贴");
-          }
-        }
+        const writeResult = await writeClipboardWithFallback(decodedContent, format);
+        await log(`内容已复制到剪贴板（${writeResult}），准备模拟粘贴`);
 
         // 尝试使用后端的paste_to_active_window命令
         if (invoke) {
           try {
             await log("调用后端粘贴命令...");
-
-            // 检查是否需要使用 Pandoc 粘贴 Markdown
-            let contentType = null;
-            if (format === "markdown") {
-              const settings = JSON.parse(localStorage.getItem('snipjet-settings') || '{}');
-              if (settings.paste?.use_pandoc_for_markdown) {
-                // 构建 contentType，包含模板路径（如果有）
-                const templatePath = settings.paste?.pandoc_template_path;
-                if (templatePath && templatePath.trim()) {
-                  contentType = `docx:${templatePath.trim()}`;
-                  await log("使用 Pandoc (docx) 格式粘贴 Markdown，模板: " + templatePath);
-                } else {
-                  contentType = "docx";
-                  await log("使用 Pandoc (docx) 格式粘贴 Markdown（无模板）");
-                }
-              }
-            }
+            const contentType = buildPandocContentType(format);
 
             await invoke("paste_to_active_window", {
               content: decodedContent,
@@ -159,7 +134,6 @@ if (typeof window !== "undefined") {
             await log("后端粘贴命令执行成功");
           } catch (tauriError) {
             await error("后端粘贴命令执行失败:", tauriError);
-            // 后端命令失败，使用前端模拟作为 fallback
           }
         }
 
