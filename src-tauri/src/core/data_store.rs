@@ -17,9 +17,6 @@ const SETTINGS_FILE: &str = "settings.json";
 const TEXT_EXPAND_FILE: &str = "text_expand.yaml";
 const LEGACY_HISTORY_FILE: &str = "clipboard_history.json";
 
-// 自动保存间隔（秒）
-pub const AUTO_SAVE_INTERVAL_SECS: u64 = 60; // 1分钟
-
 /// 文本扩展规则数据结构（用于文件存储）
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TextExpandRuleData {
@@ -38,24 +35,29 @@ pub struct DataStore {
 }
 
 impl DataStore {
-    /// 创建新的数据存储管理器
+    /// 创建新的数据存储管理器（通过 AppHandle）
     pub fn new(app_handle: &tauri::AppHandle) -> Result<Self, String> {
         let app_data_dir = app_handle
             .path()
             .app_data_dir()
             .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
+        Self::from_path(&app_data_dir)
+    }
+
+    /// 从路径创建数据存储管理器
+    pub fn from_path(app_data_dir: &std::path::Path) -> Result<Self, String> {
         // 确保目录存在
         if !app_data_dir.exists() {
-            fs::create_dir_all(&app_data_dir)
+            fs::create_dir_all(app_data_dir)
                 .map_err(|e| format!("Failed to create app data dir: {}", e))?;
         }
 
         // 初始化数据库
-        let db = Database::new(&app_data_dir)?;
+        let db = Database::new(&app_data_dir.to_path_buf())?;
 
         Ok(Self {
-            app_data_dir,
+            app_data_dir: app_data_dir.to_path_buf(),
             db,
             last_saved_history: Arc::new(Mutex::new(Vec::new())),
         })
@@ -473,21 +475,14 @@ impl DataStore {
     }
 }
 
-/// 启动自动保存任务
+/// 启动自动保存任务（已被实时保存替代，保留作为可选功能）
+#[allow(dead_code)]
 pub fn start_auto_save(
-    app_handle: tauri::AppHandle,
+    datastore: Arc<DataStore>,
     history: Arc<Mutex<Vec<ClipboardItem>>>,
     interval_secs: u64,
 ) {
     thread::spawn(move || {
-        let data_store = match DataStore::new(&app_handle) {
-            Ok(store) => store,
-            Err(e) => {
-                error!("Failed to initialize data store for auto-save: {}", e);
-                return;
-            }
-        };
-
         info!("Auto-save task started (interval: {} seconds)", interval_secs);
 
         loop {
@@ -498,8 +493,8 @@ pub fn start_auto_save(
                 history_lock.clone()
             };
 
-            if data_store.has_history_changed(&current_history) {
-                if let Err(e) = data_store.save_clipboard_history(&current_history) {
+            if datastore.has_history_changed(&current_history) {
+                if let Err(e) = datastore.save_clipboard_history(&current_history) {
                     error!("Auto-save failed: {}", e);
                 } else {
                     info!("Auto-save completed ({} items)", current_history.len());
@@ -511,17 +506,15 @@ pub fn start_auto_save(
 
 /// 保存所有数据（应用退出时调用）
 pub fn save_all_data(
-    app_handle: &tauri::AppHandle,
+    datastore: &DataStore,
     history: Arc<Mutex<Vec<ClipboardItem>>>,
 ) -> Result<(), String> {
-    let data_store = DataStore::new(app_handle)?;
-
     // 保存历史记录
     let history_data = {
         let history_lock = history.lock().unwrap();
         history_lock.clone()
     };
-    data_store.save_clipboard_history(&history_data)?;
+    datastore.save_clipboard_history(&history_data)?;
 
     // 收藏数据在 toggle_favorite 时已经实时保存到数据库
     // 这里不需要额外保存
@@ -532,18 +525,16 @@ pub fn save_all_data(
 
 /// 加载所有数据（应用启动时调用）
 pub fn load_all_data(
-    app_handle: &tauri::AppHandle,
+    datastore: &DataStore,
 ) -> Result<(Vec<ClipboardItem>, serde_json::Value, Vec<TextExpandRuleData>), String> {
-    let data_store = DataStore::new(app_handle)?;
-
     // 尝试从旧版 JSON 迁移
-    if let Err(e) = data_store.migrate_from_json() {
+    if let Err(e) = datastore.migrate_from_json() {
         warn!("Migration check failed (non-fatal): {}", e);
     }
 
-    let history = data_store.load_clipboard_history()?;
-    let settings = data_store.load_settings()?;
-    let text_expand_rules = data_store.load_text_expand_rules()?;
+    let history = datastore.load_clipboard_history()?;
+    let settings = datastore.load_settings()?;
+    let text_expand_rules = datastore.load_text_expand_rules()?;
 
     info!("All data loaded successfully");
     Ok((history, settings, text_expand_rules))

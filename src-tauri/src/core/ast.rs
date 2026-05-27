@@ -15,6 +15,7 @@ pub enum Block {
     Paragraph(Vec<Inline>),
     CodeBlock { language: Option<String>, code: String },
     Table { headers: Vec<Inline>, rows: Vec<Vec<Inline>> },
+    #[allow(dead_code)]
     MathDisplay(String),
     List { items: Vec<ListItem>, list_type: ListType },
     BlockQuote(Vec<Block>),
@@ -32,6 +33,7 @@ pub enum Inline {
     Bold(Vec<Inline>),
     Italic(Vec<Inline>),
     CodeSpan(String),
+    #[allow(dead_code)]
     MathInline(String),
     Link { text: Vec<Inline>, url: String },
 }

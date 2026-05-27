@@ -15,6 +15,7 @@ use super::service::ClipboardMcpService;
 
 /// MCP 服务器句柄
 pub struct McpServerHandle {
+    #[allow(dead_code)]
     pub addr: SocketAddr,
     pub cancel_token: CancellationToken,
     #[allow(dead_code)]
