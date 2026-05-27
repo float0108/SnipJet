@@ -35,6 +35,24 @@ if (typeof window !== "undefined") {
     }
   }
 
+  // 分发粘贴键盘事件（共享逻辑）
+  function dispatchPasteEvent() {
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+    const pasteEvent = new KeyboardEvent("keydown", {
+      key: "v",
+      ctrlKey: !isMac,
+      metaKey: isMac,
+      bubbles: true,
+      cancelable: true,
+    });
+    const activeElement = document.activeElement;
+    if (activeElement) {
+      activeElement.dispatchEvent(pasteEvent);
+      return true;
+    }
+    return false;
+  }
+
   // 复制到剪贴板
   window.copyToClipboard = async function (element) {
     try {
@@ -146,21 +164,7 @@ if (typeof window !== "undefined") {
         }
 
         // 前端模拟作为 fallback
-        const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-
-        // 创建键盘事件
-        const pasteEvent = new KeyboardEvent("keydown", {
-          key: "v",
-          ctrlKey: !isMac,
-          metaKey: isMac,
-          bubbles: true,
-          cancelable: true,
-        });
-
-        // 分发事件到当前活动元素
-        const activeElement = document.activeElement;
-        if (activeElement) {
-          activeElement.dispatchEvent(pasteEvent);
+        if (dispatchPasteEvent()) {
           await log("模拟粘贴事件已发送");
         } else {
           await log("没有活动元素，无法发送粘贴事件");
@@ -226,22 +230,7 @@ if (typeof window !== "undefined") {
         }
 
         // 前端模拟作为 fallback
-        const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-        const modifierKey = isMac ? "Meta" : "Control";
-
-        // 创建键盘事件
-        const pasteEvent = new KeyboardEvent("keydown", {
-          key: "v",
-          ctrlKey: !isMac,
-          metaKey: isMac,
-          bubbles: true,
-          cancelable: true,
-        });
-
-        // 分发事件到当前活动元素
-        const activeElement = document.activeElement;
-        if (activeElement) {
-          activeElement.dispatchEvent(pasteEvent);
+        if (dispatchPasteEvent()) {
           console.log("模拟粘贴纯文本事件已发送");
         } else {
           console.log("没有活动元素，无法发送粘贴事件");
