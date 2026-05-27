@@ -130,19 +130,22 @@ export function renderClipboardItem(item) {
       data-image-height="${item.imageHeight || ''}"
       data-image-size="${item.imageSize || ''}"
       data-image-format="${item.imageFormat || ''}"
+      role="button"
+      tabindex="0"
       onclick="window.pasteToCurrentWindow(this)"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.pasteToCurrentWindow(this);}"
     >
       <div class="item-actions-overlay">
-        <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? '取消收藏' : '收藏'}" onclick="window.toggleFavorite('${uniqueId}'); event.stopPropagation();">
+        <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? '取消收藏' : '收藏'}" aria-label="${safeData.isFavorite ? '取消收藏' : '收藏'}" onclick="window.toggleFavorite('${uniqueId}'); event.stopPropagation();">
           ${safeData.isFavorite ? ICONS.favoriteFilled : ICONS.favorite}
         </button>
-        <button class="card-btn" title="详情/编辑" onclick="window.openReaderWindow(this.closest('.clipboard-item')); event.stopPropagation();">
+        <button class="card-btn" title="详情/编辑" aria-label="详情/编辑" onclick="window.openReaderWindow(this.closest('.clipboard-item')); event.stopPropagation();">
           ${ICONS.edit}
         </button>
-        ${safeData.format !== "image" ? `<button class="card-btn" title="粘贴为纯文本" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
+        ${safeData.format !== "image" ? `<button class="card-btn" title="粘贴为纯文本" aria-label="粘贴为纯文本" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
           ${ICONS.copy}
         </button>` : ""}
-        <button class="card-btn btn-delete" title="删除" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
+        <button class="card-btn btn-delete" title="删除" aria-label="删除" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
           ${ICONS.delete}
         </button>
       </div>
@@ -154,8 +157,8 @@ export function renderClipboardItem(item) {
       <div class="item-meta-row">
         <span class="badge type-${safeData.format}">${safeData.label}</span>
 
-        <div style="display: flex; gap: 8px; align-items: center;">
-          ${safeData.wordCount ? `<span class="timestamp" style="opacity: 0.5;">${safeData.wordCount}</span>` : ""}
+        <div class="meta-row-info">
+          ${safeData.wordCount ? `<span class="timestamp meta-word-count">${safeData.wordCount}</span>` : ""}
           <span class="timestamp">${safeData.displayTime}</span>
         </div>
       </div>
