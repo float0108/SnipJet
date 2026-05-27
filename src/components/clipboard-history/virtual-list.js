@@ -6,6 +6,7 @@ import {loadItemImage} from "./clipboard-item.js";
 const BUFFER_SIZE = 5;
 const BATCH_SIZE = 20;
 const ESTIMATED_ITEM_HEIGHT = 120;
+const THROTTLE_MS_60FPS = 16; // ~60fps scroll throttle
 
 export class VirtualListManager {
   constructor(container, options = {}) {
@@ -49,7 +50,7 @@ export class VirtualListManager {
     );
     this.scrollObserver.observe(this.sentinel);
 
-    this._scrollHandler = this.throttle(() => this.handleScroll(), 16);
+    this._scrollHandler = this.throttle(() => this.handleScroll(), THROTTLE_MS_60FPS);
     this.scrollContainer.addEventListener("scroll", this._scrollHandler);
 
     this.resizeObserver = new ResizeObserver(() => this.updateContainerHeight());
