@@ -14,7 +14,8 @@ use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
 // 定义鼠标左键的虚拟键码
 const VK_LBUTTON: u16 = 0x01;
-// 定义鼠标右键 (可选)
+// 定义鼠标右键 (保留供将来使用)
+#[allow(dead_code)]
 const VK_RBUTTON: u16 = 0x02;
 
 // 保持 is_point_in_window 不变

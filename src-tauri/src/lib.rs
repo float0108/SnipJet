@@ -19,26 +19,30 @@ use tauri_plugin_autostart::MacosLauncher;
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, SHORTCUT_ACTION_MAP};
 use crate::common::models::ClipboardItem;
-use crate::core::data_store::{load_all_data, save_all_data};
+use crate::core::data_store::{load_all_data, save_all_data, DataStore};
 use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
 use crate::mcp::start_mcp_server;
 use crate::common::globals::MCP_SERVER_HANDLE;
-use tauri::{Emitter, Listener};
+use tauri::{Emitter, Listener, AppHandle};
 
 /// 应用状态，包含剪贴板历史和收藏
 pub struct AppState {
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
     pub favorites: Arc<Mutex<Vec<ClipboardItem>>>,
     pub max_history_items: Arc<Mutex<Option<usize>>>,
+    pub datastore: Arc<DataStore>,
+    pub app_handle: AppHandle,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(datastore: DataStore, app_handle: AppHandle) -> Self {
         Self {
             history: Arc::new(Mutex::new(Vec::new())),
             favorites: Arc::new(Mutex::new(Vec::new())),
             max_history_items: Arc::new(Mutex::new(None)),
+            datastore: Arc::new(datastore),
+            app_handle,
         }
     }
 }
@@ -80,15 +84,11 @@ pub fn run_with_setup<F>(setup: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnOnce(&mut tauri::App) -> Result<(), Box<dyn std::error::Error>> + Send + Sync + 'static,
 {
-    let app_state = Arc::new(AppState::new());
-    let state_for_setup = app_state.clone();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
-        .manage(app_state)
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
@@ -99,12 +99,23 @@ where
                 info!("App handle stored to global variable");
             }
 
+            // 创建 DataStore（打开数据库连接，整个进程生命周期只开一次）
+            let app_data_dir = app_handle.path().app_data_dir()
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+            let datastore = DataStore::from_path(&app_data_dir)
+                .map_err(|e| format!("Failed to create data store: {}", e))?;
+
+            // 创建 AppState 并管理
+            let app_state = Arc::new(AppState::new(datastore, app_handle.clone()));
+            let state_for_setup = app_state.clone();
+            app.manage(app_state);
+
             // 启动全局鼠标监听器，用于检测点击外部窗口
             start_global_click_listener(app_handle.clone());
             info!("Global click listener started");
 
             // 加载持久化数据
-            match load_all_data(&app_handle) {
+            match load_all_data(&state_for_setup.datastore) {
                 Ok((loaded_history, loaded_settings, _text_expand_rules)) => {
                     info!("Loaded {} history items from storage", loaded_history.len());
                     // 将加载的数据存入history
@@ -114,8 +125,7 @@ where
                     }
 
                     // 加载收藏数据
-                    let data_store = crate::core::data_store::DataStore::new(&app_handle)?;
-                    match data_store.load_favorites() {
+                    match state_for_setup.datastore.load_favorites() {
                         Ok(loaded_favorites) => {
                             info!("Loaded {} favorites from storage", loaded_favorites.len());
                             let mut favorites_lock = state_for_setup.favorites.lock().unwrap();
@@ -203,7 +213,8 @@ where
                 let manager = ClipboardManager::new(
                     app_handle_for_clipboard,
                     state_for_clipboard.history.clone(),
-                    state_for_clipboard.max_history_items.clone()
+                    state_for_clipboard.max_history_items.clone(),
+                    state_for_clipboard.datastore.clone()
                 );
 
                 // 注意：clipboard-rs 的 Watcher 需要在特定线程模型下运行
@@ -225,7 +236,7 @@ where
 
             // 从设置中读取 MCP 配置并启动服务
             {
-                let settings = load_all_data(&app_handle)
+                let settings = load_all_data(&state_for_setup.datastore)
                     .map(|(_, settings, _)| settings)
                     .unwrap_or_else(|_| serde_json::json!({}));
 
@@ -308,7 +319,7 @@ where
                     match event.id.as_ref() {
                         "quit" => {
                             // 保存数据后再退出
-                            if let Err(e) = save_all_data(app, state_for_tray.history.clone()) {
+                            if let Err(e) = save_all_data(&state_for_tray.datastore, state_for_tray.history.clone()) {
                                 error!("Failed to save data on exit: {}", e);
                             }
                             app.exit(0);

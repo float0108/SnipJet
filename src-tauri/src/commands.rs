@@ -28,7 +28,6 @@ use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE, set_clipboard_ignore_for};
 use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
-use crate::core::data_store::DataStore;
 use crate::AppState;
 
 // 引入你的其他依赖，例如 ClipboardManager, LAST_HASH 等
@@ -61,14 +60,13 @@ pub fn clear_history(state: State<'_, Arc<AppState>>) {
 
 #[tauri::command]
 pub fn delete_clipboard_item(
-    app_handle: AppHandle,
     state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<(), String> {
-    let data_store = DataStore::new(&app_handle)?;
+    let datastore = &state.datastore;
 
     // 从历史表删除（不影响收藏表）
-    data_store.delete_item(&id)?;
+    datastore.delete_item(&id)?;
 
     // 从内存中的历史记录移除
     let history_to_save: Vec<ClipboardItem>;
@@ -80,6 +78,7 @@ pub fn delete_clipboard_item(
     }
 
     // 发送全量状态给前端
+    let app_handle = state.app_handle.clone();
     let payload = serde_json::json!({
         "type": "state-changed",
         "items": history_to_save
@@ -93,14 +92,13 @@ pub fn delete_clipboard_item(
 
 #[tauri::command]
 pub fn delete_favorite_item(
-    app_handle: AppHandle,
     state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<(), String> {
-    let data_store = DataStore::new(&app_handle)?;
+    let datastore = &state.datastore;
 
     // 从收藏表删除（不影响历史表）
-    data_store.delete_favorite_item(&id)?;
+    datastore.delete_favorite_item(&id)?;
 
     // 从内存中的收藏列表移除
     let mut favorites_lock = state.favorites.lock().unwrap();
@@ -118,14 +116,13 @@ pub fn delete_favorite_item(
 
 #[tauri::command]
 pub fn toggle_favorite(
-    app_handle: AppHandle,
     state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<bool, String> {
-    let data_store = DataStore::new(&app_handle)?;
+    let datastore = &state.datastore;
 
-    // 使用 data_store 切换收藏状态（在两个表之间复制/删除）
-    let new_state = data_store.toggle_favorite(&id)?;
+    // 使用 datastore 切换收藏状态（在两个表之间复制/删除）
+    let new_state = datastore.toggle_favorite(&id)?;
 
     // 更新内存中的历史记录状态
     {
@@ -154,6 +151,7 @@ pub fn toggle_favorite(
 
     // 发送全量状态给前端
     let history_to_save = state.history.lock().unwrap().clone();
+    let app_handle = state.app_handle.clone();
     let payload = serde_json::json!({
         "type": "state-changed",
         "items": history_to_save
@@ -175,11 +173,10 @@ pub fn get_favorite_items(
 
 #[tauri::command]
 pub fn load_favorites_from_db(
-    app_handle: AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ClipboardItem>, String> {
-    let data_store = DataStore::new(&app_handle)?;
-    let loaded_favorites = data_store.load_favorites()?;
+    let datastore = &state.datastore;
+    let loaded_favorites = datastore.load_favorites()?;
 
     // 更新内存中的收藏列表
     let mut favorites_lock = state.favorites.lock().unwrap();
@@ -191,8 +188,9 @@ pub fn load_favorites_from_db(
 
 #[tauri::command]
 pub async fn paste_to_active_window(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     _window: tauri::WebviewWindow,
+    state: State<'_, Arc<AppState>>,
     content: String,
     format: String,
     _is_pinned: bool,
@@ -211,10 +209,10 @@ pub async fn paste_to_active_window(
     // 2. 写入剪贴板 (在新线程执行)
     let format_clone = format.clone();
 
-    // 对于图片格式，需要先读取图片数据
+    // 对于图片格式，需要先读取图片数据（使用缓存的 DataStore）
     let image_data = if format == "image" {
-        let data_store = DataStore::new(&app_handle)?;
-        Some(data_store.load_image(&content)?)
+        let datastore = &state.datastore;
+        Some(datastore.load_image(&content)?)
     } else {
         None
     };
@@ -544,7 +542,6 @@ pub async fn get_mouse_position() -> Result<(i32, i32), String> {
 /// 保存剪贴板历史到文件
 #[tauri::command]
 pub async fn save_clipboard_history(
-    app_handle: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     // 获取历史数据（在锁外获取，避免长时间持有锁）
@@ -553,12 +550,11 @@ pub async fn save_clipboard_history(
         history_lock.clone()
     };
     let history_len = history_data.len();
+    let datastore = state.datastore.clone();
 
     // 将同步 I/O 操作放到 spawn_blocking 中执行
     tokio::task::spawn_blocking(move || {
-        let data_store = DataStore::new(&app_handle)
-            .map_err(|e| format!("Failed to create data store: {}", e))?;
-        data_store.save_clipboard_history(&history_data)
+        datastore.save_clipboard_history(&history_data)
             .map_err(|e| format!("Failed to save clipboard history: {}", e))?;
         Ok::<(), String>(())
     })
@@ -572,18 +568,14 @@ pub async fn save_clipboard_history(
 /// 从文件加载剪贴板历史
 #[tauri::command]
 pub async fn load_clipboard_history_command(
-    app_handle: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ClipboardItem>, String> {
+    let datastore = state.datastore.clone();
+
     // 将同步 I/O 操作放到 spawn_blocking 中执行
-    let loaded_history = tokio::task::spawn_blocking({
-        let app_handle = app_handle.clone();
-        move || {
-            let data_store = DataStore::new(&app_handle)
-                .map_err(|e| format!("Failed to create data store: {}", e))?;
-            data_store.load_clipboard_history()
-                .map_err(|e| format!("Failed to load clipboard history: {}", e))
-        }
+    let loaded_history = tokio::task::spawn_blocking(move || {
+        datastore.load_clipboard_history()
+            .map_err(|e| format!("Failed to load clipboard history: {}", e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))??;
@@ -603,19 +595,15 @@ pub async fn load_clipboard_history_command(
 /// 保存设置到文件
 #[tauri::command]
 pub async fn save_settings(
-    app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
     settings: serde_json::Value,
 ) -> Result<(), String> {
+    let datastore = state.datastore.clone();
+
     // 将同步 I/O 操作放到 spawn_blocking 中执行
-    tokio::task::spawn_blocking({
-        let app_handle = app_handle.clone();
-        let settings = settings.clone();
-        move || {
-            let data_store = DataStore::new(&app_handle)
-                .map_err(|e| format!("Failed to create data store: {}", e))?;
-            data_store.save_settings(&settings)
-                .map_err(|e| format!("Failed to save settings: {}", e))
-        }
+    tokio::task::spawn_blocking(move || {
+        datastore.save_settings(&settings)
+            .map_err(|e| format!("Failed to save settings: {}", e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))??;
@@ -627,17 +615,14 @@ pub async fn save_settings(
 /// 从文件加载设置
 #[tauri::command]
 pub async fn load_settings_command(
-    app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
+    let datastore = state.datastore.clone();
+
     // 将同步 I/O 操作放到 spawn_blocking 中执行
-    let settings = tokio::task::spawn_blocking({
-        let app_handle = app_handle.clone();
-        move || {
-            let data_store = DataStore::new(&app_handle)
-                .map_err(|e| format!("Failed to create data store: {}", e))?;
-            data_store.load_settings()
-                .map_err(|e| format!("Failed to load settings: {}", e))
-        }
+    let settings = tokio::task::spawn_blocking(move || {
+        datastore.load_settings()
+            .map_err(|e| format!("Failed to load settings: {}", e))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))??;
@@ -721,10 +706,14 @@ pub async fn unregister_global_shortcut(
 /// 加载文本扩展规则
 #[tauri::command]
 pub async fn load_text_expand_rules(
-    app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<crate::core::data_store::TextExpandRuleData>, String> {
-    let data_store = DataStore::new(&app_handle)?;
-    let rules = data_store.load_text_expand_rules()?;
+    let datastore = state.datastore.clone();
+    let rules = tokio::task::spawn_blocking(move || {
+        datastore.load_text_expand_rules()
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
     info!("Text expand rules loaded ({} rules)", rules.len());
     Ok(rules)
 }
@@ -732,12 +721,17 @@ pub async fn load_text_expand_rules(
 /// 保存文本扩展规则
 #[tauri::command]
 pub async fn save_text_expand_rules(
-    app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
     rules: Vec<crate::core::data_store::TextExpandRuleData>,
 ) -> Result<(), String> {
-    let data_store = DataStore::new(&app_handle)?;
-    data_store.save_text_expand_rules(&rules)?;
-    info!("Text expand rules saved ({} rules)", rules.len());
+    let datastore = state.datastore.clone();
+    let rules_clone = rules.clone();
+    tokio::task::spawn_blocking(move || {
+        datastore.save_text_expand_rules(&rules)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+    info!("Text expand rules saved ({} rules)", rules_clone.len());
     Ok(())
 }
 
@@ -768,7 +762,7 @@ fn get_image_cache() -> &'static Mutex<HashMap<String, String>> {
 /// 读取图片并返回 base64（供前端显示）
 #[tauri::command]
 pub async fn read_image_as_base64(
-    app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
     relative_path: String,
 ) -> Result<String, String> {
     // 先检查缓存
@@ -780,8 +774,13 @@ pub async fn read_image_as_base64(
     }
 
     // 缓存未命中，从磁盘加载
-    let data_store = DataStore::new(&app_handle)?;
-    let image_data = data_store.load_image(&relative_path)?;
+    let datastore = state.datastore.clone();
+    let relative_path_for_load = relative_path.clone();
+    let image_data = tokio::task::spawn_blocking(move || {
+        datastore.load_image(&relative_path_for_load)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
 
     // 转换为 base64
     let base64_str = STANDARD.encode(&image_data);
@@ -798,11 +797,15 @@ pub async fn read_image_as_base64(
 /// 获取图片绝对路径（供前端显示）
 #[tauri::command]
 pub async fn get_image_path(
-    app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
     relative_path: String,
 ) -> Result<String, String> {
-    let data_store = DataStore::new(&app_handle)?;
-    let absolute_path = data_store.get_image_absolute_path(&relative_path);
+    let datastore = state.datastore.clone();
+    let absolute_path = tokio::task::spawn_blocking(move || {
+        Ok::<_, String>(datastore.get_image_absolute_path(&relative_path))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
     Ok(absolute_path.to_string_lossy().to_string())
 }
 
@@ -899,7 +902,7 @@ pub fn stop_mcp_service() -> Result<(), String> {
 
     let mut handle = MCP_SERVER_HANDLE.lock().map_err(|e| e.to_string())?;
 
-    if let Some(mut h) = handle.take() {
+    if let Some(h) = handle.take() {
         h.cancel_token.cancel();
         info!("MCP service stopped");
         Ok(())

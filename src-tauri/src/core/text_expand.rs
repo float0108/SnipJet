@@ -87,6 +87,7 @@ impl TextExpander {
     }
 
     /// 获取当前规则
+    #[allow(dead_code)]
     pub fn get_rules(&self) -> Vec<TextExpandRule> {
         self.rules.lock().unwrap().clone()
     }

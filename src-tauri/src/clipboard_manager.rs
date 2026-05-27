@@ -23,6 +23,7 @@ pub struct ClipboardManager {
     pub app_handle: AppHandle,
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
     pub max_history_items: Arc<Mutex<Option<usize>>>,
+    pub datastore: Arc<DataStore>,
     pub last_hash: String,
     pub last_event_time: Instant,
     pub last_event_has_html: bool,
@@ -33,6 +34,7 @@ impl ClipboardManager {
         app_handle: AppHandle,
         history: Arc<Mutex<Vec<ClipboardItem>>>,
         max_history_items: Arc<Mutex<Option<usize>>>,
+        datastore: Arc<DataStore>,
     ) -> Self {
         let ctx = ClipboardContext::new().expect("Failed to init clipboard context");
         ClipboardManager {
@@ -40,6 +42,7 @@ impl ClipboardManager {
             app_handle,
             history,
             max_history_items,
+            datastore,
             last_hash: String::new(),
             last_event_time: Instant::now(),
             last_event_has_html: false,
@@ -59,7 +62,6 @@ impl ClipboardManager {
     // 处理并广播新条目
     pub fn process_new_item(&self, item: ClipboardItem) {
         let app_handle = self.app_handle.clone();
-        let item_id = item.id.clone();
 
         // 1. 更新 State（先在内存中操作）
         {
@@ -80,11 +82,9 @@ impl ClipboardManager {
             }
         }
 
-        // 2. 同步保存到数据库
+        // 2. 同步保存到数据库（使用缓存的 DataStore）
         let history_to_save = self.history.lock().unwrap().clone();
-        if let Err(e) = DataStore::new(&app_handle)
-            .and_then(|ds| ds.save_clipboard_history(&history_to_save).map(|_| ds))
-        {
+        if let Err(e) = self.datastore.save_clipboard_history(&history_to_save) {
             error!("Failed to save clipboard history: {}", e);
             return;
         }
@@ -254,27 +254,20 @@ impl ClipboardHandler for ClipboardManager {
             self.last_event_has_html = false;
 
             // 保存图片文件
-            match DataStore::new(&self.app_handle) {
-                Ok(data_store) => {
-                    match data_store.save_image(&hash, &bytes) {
-                        Ok(relative_path) => {
-                            // 创建图片条目
-                            let item = ClipboardItem::new_image(
-                                &relative_path,
-                                &hash,
-                                Some(width as usize),
-                                Some(height as usize),
-                                Some(bytes.len()),
-                            );
-                            self.process_new_item(item);
-                        }
-                        Err(e) => {
-                            error!("Failed to save image file: {}", e);
-                        }
-                    }
+            match self.datastore.save_image(&hash, &bytes) {
+                Ok(relative_path) => {
+                    // 创建图片条目
+                    let item = ClipboardItem::new_image(
+                        &relative_path,
+                        &hash,
+                        Some(width as usize),
+                        Some(height as usize),
+                        Some(bytes.len()),
+                    );
+                    self.process_new_item(item);
                 }
                 Err(e) => {
-                    error!("Failed to create DataStore: {}", e);
+                    error!("Failed to save image file: {}", e);
                 }
             }
             return; // 捕获到图片后，不再处理后续格式
