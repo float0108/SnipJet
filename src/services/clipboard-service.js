@@ -3,7 +3,7 @@
 import {getClipboardHistory, testTauriConnection, listen} from "./tauri-api.js";
 import {parseClipboardItem} from "../utils/content-parser.js";
 import {renderClipboardItem} from "../components/clipboard-history/clipboard-item.js";
-import {renderHistory, createMockHistory} from "../components/clipboard-history/clipboard-history.js";
+import {renderHistory, createMockHistory, prependClipboardItem, removeClipboardItem} from "../components/clipboard-history/clipboard-history.js";
 
 /**
  * 更新状态显示
@@ -122,11 +122,14 @@ function handleClipboardEvent(payload, container, statusElement, onNewItem) {
   console.log("处理剪贴板事件:", payload);
 
   if (payload.type === "remove") {
-    // 删除旧项
-    const removedElement = container.querySelector(`[data-id="${payload.id}"]`);
-    if (removedElement) {
-      removedElement.remove();
-      console.log("删除了旧项:", payload.id);
+    // 优先使用虚拟列表的增量删除
+    if (!removeClipboardItem(payload.id)) {
+      // 虚拟列表未启用时，降级到直接 DOM 操作
+      const removedElement = container.querySelector(`[data-id="${payload.id}"]`);
+      if (removedElement) {
+        removedElement.remove();
+        console.log("删除了旧项:", payload.id);
+      }
     }
   } else if (payload.type === "add") {
     // 添加新项

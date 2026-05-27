@@ -15,9 +15,7 @@ import {
   renderEmptyState,
   ensureEmptyStateStyles,
 } from "../../components/empty-state/empty-state.js";
-import { renderHistory, initVirtualList, prependClipboardItem } from "../../components/clipboard-history/clipboard-history.js";
-import { renderClipboardItem } from "../../components/clipboard-history/clipboard-item.js";
-import { parseClipboardItem } from "../../utils/content-parser.js";
+import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
 import {log, debug, error, event} from "../../utils/logger.js";
 
 // 确保函数被暴露到全局作用域
@@ -298,11 +296,6 @@ if (typeof window !== "undefined") {
         console.log("已从 allClipboardItems 中移除项目");
       }
 
-      // 如果虚拟列表存在，更新它
-      if (vList) {
-        vList.filterItems(filterState.showFavoritesOnly ? allFavorites : allClipboardItems);
-      }
-
       // 调用后端删除命令（从收藏表删除）
       try {
         if (invoke) {
@@ -322,11 +315,6 @@ if (typeof window !== "undefined") {
       if (itemIndex !== -1) {
         allClipboardItems.splice(itemIndex, 1);
         console.log("已从 allClipboardItems 中移除项目，剩余:", allClipboardItems.length);
-      }
-
-      // 如果虚拟列表存在，更新它
-      if (vList) {
-        vList.filterItems(filterState.showFavoritesOnly ? allFavorites : allClipboardItems);
       }
 
       // 调用后端删除命令
@@ -467,9 +455,6 @@ function getFilteredItems() {
   return items;
 }
 
-// Virtual list instance
-let vList = null;
-
 // 应用筛选并重新渲染
 async function applyFilters(container, statusElement) {
   if (!container) {
@@ -479,46 +464,20 @@ async function applyFilters(container, statusElement) {
   const filteredItems = getFilteredItems();
 
   if (filteredItems.length > 0) {
-    // 使用虚拟列表渲染（只在第一次调用时初始化）
-    if (!vList) {
-      vList = initVirtualList(container, {
-        onRenderItem: (item, index) => {
-          const parsedItem = parseClipboardItem(item);
-          return renderClipboardItem(parsedItem);
-        },
-      });
-    }
-    vList.filterItems(filteredItems);
-    updateStatus(statusElement, "");
+    // 使用普通列表渲染
+    renderHistory(filteredItems, container, statusElement);
   } else if (filterState.showFavoritesOnly && allFavorites.length === 0) {
-    // 收藏视图且没有收藏数据
-    if (vList) {
-      vList.destroy();
-      vList = null;
-    }
     container.innerHTML = renderEmptyState("暂无收藏内容", "点击卡片上的爱心图标收藏内容");
     updateStatus(statusElement, "");
   } else if (!filterState.showFavoritesOnly && allClipboardItems.length === 0) {
-    // 历史视图且没有历史数据
-    if (vList) {
-      vList.destroy();
-      vList = null;
-    }
     container.innerHTML = renderEmptyState("暂无剪贴板内容", "复制内容后将显示在这里");
     updateStatus(statusElement, "");
   } else {
-    // 有数据但筛选结果为空
-    if (vList) {
-      vList.destroy();
-      vList = null;
-    }
     let emptyText = "没有找到匹配的内容";
     let emptyDescription = "";
-
     if (filterState.showFavoritesOnly && filterState.searchQuery) {
       emptyText = "未找到匹配的收藏内容";
     }
-
     console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
     container.innerHTML = renderEmptyState(emptyText, emptyDescription);
     updateStatus(statusElement, "");
