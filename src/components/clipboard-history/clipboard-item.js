@@ -20,6 +20,31 @@ const ICONS = {
   favoriteFilled: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`,
 };
 
+// --- 模块级缓存：图片预览大小设置 ---
+let _cachedImagePreviewSize = null;
+
+function getImagePreviewSize() {
+  if (_cachedImagePreviewSize !== null) {
+    return _cachedImagePreviewSize;
+  }
+  try {
+    const saved = localStorage.getItem('snipjet-settings');
+    if (saved) {
+      const settings = JSON.parse(saved);
+      _cachedImagePreviewSize = settings?.interface?.image_preview_size || 'medium';
+    } else {
+      _cachedImagePreviewSize = 'medium';
+    }
+  } catch (e) {
+    _cachedImagePreviewSize = 'medium';
+  }
+  return _cachedImagePreviewSize;
+}
+
+export function clearImagePreviewSizeCache() {
+  _cachedImagePreviewSize = null;
+}
+
 /**
  * 渲染单个剪贴板项目 (适配紧凑型 UI)
  * @param {Object} item - 解析后的剪贴板项目
@@ -66,17 +91,6 @@ export function renderClipboardItem(item) {
     isFavorite: item.isFavorite || false,
   };
 
-  // 获取图片预览大小设置
-  const getImagePreviewSize = () => {
-    try {
-      const saved = localStorage.getItem('snipjet-settings');
-      if (saved) {
-        const settings = JSON.parse(saved);
-        return settings?.interface?.image_preview_size || 'medium';
-      }
-    } catch (e) {}
-    return 'medium';
-  };
   const imagePreviewSize = getImagePreviewSize();
 
   // 生成预览内容（根据格式类型）
