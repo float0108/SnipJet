@@ -54,15 +54,7 @@ impl ClipboardMcpService {
 
         let mut format_counts: HashMap<String, usize> = HashMap::new();
         for item in history.iter() {
-            let format_name = match item.format {
-                ClipboardFormat::Plain => "text",
-                ClipboardFormat::Html => "html",
-                ClipboardFormat::Markdown => "markdown",
-                ClipboardFormat::Rtf => "rtf",
-                ClipboardFormat::Image => "image",
-                ClipboardFormat::Files => "files",
-                ClipboardFormat::Custom(_) => "custom",
-            };
+            let format_name = item.format.as_str();
             *format_counts.entry(format_name.to_string()).or_insert(0) += 1;
         }
 
@@ -321,15 +313,7 @@ impl ClipboardMcpService {
 
         let mut format_counts: HashMap<String, usize> = HashMap::new();
         for item in history.iter() {
-            let format_name = match item.format {
-                ClipboardFormat::Plain => "text",
-                ClipboardFormat::Html => "html",
-                ClipboardFormat::Markdown => "markdown",
-                ClipboardFormat::Rtf => "rtf",
-                ClipboardFormat::Image => "image",
-                ClipboardFormat::Files => "files",
-                ClipboardFormat::Custom(_) => "custom",
-            };
+            let format_name = item.format.as_str();
             *format_counts.entry(format_name.to_string()).or_insert(0) += 1;
         }
 

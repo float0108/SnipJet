@@ -40,17 +40,22 @@ pub fn get_clipboard_history(
     let history = state.history.lock().unwrap();
     let total = history.len();
     let offset = offset.unwrap_or(0);
-    let limit = limit.unwrap_or(total).min(500);
 
-    if limit == 0 {
-        return history.clone();
+    match limit {
+        Some(0) | None if total > 0 => {
+            // limit=0 或 limit=None（全部）时，使用迭代器避免 clone 整个 Vec
+            history.iter().skip(offset).cloned().collect()
+        }
+        Some(0) | None => {
+            // 空列表
+            vec![]
+        }
+        Some(limit) => {
+            // 指定 limit，最多为 500
+            let limit = limit.min(500);
+            history.iter().skip(offset).take(limit).cloned().collect()
+        }
     }
-
-    history.iter()
-        .skip(offset)
-        .take(limit)
-        .cloned()
-        .collect()
 }
 
 #[tauri::command]
