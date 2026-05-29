@@ -107,46 +107,49 @@ if (typeof window !== "undefined") {
     }
   };
 
+  // 执行后端粘贴命令（内部使用）
+  async function executePasteToActiveWindow(decodedContent, format) {
+    if (!invoke) return;
+    try {
+      await log("调用后端粘贴命令...");
+      const contentType = buildPandocContentType(format);
+      await invoke("paste_to_active_window", {
+        content: decodedContent,
+        format: format,
+        isPinned: pinState.isPinned,
+        contentType: contentType,
+      });
+      await log("后端粘贴命令执行成功");
+    } catch (tauriError) {
+      await error("后端粘贴命令执行失败:", tauriError);
+    }
+  }
+
   // 模拟粘贴到当前窗口
   window.pasteToCurrentWindow = async function (element) {
     try {
       const content = element.getAttribute("data-content");
       const format = element.getAttribute("data-format");
-      if (content) {
-        const decodedContent = decodeURIComponent(content);
+      if (!content) return;
 
-        // 写入剪贴板
-        const writeResult = await writeClipboardWithFallback(decodedContent, format);
-        await log(`内容已复制到剪贴板（${writeResult}），准备模拟粘贴`);
+      const decodedContent = decodeURIComponent(content);
 
-        // 尝试使用后端的paste_to_active_window命令
-        if (invoke) {
-          try {
-            await log("调用后端粘贴命令...");
-            const contentType = buildPandocContentType(format);
+      // 写入剪贴板
+      const writeResult = await writeClipboardWithFallback(decodedContent, format);
+      await log(`内容已复制到剪贴板（${writeResult}），准备模拟粘贴`);
 
-            await invoke("paste_to_active_window", {
-              content: decodedContent,
-              format: format,
-              isPinned: pinState.isPinned,
-              contentType: contentType,
-            });
-            await log("后端粘贴命令执行成功");
-          } catch (tauriError) {
-            await error("后端粘贴命令执行失败:", tauriError);
-          }
-        }
+      // 后端粘贴
+      await executePasteToActiveWindow(decodedContent, format);
 
-        // 前端模拟作为 fallback
-        if (dispatchPasteEvent()) {
-          await log("模拟粘贴事件已发送");
-        } else {
-          await log("没有活动元素，无法发送粘贴事件");
-        }
-
-        // 粘贴后处理（隐藏窗口等）
-        await handlePasteAftermath();
+      // 前端模拟作为 fallback
+      if (dispatchPasteEvent()) {
+        await log("模拟粘贴事件已发送");
+      } else {
+        await log("没有活动元素，无法发送粘贴事件");
       }
+
+      // 粘贴后处理（隐藏窗口等）
+      await handlePasteAftermath();
     } catch (error) {
       await error("模拟粘贴失败:", error);
     }
@@ -157,47 +160,40 @@ if (typeof window !== "undefined") {
     try {
       const content = element.getAttribute("data-content");
       const format = element.getAttribute("data-format");
-      if (content) {
-        // 获取纯文本内容（从后端html转text api获取，类似text-frame的方式）
-        const encodedContent = decodeURIComponent(content);
-        let plainText = encodedContent;
+      if (!content) return;
 
-        // 如果是html格式，使用前端的html2text函数获取纯文本
-        if (format === "html") {
-          plainText = html2text(encodedContent);
+      const encodedContent = decodeURIComponent(content);
+      let plainText = format === "html" ? html2text(encodedContent) : encodedContent;
+
+      // 写入剪贴板
+      const writeResult = await writeClipboardWithFallback(plainText, "plain");
+      console.log(`纯文本已复制到剪贴板（${writeResult}），准备模拟粘贴`);
+
+      // 调用后端paste命令
+      if (invoke) {
+        try {
+          console.log("调用后端粘贴命令...");
+          await invoke("paste_to_active_window", {
+            content: plainText,
+            format: "plain",
+            isPinned: pinState.isPinned,
+            contentType: "plain",
+          });
+          console.log("后端粘贴命令执行成功");
+        } catch (tauriError) {
+          console.error("后端粘贴命令执行失败:", tauriError);
         }
-        console.log("纯文本内容:", plainText.substring(0, 50) + "...");
-
-        // 写入剪贴板
-        const writeResult = await writeClipboardWithFallback(plainText, "plain");
-        console.log(`纯文本已复制到剪贴板（${writeResult}），准备模拟粘贴`);
-
-        // 调用后端paste命令
-        if (invoke) {
-          try {
-            console.log("调用后端粘贴命令...");
-            await invoke("paste_to_active_window", {
-              content: plainText,
-              format: "plain",
-              isPinned: pinState.isPinned,
-              contentType: "plain",
-            });
-            console.log("后端粘贴命令执行成功");
-          } catch (tauriError) {
-            console.error("后端粘贴命令执行失败:", tauriError);
-          }
-        }
-
-        // 前端模拟作为 fallback
-        if (dispatchPasteEvent()) {
-          console.log("模拟粘贴纯文本事件已发送");
-        } else {
-          console.log("没有活动元素，无法发送粘贴事件");
-        }
-
-        // 粘贴后处理（隐藏窗口等）
-        await handlePasteAftermath();
       }
+
+      // 前端模拟作为 fallback
+      if (dispatchPasteEvent()) {
+        console.log("模拟粘贴纯文本事件已发送");
+      } else {
+        console.log("没有活动元素，无法发送粘贴事件");
+      }
+
+      // 粘贴后处理（隐藏窗口等）
+      await handlePasteAftermath();
     } catch (error) {
       console.error("粘贴纯文本失败:", error);
     }
