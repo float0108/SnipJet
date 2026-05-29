@@ -394,14 +394,10 @@ async function applyFilters(container, statusElement) {
     container.innerHTML = renderEmptyState(t.empty.noFavorites, t.empty.noFavoritesHint);
     updateStatus(statusElement, "");
   } else if (!filterState.showFavoritesOnly && allClipboardItems.length === 0) {
-    container.innerHTML = renderEmptyState("暂无剪贴板内容", "复制内容后将显示在这里");
+    container.innerHTML = renderEmptyState(t.empty.noHistory, t.empty.noHistoryHint);
     updateStatus(statusElement, "");
   } else {
-    let emptyText = "没有找到匹配的内容";
-    let emptyDescription = "";
-    if (filterState.showFavoritesOnly && filterState.searchQuery) {
-      emptyText = t.empty.noFavoritesMatch;
-    }
+    let emptyText = filterState.showFavoritesOnly ? t.empty.noFavoritesMatch : t.empty.noHistoryMatch;
     console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
     container.innerHTML = renderEmptyState(emptyText, emptyDescription);
     updateStatus(statusElement, "");
