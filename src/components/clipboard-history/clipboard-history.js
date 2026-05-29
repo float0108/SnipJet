@@ -15,6 +15,29 @@ if (
 }
 
 /**
+ * 从列表中移除剪贴板项目（通过 DOM 操作）
+ * @param {string} id - 项目 ID
+ * @returns {boolean} - 是否移除成功
+ */
+export function removeClipboardItem(id) {
+  const element = document.querySelector(`[data-id="${id}"]`);
+  if (element) {
+    element.remove();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 预置新剪贴板项目到列表开头（通过 DOM 操作）
+ * @param {object} item - 剪贴板项目
+ */
+export function prependClipboardItem(item) {
+  // DOM 操作模式需要外部调用 renderHistory，这里不做处理
+  console.warn("prependClipboardItem: DOM 模式不支持增量添加，需调用 renderHistory");
+}
+
+/**
  * 渲染剪贴板历史记录
  * @param {Array} history - 历史记录数据
  * @param {HTMLElement} container - 容器元素
