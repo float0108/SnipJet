@@ -1,4 +1,5 @@
 // --- 工具函数：防止 XSS 攻击 ---
+import { t } from "../../utils/i18n.js";
 const escapeHtml = (str) => {
   if (str === null || str === undefined) return "";
   const map = {
@@ -136,16 +137,16 @@ export function renderClipboardItem(item) {
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.pasteToCurrentWindow(this);}"
     >
       <div class="item-actions-overlay">
-        <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? '取消收藏' : '收藏'}" aria-label="${safeData.isFavorite ? '取消收藏' : '收藏'}" onclick="window.toggleFavorite('${uniqueId}'); event.stopPropagation();">
+        <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? t.action.unfavorite : t.action.favorite}" aria-label="${safeData.isFavorite ? t.action.unfavorite : t.action.favorite}" onclick="window.toggleFavorite('${uniqueId}'); event.stopPropagation();">
           ${safeData.isFavorite ? ICONS.favoriteFilled : ICONS.favorite}
         </button>
-        <button class="card-btn" title="详情/编辑" aria-label="详情/编辑" onclick="window.openReaderWindow(this.closest('.clipboard-item')); event.stopPropagation();">
+        <button class="card-btn" title="${t.action.edit}" aria-label="${t.action.edit}" onclick="window.openReaderWindow(this.closest('.clipboard-item')); event.stopPropagation();">
           ${ICONS.edit}
         </button>
-        ${safeData.format !== "image" ? `<button class="card-btn" title="粘贴为纯文本" aria-label="粘贴为纯文本" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
+        ${safeData.format !== "image" ? `<button class="card-btn" title="${t.action.pasteAsPlainText}" aria-label="${t.action.pasteAsPlainText}" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
           ${ICONS.copy}
         </button>` : ""}
-        <button class="card-btn btn-delete" title="删除" aria-label="删除" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
+        <button class="card-btn btn-delete" title="${t.action.delete}" aria-label="${t.action.delete}" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
           ${ICONS.delete}
         </button>
       </div>

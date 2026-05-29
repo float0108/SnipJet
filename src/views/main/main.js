@@ -17,6 +17,7 @@ import {
 } from "../../components/empty-state/empty-state.js";
 import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
 import {log, debug, error, event} from "../../utils/logger.js";
+import { t } from "../../utils/i18n.js";
 
 // 确保函数被暴露到全局作用域
 if (typeof window !== "undefined") {
@@ -201,7 +202,7 @@ if (typeof window !== "undefined") {
 
   // 删除剪贴板项
   window.deleteClipboardItem = async function (id) {
-    console.log("删除剪贴板项:", id, "当前视图:", filterState.showFavoritesOnly ? "收藏" : "历史");
+    console.log("删除剪贴板项:", id, "当前视图:", filterState.showFavoritesOnly ? t.view.favorites : t.view.history);
 
     // 根据当前视图决定删除逻辑
     if (filterState.showFavoritesOnly) {
@@ -300,7 +301,7 @@ if (typeof window !== "undefined") {
           const favoriteBtn = element.querySelector(".btn-favorite");
           if (favoriteBtn) {
             favoriteBtn.classList.toggle("active", newState);
-            favoriteBtn.title = newState ? "取消收藏" : "收藏";
+            favoriteBtn.title = newState ? t.action.unfavorite : t.action.favorite;
             // 更新图标
             favoriteBtn.innerHTML = newState
               ? `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`
@@ -390,7 +391,7 @@ async function applyFilters(container, statusElement) {
     // 使用普通列表渲染
     renderHistory(filteredItems, container, statusElement);
   } else if (filterState.showFavoritesOnly && allFavorites.length === 0) {
-    container.innerHTML = renderEmptyState("暂无收藏内容", "点击卡片上的爱心图标收藏内容");
+    container.innerHTML = renderEmptyState(t.empty.noFavorites, t.empty.noFavoritesHint);
     updateStatus(statusElement, "");
   } else if (!filterState.showFavoritesOnly && allClipboardItems.length === 0) {
     container.innerHTML = renderEmptyState("暂无剪贴板内容", "复制内容后将显示在这里");
@@ -399,7 +400,7 @@ async function applyFilters(container, statusElement) {
     let emptyText = "没有找到匹配的内容";
     let emptyDescription = "";
     if (filterState.showFavoritesOnly && filterState.searchQuery) {
-      emptyText = "未找到匹配的收藏内容";
+      emptyText = t.empty.noFavoritesMatch;
     }
     console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
     container.innerHTML = renderEmptyState(emptyText, emptyDescription);
