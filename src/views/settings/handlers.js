@@ -3,6 +3,7 @@ import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { applyTheme, applyFontSize, applyPreviewLines } from '../../services/theme-service.js';
+import { setLocale } from '../../utils/i18n.js';
 
 export let settings = {};
 // 原始设置备份（用于取消时恢复）
@@ -505,6 +506,8 @@ export function bindSettingsListeners() {
     language.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.language = this.value;
+      setLocale(this.value);
+      emit("language-changed", { locale: this.value });
     });
   }
 
