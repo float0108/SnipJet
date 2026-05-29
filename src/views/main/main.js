@@ -17,7 +17,7 @@ import {
 } from "../../components/empty-state/empty-state.js";
 import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
 import {log, debug, error, event} from "../../utils/logger.js";
-import { t } from "../../utils/i18n.js";
+import { t, loadLocaleFromSettings, setLocale } from "../../utils/i18n.js";
 
 // 确保函数被暴露到全局作用域
 if (typeof window !== "undefined") {
@@ -460,6 +460,8 @@ async function init() {
     const settings = await invoke("load_settings_command");
     if (settings) {
       localStorage.setItem('snipjet-settings', JSON.stringify(settings));
+      // 加载语言设置
+      loadLocaleFromSettings();
     }
   } catch (e) {
     // 设置加载失败静默处理
@@ -558,6 +560,17 @@ async function init() {
     });
   } catch (error) {
     console.error("设置变化事件监听失败:", error);
+  }
+
+  // 监听语言变化事件
+  try {
+    await listen("language-changed", async (event) => {
+      setLocale(event.payload?.locale || "cn");
+      applyFilters(container, statusElement);
+      console.log("[language-changed] 语言已切换:", event.payload?.locale);
+    });
+  } catch (error) {
+    console.error("语言变化事件监听失败:", error);
   }
 
   // 应用窗口不激活样式，防止抢夺焦点
