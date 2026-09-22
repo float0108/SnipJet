@@ -23,11 +23,18 @@ const DEFAULT_SETTINGS = {
 
 /**
  * 核心验证逻辑：确保设置格式正确
+ *
+ * 旧实现要求 toggle_interface 和 function_paste 都必须非空，否则直接
+ * fallback 到空默认配置。这导致用户首次启动时即使磁盘上已有合法
+ * 快捷键配置，只要其中一个字段为空（如默认未设置 function_paste），
+ * 整套配置就被丢弃，启动后没有任何全局快捷键被注册，必须进入设置
+ * 页保存一次才会生效。
+ *
+ * 现在改为：只要 settings 是合法对象、且包含 shortcuts 子对象就接受；
+ * 缺失的具体快捷键字段交给调用方在注册时按需取 `|| ""`。
  */
 function validateSettings(settings) {
-  return (
-    settings?.shortcuts?.toggle_interface && settings?.shortcuts?.function_paste
-  );
+  return !!(settings && typeof settings === "object" && settings.shortcuts);
 }
 
 /**
