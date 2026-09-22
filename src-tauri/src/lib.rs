@@ -398,7 +398,8 @@ where
             commands::stop_mcp_service,
             commands::restart_mcp_service,
             commands::copy_markdown_as_docx,
-            commands::update_max_history_items
+            commands::update_max_history_items,
+            commands::list_system_fonts
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

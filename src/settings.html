@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <title>SnipJet 设置</title>
+    <script>
+      // 标记首帧渲染阶段：禁用所有过渡/动画，
+      // 避免设置异步应用时 toggle 等控件播放状态切换动画（初始化完成后由 main.js 移除）
+      document.documentElement.classList.add('preload');
+      // 首帧渲染前同步应用界面字体/字号（主窗口 applyFontFamily 时已写入 localStorage），
+      // 避免设置异步加载完成后整页字体切换导致的抖动
+      try {
+        var f = localStorage.getItem('snipjet.font_family');
+        if (f) document.documentElement.style.setProperty('--font-family', f);
+        var s = localStorage.getItem('snipjet.font_size');
+        if (s) document.documentElement.style.setProperty('--font-size-base', s + 'px');
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="./common/style.css" />
     <link rel="stylesheet" href="./views/settings/settings.css" />
     <link rel="stylesheet" href="./common/icon.css" />
@@ -284,6 +297,18 @@
                 <option value="14">14px (中)</option>
                 <option value="16">16px (大)</option>
                 <option value="18">18px (特大)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">界面字体</div>
+              <div class="setting-description">从系统已安装的字体中选择（启动时自动枚举）</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="font-family" style="width: 200px;">
+                <option value="">系统默认</option>
               </select>
             </div>
           </div>

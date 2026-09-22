@@ -45,9 +45,18 @@ async function init() {
     setupEscKey();
     setupConfirmCancelButtons();
 
+    // 设置已全部应用到 DOM：等两帧后恢复过渡动画，
+    // 移除 head 脚本加的 preload 标记（期间 toggle 等控件不播放状态切换动画）
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.documentElement.classList.remove("preload");
+      });
+    });
+
     console.log("设置页面初始化完成");
   } catch (error) {
     console.error("初始化设置页面时出错:", error);
+    document.documentElement.classList.remove("preload");
   }
 }
 

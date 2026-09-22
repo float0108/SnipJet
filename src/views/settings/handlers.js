@@ -2,7 +2,7 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { applyTheme, applyFontSize, applyPreviewLines } from '../../services/theme-service.js';
+import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
 import { setLocale } from '../../utils/i18n.js';
 
 export let settings = {};
@@ -26,6 +26,7 @@ function getDefaultSettings() {
     interface: {
       theme: "light",
       language: "cn",
+      font_family: "",
       font_size: 14,
       auto_hide: true,
       preview_lines: 5,
@@ -151,6 +152,9 @@ export async function saveSettings() {
     // 应用界面设置
     if (settings.interface?.theme) {
       applyTheme(settings.interface.theme);
+    }
+    if (settings.interface?.font_family) {
+      applyFontFamily(settings.interface.font_family);
     }
     if (settings.interface?.font_size) {
       applyFontSize(settings.interface.font_size);
@@ -377,6 +381,9 @@ export function updateInterfaceSettings() {
     language.value = settings.interface?.language ?? "cn";
   }
 
+  // 更新界面字体（先确保下拉框已加载系统字体）
+  populateFontFamilyOptions();
+
   // 更新基础字号
   const fontSize = document.getElementById("font-size");
   if (fontSize) {
@@ -511,6 +518,18 @@ export function bindSettingsListeners() {
     });
   }
 
+  const fontFamily = document.getElementById("font-family");
+  if (fontFamily) {
+    fontFamily.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.font_family = this.value;
+      applyFontFamily(this.value);
+    });
+  }
+
+  // 触发下拉框选项填充
+  populateFontFamilyOptions();
+
   const fontSize = document.getElementById("font-size");
   if (fontSize) {
     fontSize.addEventListener("change", function () {
@@ -564,4 +583,54 @@ export async function restoreOriginalSettings() {
   // 更新快捷键UI
   const { updateShortcutInputs } = await import("./shortcuts.js");
   updateShortcutInputs();
+}
+
+// 填充界面字体下拉框：使用后端枚举的系统字体
+// 幂等：已填充过则跳过（避免重复触发后端枚举与 DOM 重建导致界面抖动）
+let fontFamilyPopulated = false;
+async function populateFontFamilyOptions() {
+  const select = document.getElementById("font-family");
+  if (!select || fontFamilyPopulated) return;
+  fontFamilyPopulated = true;
+
+  // 异步加载系统字体（若尚未加载，并发调用共享同一个 Promise）
+  let fonts = getSystemFonts();
+  if (!fonts || fonts.length === 0) {
+    fonts = await loadSystemFonts();
+    if (!fonts || fonts.length === 0) {
+      fontFamilyPopulated = false;
+      return;
+    }
+  }
+
+  // 重建选项：默认（系统）+ 已安装字体
+  const currentValue = settings.interface?.font_family ?? "";
+  select.innerHTML = "";
+
+  const defaultOpt = document.createElement("option");
+  defaultOpt.value = "";
+  defaultOpt.textContent = "系统默认";
+  select.appendChild(defaultOpt);
+
+  const fragment = document.createDocumentFragment();
+  for (const name of fonts) {
+    if (!name) continue;
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    opt.style.fontFamily = `"${name}"`;
+    fragment.appendChild(opt);
+  }
+  select.appendChild(fragment);
+
+  // 恢复当前选中值（不在列表中则追加）
+  if (currentValue && !Array.from(select.options).some((o) => o.value === currentValue)) {
+    const opt = document.createElement("option");
+    opt.value = currentValue;
+    opt.textContent = `${currentValue}（已不存在）`;
+    opt.style.fontFamily = `"${currentValue}"`;
+    select.appendChild(opt);
+  }
+
+  select.value = currentValue;
 }

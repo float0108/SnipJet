@@ -56,6 +56,7 @@ rmcp = { version = "0.1", features = ["server", "macros", "transport-sse-server"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 dirs = "5"
+encoding_rs = "0.8"
 
 # 仅在Windows平台下添加windows依赖
 [target.'cfg(windows)'.dependencies]

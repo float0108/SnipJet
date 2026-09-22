@@ -25,7 +25,9 @@ use tauri::{Manager, State, AppHandle, Emitter};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::clipboard_manager::ClipboardManager;
-use crate::common::globals::{APP_HANDLE, LAST_HASH, WINDOW_PIN_STATE, set_clipboard_ignore_for};
+use crate::common::globals::{
+    APP_HANDLE, LAST_HASH, SYSTEM_FONTS_CACHE, WINDOW_PIN_STATE, set_clipboard_ignore_for,
+};
 use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
 use crate::AppState;
@@ -1095,3 +1097,467 @@ pub fn update_max_history_items(
     info!("Max history items updated to: {:?}", max_items);
     Ok(())
 }
+
+/// 获取系统已安装的字体族列表
+/// 优先使用 OS 原生 API（名称解码由系统完成，绝对正确），
+/// 失败时回退到扫描字体目录并解析 name 表。
+#[tauri::command]
+pub fn list_system_fonts() -> Vec<String> {
+    // 进程内缓存：设置窗口每次打开都会调用，避免重复枚举（PowerShell 约 0.5s）
+    if let Ok(guard) = SYSTEM_FONTS_CACHE.lock() {
+        if let Some(cached) = guard.as_ref() {
+            return cached.clone();
+        }
+    }
+
+    let mut fonts: Vec<String> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        match enumerate_fonts_windows() {
+            Some(list) => fonts = list,
+            None => {
+                warn!("PowerShell 字体枚举失败，回退到目录扫描");
+                let windir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".to_string());
+                collect_fonts_from_dir(
+                    &std::path::PathBuf::from(&windir).join("Fonts"),
+                    &mut fonts,
+                );
+                // 用户字体目录
+                if let Some(local_appdata) = dirs::data_local_dir() {
+                    collect_fonts_from_dir(
+                        &local_appdata.join("Microsoft/Windows/Fonts"),
+                        &mut fonts,
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let candidates = [
+            PathBuf::from("/System/Library/Fonts"),
+            PathBuf::from("/Library/Fonts"),
+            PathBuf::from("/System/Library/Fonts/Supplemental"),
+        ];
+        for dir in &candidates {
+            collect_fonts_from_dir(dir, &mut fonts);
+        }
+        if let Some(home) = dirs::home_dir() {
+            collect_fonts_from_dir(&home.join("Library/Fonts"), &mut fonts);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        match enumerate_fonts_fc_list() {
+            Some(list) => fonts = list,
+            None => {
+                let candidates = [
+                    PathBuf::from("/usr/share/fonts"),
+                    PathBuf::from("/usr/local/share/fonts"),
+                    PathBuf::from("/usr/share/X11/fonts"),
+                ];
+                for dir in &candidates {
+                    collect_fonts_from_dir(dir, &mut fonts);
+                }
+                if let Some(home) = dirs::home_dir() {
+                    collect_fonts_from_dir(&home.join(".fonts"), &mut fonts);
+                    collect_fonts_from_dir(&home.join(".local/share/fonts"), &mut fonts);
+                }
+            }
+        }
+    }
+
+    // 排序并去重
+    fonts.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    fonts.dedup();
+
+    info!("枚举系统字体完成，共 {} 个", fonts.len());
+
+    // 写入进程内缓存
+    if let Ok(mut guard) = SYSTEM_FONTS_CACHE.lock() {
+        *guard = Some(fonts.clone());
+    }
+
+    fonts
+}
+
+/// Windows：通过 PowerShell 调用 GDI InstalledFontCollection 枚举字体族。
+/// 名称由系统解码（正确处理 UTF-16 / 本地化名），无需解析字体二进制。
+#[cfg(target_os = "windows")]
+fn enumerate_fonts_windows() -> Option<Vec<String>> {
+    use std::os::windows::process::CommandExt;
+
+    let script = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; \
+Add-Type -AssemblyName System.Drawing; \
+(New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }";
+
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(out.stdout).ok()?;
+    let fonts: Vec<String> = text
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if fonts.is_empty() {
+        None
+    } else {
+        Some(fonts)
+    }
+}
+
+/// Linux：通过 fontconfig 枚举字体族
+#[cfg(target_os = "linux")]
+fn enumerate_fonts_fc_list() -> Option<Vec<String>> {
+    let out = std::process::Command::new("fc-list")
+        .arg(":")
+        .arg("family")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let fonts: Vec<String> = text
+        .lines()
+        .flat_map(|l| l.split(','))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if fonts.is_empty() {
+        None
+    } else {
+        Some(fonts)
+    }
+}
+
+fn collect_fonts_from_dir(dir: &std::path::Path, fonts: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_fonts_from_dir(&path, fonts);
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+            continue;
+        };
+        let ext_lower = ext.to_lowercase();
+        if ext_lower != "ttf" && ext_lower != "otf" && ext_lower != "ttc" {
+            continue;
+        }
+        if let Some(family) = extract_font_family(&path) {
+            if !fonts.contains(&family) {
+                fonts.push(family);
+            }
+        }
+    }
+}
+
+/// 从字体文件提取字体族名
+/// 优先解析 TTF/OTF 的 name 表 (NameID=1)，无法解析时再使用文件名
+fn extract_font_family(path: &std::path::Path) -> Option<String> {
+    // 1) 尝试解析 name 表
+    if let Ok(bytes) = std::fs::read(path) {
+        if let Some(family) = parse_ttf_family_name(&bytes) {
+            return Some(family);
+        }
+    }
+    // 2) 回退：用文件名
+    let stem = path.file_stem().and_then(|s| s.to_str())?;
+    let family = stem.split('-').next().unwrap_or(stem).trim().to_string();
+    if family.is_empty() {
+        None
+    } else {
+        Some(family)
+    }
+}
+
+/// 解析 TTF/OTF/TTC name 表，提取 NameID=1 (Font Family) 的字符串
+/// 参考：https://docs.microsoft.com/typography/opentype/spec/name
+fn parse_ttf_family_name(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 12 {
+        return None;
+    }
+    // TTC 容器：'ttcf' 魔数 + version(4) + numFonts(4) + FontOffset[]，
+    // 第一个子字体的偏移表在 bytes[12..16] 指向的位置。
+    let base: usize = if &bytes[0..4] == b"ttcf" {
+        if bytes.len() < 16 {
+            return None;
+        }
+        let first_font = u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize;
+        if first_font + 12 > bytes.len() {
+            return None;
+        }
+        first_font
+    } else {
+        0
+    };
+    // 偏移表 (12 字节)：sfntVersion(4) + numTables(2) + searchRange 等(6)
+    let num_tables = u16::from_be_bytes([bytes[base + 4], bytes[base + 5]]) as usize;
+    if num_tables == 0 || num_tables > 512 {
+        return None;
+    }
+    // 查找 'name' 表（表目录中的 offset 为相对文件开头的绝对偏移）
+    let mut name_offset: Option<usize> = None;
+    for i in 0..num_tables {
+        let rec = base + 12 + i * 16;
+        if rec + 16 > bytes.len() {
+            return None;
+        }
+        let tag = &bytes[rec..rec + 4];
+        if tag == b"name" {
+            // tableRecord: tag(4), checkSum(4), offset(4), length(4)
+            name_offset = Some(u32::from_be_bytes([
+                bytes[rec + 8],
+                bytes[rec + 9],
+                bytes[rec + 10],
+                bytes[rec + 11],
+            ]) as usize);
+            break;
+        }
+    }
+    let name_off = name_offset?;
+    if name_off + 6 > bytes.len() {
+        return None;
+    }
+
+    // name 表头：format(2), count(2), stringOffset(2)
+    let _format = u16::from_be_bytes([bytes[name_off], bytes[name_off + 1]]);
+    let count = u16::from_be_bytes([bytes[name_off + 2], bytes[name_off + 3]]) as usize;
+    let string_offset =
+        u16::from_be_bytes([bytes[name_off + 4], bytes[name_off + 5]]) as usize;
+    let storage_off = name_off + string_offset;
+
+    // 收集候选字符串，元素为 (优先级, 文本)
+    // 优先级：Windows+UTF16BE/GBK/Big5(本地语言) < Windows+UTF16BE(英文) < Windows+UCS-4 < Unicode < Macintosh
+    let mut candidates: Vec<(u8, String)> = Vec::new();
+
+    for i in 0..count {
+        let rec = name_off + 6 + i * 12;
+        if rec + 12 > bytes.len() {
+            return None;
+        }
+        let platform_id = bytes[rec];
+        let encoding_id = bytes[rec + 1];
+        let language_id = u16::from_be_bytes([bytes[rec + 4], bytes[rec + 5]]);
+        let name_id = u16::from_be_bytes([bytes[rec + 6], bytes[rec + 7]]);
+        let length = u16::from_be_bytes([bytes[rec + 8], bytes[rec + 9]]) as usize;
+        let str_off = u16::from_be_bytes([bytes[rec + 10], bytes[rec + 11]]) as usize;
+
+        if name_id != 1 {
+            continue;
+        }
+        // 只取 Windows / Unicode / Mac 平台的字符串
+        if platform_id != 0 && platform_id != 1 && platform_id != 3 {
+            continue;
+        }
+
+        let abs_off = storage_off + str_off;
+        if abs_off + length > bytes.len() {
+            continue;
+        }
+        let raw = &bytes[abs_off..abs_off + length];
+
+        let decoded = decode_name_string(platform_id, encoding_id, raw);
+        if let Some(text) = decoded {
+            let trimmed = text.trim().to_string();
+            if !trimmed.is_empty() && looks_like_font_name(&trimmed) {
+                candidates.push((priority(platform_id, encoding_id, language_id), trimmed));
+            }
+        }
+    }
+
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by_key(|(p, _)| *p);
+    let best = candidates.into_iter().next()?.1;
+    Some(best)
+}
+
+/// 粗略判断字符串是否像正常的字体族名
+/// - 不可有 U+FFFD 替换字符
+/// - 排除掉纯控制字符 / 反向字节序造成的高位垃圾
+fn looks_like_font_name(s: &str) -> bool {
+    if s.is_empty() || s.len() > 64 {
+        return false;
+    }
+    if s.contains('\u{FFFD}') {
+        return false;
+    }
+    // 不允许超过 50% 的字符是 CJK 统一表意文字扩展之外的奇怪控制字符
+    let bad = s
+        .chars()
+        .filter(|c| {
+            let cp = *c as u32;
+            cp < 0x20 && cp != 0x09 && cp != 0x0A
+        })
+        .count();
+    bad == 0
+}
+
+/// 计算优先级：数值越小越优先
+fn priority(platform_id: u8, encoding_id: u8, language_id: u16) -> u8 {
+    match (platform_id, encoding_id) {
+        (3, 1) => {
+            // 中文系统首选中文条目
+            if language_id == 0x0804 {
+                0
+            } else if language_id == 0x0404 {
+                1
+            } else if language_id == 0x0409 {
+                2
+            } else if language_id == 0 {
+                3
+            } else {
+                4
+            }
+        }
+        (3, 3) => {
+            // GBK 编码的本地化条目
+            if language_id == 0x0804 {
+                5
+            } else {
+                6
+            }
+        }
+        (3, 4) => 7, // Big5
+        (3, 2) => 8, // ShiftJIS
+        (3, 10) => 9,
+        (3, _) => 10,
+        (0, _) => 11,
+        (1, _) => 12,
+        _ => 99,
+    }
+}
+
+/// 解码 name 表字符串
+/// platformID=3 encodingID=0: Symbol (按字节单字节)
+/// platformID=3 encodingID=1: Unicode BMP (UTF-16BE)
+/// platformID=3 encodingID=2: ShiftJIS (Japanese)
+/// platformID=3 encodingID=3: PRC (GB2312/GBK)
+/// platformID=3 encodingID=4: Big5 (Traditional Chinese)
+/// platformID=3 encodingID=5: Wansung (Korean)
+/// platformID=3 encodingID=6: Johab
+/// platformID=3 encodingID=10: UCS-4 (UTF-16BE 兼容，按双字节处理)
+/// platformID=0: Unicode (UTF-16BE)
+/// platformID=1 encodingID=0: MacRoman
+fn decode_name_string(platform_id: u8, encoding_id: u8, raw: &[u8]) -> Option<String> {
+    use encoding_rs::{UTF_16BE, UTF_16LE, MACINTOSH, SHIFT_JIS, GBK, BIG5, EUC_KR};
+
+    match (platform_id, encoding_id) {
+        (3, 0) => {
+            let s: String = raw.iter().map(|b| *b as char).collect();
+            Some(s)
+        }
+        (3, 1) | (3, 10) | (0, _) => {
+            // 按 OTF 规范应使用 UTF-16BE，但实际数据可能是：
+            // 1) 规范 BE（绝大多数字体）—— BE 解码直接正确
+            // 2) LE 存储（部分工具）—— BE 解码会产生"ASCII<<8"错位字符
+            // 先按 BE 解码，仅当出现字节交换签名时才尝试 LE 择优，
+            // 避免把正常的日文/韩文/中文误切到 LE。
+            let be = UTF_16BE.decode(raw).0.into_owned();
+            if has_swap_signature(&be) {
+                let le = UTF_16LE.decode(raw).0.into_owned();
+                if text_quality(&le) > text_quality(&be) {
+                    return Some(le);
+                }
+            }
+            Some(be)
+        }
+        (3, 2) => Some(SHIFT_JIS.decode(raw).0.into_owned()),
+        (3, 3) => Some(GBK.decode(raw).0.into_owned()),
+        (3, 4) => Some(BIG5.decode(raw).0.into_owned()),
+        (3, 5) => Some(EUC_KR.decode(raw).0.into_owned()),
+        (1, 0) => Some(MACINTOSH.decode(raw).0.into_owned()),
+        _ => None,
+    }
+}
+
+/// 检查字符串是否带有字节序错位的典型签名：
+/// - "ASCII<<8"字符（0x2000~0x9FFF 且低字节为 0，如 'E'=0x45 → U+4500）
+/// - CJK 扩展 B/C/D/E/F/G 兼容区字符
+/// - 替换字符 / C1 控制字符
+/// 真实文字（中/日/韩/拉丁）几乎不会达到 ≥25% 的占比。
+fn has_swap_signature(s: &str) -> bool {
+    let total = s.chars().count();
+    if total == 0 {
+        return false;
+    }
+    let mut suspicious = 0usize;
+    for c in s.chars() {
+        let cp = c as u32;
+        if (0x2000..=0x9FFF).contains(&cp) && (cp & 0xFF) == 0 {
+            suspicious += 1;
+        } else if (0x20000..=0x323AF).contains(&cp) || (0x2F800..=0x2FA1F).contains(&cp) {
+            suspicious += 1;
+        } else if cp == 0xFFFD || (0x80..=0x9F).contains(&cp) {
+            suspicious += 1;
+        }
+    }
+    suspicious * 4 >= total
+}
+
+/// 估算字符串的可读性分：越高越像正常文字
+fn text_quality(s: &str) -> i32 {
+    if s.is_empty() {
+        return -1000;
+    }
+    let mut score: i32 = 0;
+    for c in s.chars() {
+        let cp = c as u32;
+        if cp == 0xFFFD {
+            score -= 50;
+        } else if cp < 0x20 && cp != 0x09 && cp != 0x0A {
+            score -= 20;
+        } else if (0x2000..=0x7E00).contains(&cp) && (cp & 0xFF) == 0 {
+            // 字节错位签名：ASCII 字符(0x20~0x7E)被字节交换后
+            // 会落在 0x2000~0x7E00 且低字节恒为 0（如 'E'=0x45 → U+4500）。
+            // 真实中文/韩文/假名的低字节几乎不会是 0。
+            score -= 30;
+        } else if (0x20..=0x7E).contains(&cp) {
+            // ASCII 可打印：加分
+            score += 4;
+        } else if (0x4E00..=0x9FFF).contains(&cp)
+            || (0x3400..=0x4DBF).contains(&cp)
+            || (0xF900..=0xFAFF).contains(&cp)
+        {
+            // CJK 统一表意文字：加分
+            score += 5;
+        } else if (0x3040..=0x30FF).contains(&cp) {
+            // 日文假名
+            score += 3;
+        } else if (0xAC00..=0xD7AF).contains(&cp) {
+            // 韩文
+            score += 3;
+        } else if (0x20000..=0x2A6DF).contains(&cp)
+            || (0x2A700..=0x2EBEF).contains(&cp)
+            || (0x30000..=0x323AF).contains(&cp)
+            || (0x2F800..=0x2FA1F).contains(&cp)
+        {
+            // CJK 扩展 B/C/D/E/F、G 及兼容扩展 —— 这些几乎都是字节错位产生的字符
+            score -= 30;
+        } else if cp > 0x10000 {
+            score -= 5;
+        } else if (0x80..=0x9F).contains(&cp) {
+            score -= 10;
+        } else if (0xA0..=0xFF).contains(&cp) {
+            // Latin-1 补充区：常见重音字母
+            score += 1;
+        }
+    }
+    score
+}
+
