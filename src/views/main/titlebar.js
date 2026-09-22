@@ -188,11 +188,54 @@ export async function initTitlebarButtons() {
   if (searchBtn && searchBox && searchInput) {
     console.log("[titlebar] 绑定搜索按钮事件");
 
+    // 当前窗口是否持有系统焦点（可接收键盘输入）
+    let windowFocused = await win.isFocused();
+
+    // 窗口失去焦点时立即退出输入状态（取消光标），
+    // 避免"看似可输入、实际键盘输入落到其他应用"的误导
+    await win.onFocusChanged(({ payload: focused }) => {
+      windowFocused = focused;
+      if (!focused && document.activeElement === searchInput) {
+        searchInput.blur();
+      }
+    });
+
+    // 让窗口真正获得系统焦点
+    // 注意：setFocusable(true) 只是解除 WS_EX_NOACTIVATE 样式，并不会把键盘焦点切过来
+    const focusWindowForInput = async () => {
+      await setWindowFocusable(true);
+      try {
+        await win.setFocus();
+      } catch (e) {
+        await error("窗口聚焦失败:", e);
+      }
+      try {
+        return await win.isFocused();
+      } catch {
+        return false;
+      }
+    };
+
     searchBtn.addEventListener("click", async () => {
       console.log("[titlebar] 搜索按钮被点击");
-      await setWindowFocusable(true);
+      const focused = await focusWindowForInput();
       searchBox.classList.add("active");
-      searchInput.focus();
+      // 仅在窗口真正持有系统焦点时才进入输入状态（显示光标）
+      if (focused) {
+        searchInput.focus();
+      }
+    });
+
+    // 窗口无焦点时点击输入框：先抢系统焦点再聚焦，
+    // 否则 DOM 光标会闪烁却无法接收键盘输入，误导用户
+    searchInput.addEventListener("mousedown", async (e) => {
+      if (!windowFocused) {
+        e.preventDefault();
+        const focused = await focusWindowForInput();
+        if (focused) {
+          searchInput.focus();
+        }
+      }
     });
 
     searchInput.addEventListener("input", (e) => {
@@ -208,6 +251,8 @@ export async function initTitlebarButtons() {
 
     const closeSearch = async () => {
       searchBox.classList.remove("active");
+      // 先退出输入状态，再关闭窗口可聚焦，避免残留光标误导用户
+      searchInput.blur();
       searchInput.value = "";
       filterState.setSearchQuery("");
       await setWindowFocusable(false);
