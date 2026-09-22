@@ -59,6 +59,7 @@
     "allow-text-expand-operations",
     "allow-image-operations",
     "allow-autostart-operations",
-    "allow-mcp-operations"
+    "allow-mcp-operations",
+    "allow-system-fonts"
   ]
 }

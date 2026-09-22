@@ -33,6 +33,10 @@ pub static SHORTCUT_ACTION_MAP: LazyLock<Arc<Mutex<HashMap<String, String>>>> =
 pub static MCP_SERVER_HANDLE: LazyLock<Arc<Mutex<Option<McpServerHandle>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(None)));
 
+// 全局缓存：系统已安装的字体族列表（OS API 枚举结果可靠，进程内缓存避免重复枚举）
+pub static SYSTEM_FONTS_CACHE: LazyLock<Mutex<Option<Vec<String>>>> =
+    LazyLock::new(|| Mutex::new(None));
+
 /// 设置剪贴板忽略截止时间（从现在起忽略指定毫秒）
 pub fn set_clipboard_ignore_for(millis: u64) {
     let now = SystemTime::now()

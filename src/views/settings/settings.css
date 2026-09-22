@@ -3,6 +3,14 @@
   box-sizing: border-box;
 }
 
+/* 首帧渲染阶段禁用所有过渡/动画，避免设置异步应用时 toggle 等控件播放状态切换动画 */
+html.preload *,
+html.preload *::before,
+html.preload *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
 body {
   margin: 0;
   padding: 0;

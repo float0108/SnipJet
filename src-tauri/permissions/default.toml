@@ -95,3 +95,11 @@ commands.allow = [
     "stop_mcp_service",
     "restart_mcp_service"
 ]
+
+[[permission]]
+identifier = "allow-system-fonts"
+description = "允许前端读取系统字体列表"
+
+commands.allow = [
+    "list_system_fonts"
+]

@@ -7,6 +7,7 @@
   "interface": {
     "theme": "light",
     "language": "cn",
+    "font_family": "",
     "auto_hide": true,
     "preview_size": "small",
     "max_history_items": 100

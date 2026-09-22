@@ -4065,6 +4065,7 @@ dependencies = [
  "clipboard-rs",
  "dirs 5.0.1",
  "docx-rs",
+ "encoding_rs",
  "enigo",
  "env_logger",
  "hex",

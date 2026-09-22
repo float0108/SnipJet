@@ -449,8 +449,10 @@ async function init() {
 
   // 初始化主题
   try {
-    const { initTheme } = await import("../../services/theme-service.js");
+    const { initTheme, loadSystemFonts } = await import("../../services/theme-service.js");
     await initTheme();
+    // 启动时一次性枚举并缓存系统字体，供设置页面使用
+    loadSystemFonts().catch(() => {});
   } catch (e) {
     // 主题初始化失败静默处理
   }
@@ -538,10 +540,19 @@ async function init() {
   // 监听设置变化事件，重新渲染列表
   try {
     await listen("settings-changed", async (event) => {
-      // 重新应用界面设置
+      // 重新应用界面设置：优先使用 payload，缺失字段则从后端重新读取最新设置
       try {
         const { applyInterfaceSettings } = await import("../../services/theme-service.js");
-        applyInterfaceSettings(event.payload?.interface);
+        let interfacePayload = event.payload?.interface;
+        if (!interfacePayload || interfacePayload.font_family == null) {
+          const { loadSettingsFromFile } = await import("../../services/tauri-api.js");
+          const fresh = await loadSettingsFromFile();
+          interfacePayload = fresh?.interface;
+        }
+        if (interfacePayload) {
+          applyInterfaceSettings(interfacePayload);
+          console.log("[settings-changed] 主界面设置已应用:", interfacePayload);
+        }
       } catch (e) {
         // 设置更新失败静默处理
       }
@@ -579,6 +590,23 @@ async function init() {
   } catch (error) {
     console.error("应用窗口不激活样式失败:", error);
   }
+
+  // 主窗口重新可见时，重新加载并应用最新设置（防止设置窗口事件未触达主界面）
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible") {
+      try {
+        const { loadSettingsFromFile } = await import("../../services/tauri-api.js");
+        const { applyInterfaceSettings } = await import("../../services/theme-service.js");
+        const fresh = await loadSettingsFromFile();
+        if (fresh?.interface) {
+          applyInterfaceSettings(fresh.interface);
+          console.log("[visibilitychange] 主界面设置已重新应用");
+        }
+      } catch (e) {
+        console.error("[visibilitychange] 重新应用设置失败:", e);
+      }
+    }
+  });
 }
 
 // 启动应用
