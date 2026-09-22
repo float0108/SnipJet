@@ -41,16 +41,20 @@ pub fn get_clipboard_history(
 ) -> Vec<ClipboardItem> {
     let history = state.history.lock().unwrap();
     let total = history.len();
-    let offset = offset.unwrap_or(0);
+    // 边界保护：offset 超过总量时直接返回空数组，避免无意义的 skip
+    if total == 0 {
+        return vec![];
+    }
+    let offset = offset.unwrap_or(0).min(total);
 
     match limit {
-        Some(0) | None if total > 0 => {
-            // limit=0 或 limit=None（全部）时，使用迭代器避免 clone 整个 Vec
-            history.iter().skip(offset).cloned().collect()
-        }
-        Some(0) | None => {
-            // 空列表
+        Some(0) => {
+            // limit=0 显式表示空
             vec![]
+        }
+        None => {
+            // limit=None 表示全部
+            history.iter().skip(offset).cloned().collect()
         }
         Some(limit) => {
             // 指定 limit，最多为 500
@@ -61,8 +65,18 @@ pub fn get_clipboard_history(
 }
 
 #[tauri::command]
-pub fn clear_history(state: State<'_, Arc<AppState>>) {
+pub fn clear_history(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    // 1. 同步清理数据库（清理对应的图片文件）
+    state.datastore.clear_history()
+        .map_err(|e| format!("Failed to clear database history: {}", e))?;
+
+    // 2. 清理内存中的历史记录
     state.history.lock().unwrap().clear();
+
+    // 3. 同步 last_saved_history 缓存，防止 has_history_changed 误判
+    state.datastore.reset_last_saved_history();
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -205,6 +219,9 @@ pub async fn paste_to_active_window(
     // 用于前端已处理好格式转换的场景，如纯文本粘贴
     content_type: Option<String>,
 ) -> Result<(), String> {
+    // 0. 先设置剪贴板忽略窗口，防止自身粘贴触发 on_clipboard_change 重复入库
+    set_clipboard_ignore_for(800);
+
     // 1. 计算 Hash
     let hash = ClipboardManager::generate_hash(content.as_bytes());
     {
@@ -217,9 +234,15 @@ pub async fn paste_to_active_window(
     let format_clone = format.clone();
 
     // 对于图片格式，需要先读取图片数据（使用缓存的 DataStore）
-    let image_data = if format == "image" {
-        let datastore = &state.datastore;
-        Some(datastore.load_image(&content)?)
+    // 同步 I/O 必须放在 spawn_blocking 中，避免阻塞 Tokio runtime
+    let image_data: Option<Vec<u8>> = if format == "image" {
+        let datastore = state.datastore.clone();
+        let content_clone = content.clone();
+        Some(tokio::task::spawn_blocking(move || {
+            datastore.load_image(&content_clone)
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))??)
     } else {
         None
     };
@@ -479,12 +502,25 @@ pub fn apply_no_activate_style() {
 }
 
 #[tauri::command]
-pub async fn update_window_pin_state(is_pinned: bool) -> Result<(), String> {
+pub async fn update_window_pin_state(
+    app_handle: tauri::AppHandle,
+    is_pinned: bool,
+) -> Result<(), String> {
     // 更新全局的WINDOW_PIN_STATE变量
-    let mut pin_state_lock = WINDOW_PIN_STATE.lock().unwrap();
-    *pin_state_lock = is_pinned;
+    {
+        let mut pin_state_lock = WINDOW_PIN_STATE.lock().unwrap();
+        *pin_state_lock = is_pinned;
+    }
+
+    // 实际应用窗口置顶状态（修复前遗漏：仅更新全局变量但未改变窗口行为）
+    if let Some(window) = app_handle.get_webview_window("main") {
+        if let Err(e) = window.set_always_on_top(is_pinned) {
+            error!("Failed to set window always_on_top({}): {:?}", is_pinned, e);
+            return Err(format!("Failed to set always_on_top: {:?}", e));
+        }
+    }
+
     info!("Updated global window pin state to: {}", is_pinned);
-    // 从全局变量获取app_handle
     Ok(())
 }
 
@@ -1059,7 +1095,10 @@ pub async fn reload_text_expand_rules(
     app_handle: tauri::AppHandle,
     text_expander: State<'_, Arc<Mutex<crate::core::text_expand::TextExpander>>>,
 ) -> Result<(), String> {
-    let expander = text_expander.lock().map_err(|e| e.to_string())?;
+    // 修复：原实现使用 .map_err(|e| e.to_string())? 会把 poisoned mutex 直接当失败返回。
+    // 正确做法：Mutex 中毒时 guard 仍可使用（数据可能不一致但仍能读），应 unwrap_or_else 恢复。
+    let expander = text_expander.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     expander.reload_rules(&app_handle);
     info!("Text expand rules reloaded");
     Ok(())
@@ -1068,13 +1107,79 @@ pub async fn reload_text_expand_rules(
 // --- 图片相关命令 ---
 
 use std::sync::OnceLock;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 // 图片缓存：relative_path -> base64 编码的图片数据
-static IMAGE_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+// 修复：原实现使用无界 HashMap，长时间使用后会导致内存无限增长直至 OOM。
+// 改为 LRU 缓存：插入新条目时若超出容量上限则淘汰最久未访问的条目。
+const IMAGE_CACHE_CAPACITY: usize = 64; // 最多缓存 64 张图片的 base64
 
-fn get_image_cache() -> &'static Mutex<HashMap<String, String>> {
-    IMAGE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+struct ImageCacheInner {
+    map: HashMap<String, String>,
+    order: VecDeque<String>, // 访问顺序：尾部为最新
+}
+
+static IMAGE_CACHE: OnceLock<Mutex<ImageCacheInner>> = OnceLock::new();
+
+fn get_image_cache() -> &'static Mutex<ImageCacheInner> {
+    IMAGE_CACHE.get_or_init(|| {
+        Mutex::new(ImageCacheInner {
+            map: HashMap::with_capacity(IMAGE_CACHE_CAPACITY),
+            order: VecDeque::with_capacity(IMAGE_CACHE_CAPACITY),
+        })
+    })
+}
+
+fn cache_get(key: &str) -> Option<String> {
+    let mut guard = get_image_cache().lock().ok()?;
+    if let Some(v) = guard.map.get(key) {
+        // 命中：先克隆值，再释放不可变借用，最后做 LRU 提升
+        let cloned = v.clone();
+        if let Some(pos) = guard.order.iter().position(|k| k == key) {
+            guard.order.remove(pos);
+        }
+        guard.order.push_back(key.to_string());
+        Some(cloned)
+    } else {
+        None
+    }
+}
+
+fn cache_put(key: String, value: String) {
+    let Ok(mut guard) = get_image_cache().lock() else { return };
+
+    // 已存在：更新值并提升到队尾
+    if guard.map.contains_key(&key) {
+        guard.map.insert(key.clone(), value);
+        if let Some(pos) = guard.order.iter().position(|k| k == &key) {
+            guard.order.remove(pos);
+        }
+        guard.order.push_back(key);
+        return;
+    }
+
+    // 容量上限：淘汰最旧的条目（队首）
+    while guard.map.len() >= IMAGE_CACHE_CAPACITY {
+        if let Some(oldest) = guard.order.pop_front() {
+            guard.map.remove(&oldest);
+        } else {
+            break;
+        }
+    }
+
+    guard.map.insert(key.clone(), value);
+    guard.order.push_back(key);
+}
+
+/// 主动失效某条缓存（删除图片时调用，避免返回过期数据）
+#[allow(dead_code)]
+fn cache_invalidate(key: &str) {
+    if let Ok(mut guard) = get_image_cache().lock() {
+        guard.map.remove(key);
+        if let Some(pos) = guard.order.iter().position(|k| k == key) {
+            guard.order.remove(pos);
+        }
+    }
 }
 
 /// 读取图片并返回 base64（供前端显示）
@@ -1083,12 +1188,9 @@ pub async fn read_image_as_base64(
     state: State<'_, Arc<AppState>>,
     relative_path: String,
 ) -> Result<String, String> {
-    // 先检查缓存
-    {
-        let cache = get_image_cache().lock().map_err(|e| e.to_string())?;
-        if let Some(cached) = cache.get(&relative_path) {
-            return Ok(cached.clone());
-        }
+    // 先检查缓存（LRU）
+    if let Some(cached) = cache_get(&relative_path) {
+        return Ok(cached);
     }
 
     // 缓存未命中，从磁盘加载
@@ -1103,11 +1205,8 @@ pub async fn read_image_as_base64(
     // 转换为 base64
     let base64_str = STANDARD.encode(&image_data);
 
-    // 加入缓存
-    {
-        let mut cache = get_image_cache().lock().map_err(|e| e.to_string())?;
-        cache.insert(relative_path, base64_str.clone());
-    }
+    // 加入 LRU 缓存（容量上限由 cache_put 内部保证）
+    cache_put(relative_path, base64_str.clone());
 
     Ok(base64_str)
 }

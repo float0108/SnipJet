@@ -339,6 +339,8 @@ impl DataStore {
     }
 
     /// 从文件加载设置
+    /// 修复：原实现直接返回文件内容，缺失字段时前端会拿到 undefined。
+    /// 改为与默认值深度合并，保证所有已知字段都有合理值。
     pub fn load_settings(&self) -> Result<serde_json::Value, String> {
         let path = self.get_settings_path();
 
@@ -353,8 +355,12 @@ impl DataStore {
         let settings: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| format!("Failed to parse settings file: {}", e))?;
 
+        // 与默认值深度合并，缺失字段用默认值填充
+        let defaults = Self::default_settings();
+        let merged = merge_json_values(&defaults, &settings);
+
         info!("Settings loaded from {:?}", path);
-        Ok(settings)
+        Ok(merged)
     }
 
     /// 保存文本扩展规则到文件
@@ -415,17 +421,33 @@ impl DataStore {
     }
 
     /// 检查历史是否有变更
+    /// 修复：原实现仅比较 id 与长度，content / is_favorite / preview 等字段变化检测不到。
+    /// 改为深度比较关键字段。
     pub fn has_history_changed(&self, current: &[ClipboardItem]) -> bool {
         let last_saved = self.last_saved_history.lock().unwrap();
         if last_saved.len() != current.len() {
             return true;
         }
         for (last, curr) in last_saved.iter().zip(current.iter()) {
-            if last.id != curr.id {
+            if last.id != curr.id
+                || last.content != curr.content
+                || last.preview != curr.preview
+                || last.format != curr.format
+                || last.timestamp != curr.timestamp
+                || last.word_count != curr.word_count
+                || last.is_favorite != curr.is_favorite
+                || last.metadata != curr.metadata
+            {
                 return true;
             }
         }
         false
+    }
+
+    /// 重置 last_saved_history 缓存（清空历史后调用，避免下次保存时被误判为有变更）
+    pub fn reset_last_saved_history(&self) {
+        let mut guard = self.last_saved_history.lock().unwrap();
+        guard.clear();
     }
 
     /// 默认设置
@@ -502,6 +524,33 @@ pub fn start_auto_save(
             }
         }
     });
+}
+
+/// 深度合并两个 serde_json::Value：defaults 提供骨架，override 提供覆盖值
+/// 仅合并 Object 类型；非 Object 类型 override 优先。
+fn merge_json_values(defaults: &serde_json::Value, override_val: &serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match (defaults, override_val) {
+        (Value::Object(d_map), Value::Object(o_map)) => {
+            let mut result = serde_json::Map::new();
+            // 先遍历 defaults 的所有键（保证所有字段都存在）
+            for (k, v) in d_map {
+                if let Some(o_v) = o_map.get(k) {
+                    result.insert(k.clone(), merge_json_values(v, o_v));
+                } else {
+                    result.insert(k.clone(), v.clone());
+                }
+            }
+            // 再遍历 override 独有的键（用户新增的字段保留）
+            for (k, v) in o_map {
+                if !d_map.contains_key(k) {
+                    result.insert(k.clone(), v.clone());
+                }
+            }
+            Value::Object(result)
+        }
+        (_, override_val) => override_val.clone(),
+    }
 }
 
 /// 保存所有数据（应用退出时调用）

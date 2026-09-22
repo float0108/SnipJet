@@ -150,21 +150,31 @@ pub fn has_markdown_syntax(text: &str) -> bool {
     use regex::Regex;
 
     // 行首的 Markdown 标记
+    // 修复：移除过于宽松的 "|.+|" 模式（任何含 | 的文本都会误命中，例如日志、shell 输出）。
+    // 表格行要求 |---|--- 这种分隔行才视为表格，避免误判。
     let patterns = [
-        r"^#{1,6}\s",           // 标题 # ## ### 等
-        r"^[-*+]\s",            // 无序列表 - * +
-        r"^\d+\.\s",            // 有序列表 1. 2. 等
-        r"^>\s",                // 引用块 >
-        r"^```",                // 代码块 ```
-        r"`[^`]+`",             // 行内代码 `code`
-        r"\*[^*]+\*",           // 斜体 *text*
-        r"_[^_]+_",             // 斜体 _text_
-        r"\*\*[^*]+\*\*",       // 粗体 **text**
-        r"__[^_]+__",           // 粗体 __text__
-        r"!\[.*?\]\(.*?\)",     // 图片 ![alt](url)
-        r"\[.*?\]\(.*?\)",      // 链接 [text](url)
-        r"\|.+\|",              // 表格 | col | col |
+        r"^#{1,6}\s",                  // 标题 # ## ### 等
+        r"^[-*+]\s",                   // 无序列表 - * +
+        r"^\d+\.\s",                   // 有序列表 1. 2. 等
+        r"^>\s",                       // 引用块 >
+        r"^```",                       // 代码块 ```
+        r"`[^`\n]+`",                  // 行内代码 `code`
+        r"\*\*[^*\n]+\*\*",            // 粗体 **text**
+        r"__[^_\n]+__",                // 粗体 __text__
+        r"!\[[^\n]*\]\([^\n]*\)",      // 图片 ![alt](url)
+        r"\[[^\n]+\]\([^\n]*\)",       // 链接 [text](url)
+        r"\|[\s\-:|]+\|",              // 表格分隔行 |---|---|
     ];
+
+    // 预编译所有正则，避免循环内重复编译
+    let compiled: Vec<Regex> = patterns
+        .iter()
+        .filter_map(|p| Regex::new(p).ok())
+        .collect();
+
+    // 斜体 *x* / _x_ 单独判定：要求左右边界是空白/标点/行首行尾，避免误命中乘号、变量名
+    let italic_asterisk = Regex::new(r"(^|[\s\W])(\*[^*\s\n][^*\n]*[^*\s\n]\*)([\s\W]|$)").ok();
+    let italic_underscore = Regex::new(r"(^|[\s\W])(_[^_\s\n][^_\n]*[^_\s\n]_)([\s\W]|$)").ok();
 
     for line in text.lines() {
         let line = line.trim();
@@ -172,11 +182,20 @@ pub fn has_markdown_syntax(text: &str) -> bool {
             continue;
         }
 
-        for pattern in &patterns {
-            if let Ok(re) = Regex::new(pattern) {
-                if re.is_match(line) {
-                    return true;
-                }
+        for re in &compiled {
+            if re.is_match(line) {
+                return true;
+            }
+        }
+
+        if let Some(re) = italic_asterisk.as_ref() {
+            if re.is_match(line) {
+                return true;
+            }
+        }
+        if let Some(re) = italic_underscore.as_ref() {
+            if re.is_match(line) {
+                return true;
             }
         }
     }
