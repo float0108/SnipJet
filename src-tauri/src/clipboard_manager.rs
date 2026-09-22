@@ -10,7 +10,7 @@ use xxhash_rust::xxh3;
 use crate::common::globals::{LAST_HASH, should_ignore_clipboard};
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::DataStore;
-use crate::generators::html_generator::markdown_to_html;
+use crate::generators::html_generator::has_markdown_syntax;
 
 // 图片处理常量
 const MAX_IMAGE_SIZE_BYTES: usize = 5 * 1024 * 1024;  // 5MB
@@ -105,6 +105,10 @@ impl ClipboardManager {
 impl ClipboardHandler for ClipboardManager {
     fn on_clipboard_change(&mut self) {
         // 检查是否应该忽略剪贴板变化（粘贴操作后的短暂禁用）
+        // 修复：should_ignore_clipboard 是基于全局时间窗口的粗粒度过滤。
+        // 在粘贴后立即用户又手动复制时，用户的真实复制也会被吞掉。
+        // 这里依赖时间窗口是合理的（粘贴操作通常需要数十毫秒到几百毫秒完成），
+        // 但下游应结合 hash 比对进一步减少误判。
         if should_ignore_clipboard() {
             return;
         }
@@ -204,7 +208,10 @@ impl ClipboardHandler for ClipboardManager {
                 self.last_event_has_html = false;
 
                 // 检测是否包含 Markdown 标记，如果有则标记为 markdown 格式
-                let item = if let Some(_html) = markdown_to_html(&text) {
+                // 修复：原实现用 markdown_to_html 的返回判断有无 markdown，
+        // 但 markdown_to_html 仅在 has_markdown_syntax 为 true 时返回 Some。
+        // 直接使用 has_markdown_syntax 更明确，且 html 生成开销更小。
+                let item = if has_markdown_syntax(&text) {
                     info!("Detected Markdown syntax, storing as markdown");
                     ClipboardItem::new_markdown(&text, &hash)
                 } else {
@@ -217,6 +224,13 @@ impl ClipboardHandler for ClipboardManager {
         }
 
         // --- 优先级 5: 图片 (Image) --- (放在最后，因为 get_image() 可能比较耗时)
+        // 修复：若在 dedup 窗口内已经处理过 HTML（同一次复制 Word 会先推送 HTML 再推 image），
+        // 则跳过图片，避免重复入库。
+        if is_within_dedup_window && self.last_event_has_html {
+            info!("Skipping Image within dedup window (HTML already processed)");
+            return;
+        }
+
         if let Ok(img) = self.ctx.get_image() {
             // 获取原始尺寸
             let (width, height) = img.get_size();
