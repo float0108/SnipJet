@@ -17,7 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::Win32::Foundation::POINT;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use clipboard_rs::{Clipboard, ClipboardContext};
+use clipboard_rs::{Clipboard, ClipboardContent, ClipboardContext};
 use clipboard_rs::common::{RustImage, RustImageData};
 use enigo::{Enigo, Key, KeyboardControllable};
 use log::{error, info, warn};
@@ -322,11 +322,19 @@ pub async fn paste_to_active_window(
                 }
             }
             "html" => {
-                ctx.set_html(content_for_clipboard)
+                // 同时写入 HTML 与纯文本，目标应用不支持富文本时自动回退纯文本
+                let plain_text = nanohtml2text::html2text(&content_for_clipboard);
+                let contents =
+                    build_clipboard_contents("html", content_for_clipboard, plain_text);
+                ctx.set(contents)
                     .map_err(|e| format!("Set HTML error: {:?}", e))
             }
             "rtf" => {
-                ctx.set_rich_text(content_for_clipboard)
+                // 同时写入 RTF 与纯文本，目标应用不支持富文本时自动回退纯文本
+                let plain_text = rtf_to_plain_text(&content_for_clipboard);
+                let contents =
+                    build_clipboard_contents("rtf", content_for_clipboard, plain_text);
+                ctx.set(contents)
                     .map_err(|e| format!("Set RTF error: {:?}", e))
             }
             _ => {
@@ -502,7 +510,11 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
     // 根据格式复制内容
     match format.as_str() {
         "html" | "markdown" => {
-            ctx.set_html(content_for_clipboard)
+            // 同时写入 HTML 与纯文本，目标应用不支持富文本时自动回退纯文本
+            let plain_text = nanohtml2text::html2text(&content_for_clipboard);
+            let contents =
+                build_clipboard_contents("html", content_for_clipboard, plain_text);
+            ctx.set(contents)
                 .map_err(|e| format!("Failed to set clipboard html: {:?}", e))?;
         }
         _ => {
@@ -521,6 +533,295 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
 pub async fn print_message(_message: String) -> Result<(), String> {
     // 静默处理，不输出日志
     Ok(())
+}
+
+/// 构建剪贴板多格式内容：富文本格式 + 纯文本回退
+/// 目标应用（如记事本）不支持富文本时，会自动使用纯文本格式粘贴
+#[cfg(target_os = "windows")]
+fn build_clipboard_contents(
+    clipboard_type: &str,
+    rich_content: String,
+    plain_text: String,
+) -> Vec<ClipboardContent> {
+    match clipboard_type {
+        "html" => vec![
+            ClipboardContent::Text(plain_text),
+            ClipboardContent::Html(plain_html_to_cf_html(&rich_content)),
+        ],
+        "rtf" => vec![
+            ClipboardContent::Text(plain_text),
+            ClipboardContent::Rtf(rich_content),
+        ],
+        _ => vec![ClipboardContent::Text(rich_content)],
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn build_clipboard_contents(
+    clipboard_type: &str,
+    rich_content: String,
+    _plain_text: String,
+) -> Vec<ClipboardContent> {
+    match clipboard_type {
+        "html" => vec![ClipboardContent::Html(rich_content)],
+        "rtf" => vec![ClipboardContent::Rtf(rich_content)],
+        _ => vec![ClipboardContent::Text(rich_content)],
+    }
+}
+
+/// 将普通 HTML 包装为 Windows CF_HTML 格式（带 Version/StartHTML/EndHTML/StartFragment/EndFragment 头）
+/// clipboard-rs 的 ClipboardContent::Html 写入时不做此转换，需自行处理
+/// 实现参照 clipboard-rs 0.3.2 win.rs 的 plain_html_to_cf_html
+#[cfg(target_os = "windows")]
+fn plain_html_to_cf_html(fragment: &str) -> String {
+    const POS_PLACEHOLDER: &str = "0000000000";
+
+    let mut buffer = String::new();
+
+    let mut write_header = |key: &str, value: &str| {
+        buffer.reserve(key.len() + value.len() + ":\r\n".len());
+        buffer.push_str(key);
+        buffer.push(':');
+        let value_pos = buffer.len();
+        buffer.push_str(value);
+        buffer.push_str("\r\n");
+        value_pos
+    };
+
+    write_header("Version", "0.9");
+
+    let start_html_header_value_pos = write_header("StartHTML", POS_PLACEHOLDER);
+    let end_html_header_value_pos = write_header("EndHTML", POS_PLACEHOLDER);
+    let start_fragment_header_value_pos = write_header("StartFragment", POS_PLACEHOLDER);
+    let end_fragment_header_value_pos = write_header("EndFragment", POS_PLACEHOLDER);
+
+    let start_html_pos = buffer.len();
+    if !fragment.starts_with("<html>") {
+        buffer.push_str("<html>\r\n<body>\r\n<!--StartFragment-->");
+    }
+
+    let start_fragment_pos = buffer.len();
+    buffer.push_str(fragment);
+
+    let end_fragment_pos = buffer.len();
+    if !fragment.ends_with("</html>") {
+        buffer.push_str("<!--EndFragment-->\r\n</body>\r\n</html>");
+    }
+
+    let end_html_pos = buffer.len();
+
+    let mut replace_placeholder = |value_begin_idx: usize, header_value: &str| {
+        let value_end_idx = value_begin_idx + POS_PLACEHOLDER.len();
+        buffer.replace_range(value_begin_idx..value_end_idx, header_value);
+    };
+
+    replace_placeholder(start_html_header_value_pos, &format!("{start_html_pos:0>10}"));
+    replace_placeholder(end_html_header_value_pos, &format!("{end_html_pos:0>10}"));
+    replace_placeholder(
+        start_fragment_header_value_pos,
+        &format!("{start_fragment_pos:0>10}"),
+    );
+    replace_placeholder(
+        end_fragment_header_value_pos,
+        &format!("{end_fragment_pos:0>10}"),
+    );
+
+    buffer
+}
+
+/// 从 RTF 中提取纯文本（作为不支持富文本目标应用的回退内容）
+/// 处理：控制字跳过、\par/\line/\tab、\'hh 十六进制字节（按 \ansicpg 代码页解码）、
+/// \uN Unicode 转义，以及 {\fonttbl}、{\colortbl} 等元数据组的整组跳过
+fn rtf_to_plain_text(rtf: &str) -> String {
+    let mut out = String::new();
+    let mut ansi_bytes: Vec<u8> = Vec::new(); // 连续的 \'hh 字节缓存，按文档代码页解码
+    let mut encoding: &'static encoding_rs::Encoding = encoding_rs::WINDOWS_1252;
+    let mut depth: usize = 0; // 当前大括号嵌套深度
+    let mut skip_until_depth: Option<usize> = None; // 需要整组跳过的元数据组
+
+    fn flush_ansi(
+        out: &mut String,
+        buf: &mut Vec<u8>,
+        encoding: &'static encoding_rs::Encoding,
+    ) {
+        if !buf.is_empty() {
+            let (decoded, _, _) = encoding.decode(buf);
+            out.push_str(&decoded);
+            buf.clear();
+        }
+    }
+
+    let mut chars = rtf.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        // 处于需要跳过的元数据组中：只跟踪括号配对
+        if let Some(sd) = skip_until_depth {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    if depth > 0 {
+                        depth -= 1;
+                    }
+                    // 目的地所在组闭合（嵌套子组闭合不结束跳过）
+                    if depth < sd {
+                        skip_until_depth = None;
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                if depth > 0 {
+                    depth -= 1;
+                }
+            }
+            '\\' => {
+                match chars.peek().copied() {
+                    // 十六进制转义字节 \'hh
+                    Some('\'') => {
+                        chars.next();
+                        let mut hex = String::new();
+                        while hex.len() < 2 {
+                            match chars.peek() {
+                                Some(h) if h.is_ascii_hexdigit() => {
+                                    hex.push(*h);
+                                    chars.next();
+                                }
+                                _ => break,
+                            }
+                        }
+                        if let Ok(b) = u8::from_str_radix(&hex, 16) {
+                            ansi_bytes.push(b);
+                        }
+                    }
+                    // 控制字 \word[N]
+                    Some(c2) if c2.is_ascii_alphabetic() => {
+                        let mut word = String::new();
+                        while let Some(w) = chars.peek() {
+                            if w.is_ascii_alphabetic() {
+                                word.push(*w);
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        // 可选数字参数（含负号）
+                        let mut param: Option<i64> = None;
+                        if chars
+                            .peek()
+                            .map_or(false, |p| p.is_ascii_digit() || *p == '-')
+                        {
+                            let mut num = String::new();
+                            if chars.peek() == Some(&'-') {
+                                num.push('-');
+                                chars.next();
+                            }
+                            while let Some(d) = chars.peek() {
+                                if d.is_ascii_digit() {
+                                    num.push(*d);
+                                    chars.next();
+                                } else {
+                                    break;
+                                }
+                            }
+                            param = num.parse::<i64>().ok();
+                        }
+                        // 控制字后的单个空格为分隔符
+                        if chars.peek() == Some(&' ') {
+                            chars.next();
+                        }
+
+                        match word.as_str() {
+                            "par" | "line" => {
+                                flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                                out.push('\n');
+                            }
+                            "tab" => {
+                                flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                                out.push('\t');
+                            }
+                            "emdash" => {
+                                flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                                out.push('—');
+                            }
+                            "endash" => {
+                                flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                                out.push('–');
+                            }
+                            "bullet" => {
+                                flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                                out.push('•');
+                            }
+                            // \'hh 字节的解码代码页（如 936=GBK、950=Big5、65001=UTF-8）
+                            "ansicpg" => {
+                                if let Some(n) = param {
+                                    encoding = match n {
+                                        936 => encoding_rs::GBK,
+                                        950 => encoding_rs::BIG5,
+                                        65001 => encoding_rs::UTF_8,
+                                        _ => encoding_rs::WINDOWS_1252,
+                                    };
+                                }
+                            }
+                            "lquote" => out.push('‘'),
+                            "rquote" => out.push('’'),
+                            "ldblquote" => out.push('“'),
+                            "rdblquote" => out.push('”'),
+                            "u" => {
+                                if let Some(n) = param {
+                                    flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                                    // \uN 的值为带符号 16 位码点
+                                    if let Some(ch) = char::from_u32((n as i16) as u32) {
+                                        out.push(ch);
+                                    }
+                                    // 跳过规范要求的回退字符（通常为 '?'）
+                                    if chars.peek() == Some(&'?') {
+                                        chars.next();
+                                    }
+                                }
+                            }
+                            // 元数据目的地：整组跳过
+                            "fonttbl" | "colortbl" | "stylesheet" | "info" | "pict" | "object"
+                            | "header" | "footer" | "headerl" | "headerr" | "footerl"
+                            | "footerr" | "generator" | "themedata" | "colorschememapping"
+                            | "datastore" | "listtable" | "listoverridetable" | "rsidtbl"
+                            | "latentstyles" | "fldinst" | "xmlnstbl" | "pgptbl" | "panose" => {
+                                skip_until_depth = Some(depth);
+                            }
+                            _ => {}
+                        }
+                    }
+                    // 转义符号 \\ \{ \}
+                    Some(c2 @ ('\\' | '{' | '}')) => {
+                        chars.next();
+                        flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                        out.push(c2);
+                    }
+                    // \* 标记的可忽略组：仅消费符号，由后续控制字触发整组跳过
+                    Some('*') => {
+                        chars.next();
+                    }
+                    // \ 后紧跟换行视为段落（部分写出器行为）
+                    Some('\n' | '\r') => {
+                        chars.next();
+                        flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                        out.push('\n');
+                    }
+                    _ => {}
+                }
+            }
+            c => {
+                flush_ansi(&mut out, &mut ansi_bytes, encoding);
+                out.push(c);
+            }
+        }
+    }
+    flush_ansi(&mut out, &mut ansi_bytes, encoding);
+    out
 }
 
 /// 获取当前鼠标位置（屏幕坐标）
@@ -1560,4 +1861,3 @@ fn text_quality(s: &str) -> i32 {
     }
     score
 }
-
