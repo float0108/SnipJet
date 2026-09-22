@@ -638,12 +638,12 @@ pub async fn load_settings_command(
 
 // --- 全局快捷键命令 ---
 
-/// 注册全局快捷键
-#[tauri::command]
-pub async fn register_global_shortcut(
-    app_handle: AppHandle,
-    shortcut: String,
-    action: String,
+/// 内部辅助：在 app_handle 上注册单个全局快捷键，写入 SHORTCUT_ACTION_MAP。
+/// 由 `register_global_shortcut` 命令和应用启动时的 setup() 共用。
+pub fn register_shortcut_internal(
+    app_handle: &AppHandle,
+    shortcut: &str,
+    action: &str,
 ) -> Result<(), String> {
     use crate::common::globals::SHORTCUT_ACTION_MAP;
     use tauri::Emitter;
@@ -663,7 +663,7 @@ pub async fn register_global_shortcut(
 
     // 获取 app_handle 的克隆用于回调
     let app_handle_for_callback = app_handle.clone();
-    let action_for_callback = action.clone();
+    let action_for_callback = action.to_string();
 
     // 注册新的快捷键，设置回调触发事件
     global_shortcut.on_shortcut(shortcut_parsed, move |_app, _shortcut, _event| {
@@ -675,10 +675,20 @@ pub async fn register_global_shortcut(
     // 存储快捷键到动作的映射
     {
         let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
-        map.insert(shortcut, action);
+        map.insert(shortcut.to_string(), action.to_string());
     }
 
     Ok(())
+}
+
+/// 注册全局快捷键
+#[tauri::command]
+pub async fn register_global_shortcut(
+    app_handle: AppHandle,
+    shortcut: String,
+    action: String,
+) -> Result<(), String> {
+    register_shortcut_internal(&app_handle, &shortcut, &action)
 }
 
 /// 注销全局快捷键

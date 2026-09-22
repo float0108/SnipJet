@@ -169,6 +169,35 @@ where
                             info!("Autostart disabled on startup (setting: {})", startup_launch);
                         }
                     }
+
+                    // 启动时根据已加载的 settings 主动注册全局快捷键
+                    // 这样即使前端的 initGlobalShortcuts() 因为任何原因
+                    // 没有触发 register_global_shortcut invoke，快捷键
+                    // 仍然在应用启动后立即可用。
+                    use crate::commands::register_shortcut_internal;
+                    if let Some(shortcuts) = loaded_settings.get("shortcuts") {
+                        let pairs: [(&str, &str); 2] = [
+                            ("toggle_interface", "toggle_interface"),
+                            ("function_paste", "function_paste"),
+                        ];
+                        for (config_key, action) in pairs {
+                            if let Some(value) = shortcuts.get(config_key).and_then(|v| v.as_str()) {
+                                if !value.is_empty() {
+                                    if let Err(e) = register_shortcut_internal(&app_handle, value, action) {
+                                        error!(
+                                            "Failed to register shortcut '{}' for '{}' on startup: {}",
+                                            value, action, e
+                                        );
+                                    } else {
+                                        info!(
+                                            "Registered shortcut '{}' for '{}' on startup",
+                                            value, action
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Err(e) => {
                     error!("Failed to load data: {}, starting with empty history", e);
