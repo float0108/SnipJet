@@ -216,6 +216,22 @@ where
                 }
             };
 
+            // 启动时根据设置执行一次历史清理
+            {
+                let default_cleanup = serde_json::json!({
+                    "count_enabled": false,
+                    "count_threshold": 0,
+                    "age_enabled": false,
+                    "age_days": 0,
+                });
+                let cleanup_settings = crate::core::data_store::load_all_data(&state_for_setup.datastore)
+                    .map(|(_, settings, _)| {
+                        settings.get("history_cleanup").cloned().unwrap_or(default_cleanup.clone())
+                    })
+                    .unwrap_or(default_cleanup);
+                crate::commands::run_startup_history_cleanup(&state_for_setup, &cleanup_settings);
+            }
+
             // 确保主窗口始终置顶
             if let Some(window) = app_handle.get_webview_window("main") {
                 if let Err(e) = window.set_always_on_top(true) {
@@ -377,6 +393,7 @@ where
         })
         .invoke_handler(tauri::generate_handler!(
             commands::get_clipboard_history,
+            commands::get_clipboard_content,
             commands::clear_history,
             commands::delete_clipboard_item,
             commands::delete_favorite_item,
@@ -414,6 +431,8 @@ where
             commands::copy_markdown_as_docx,
             commands::update_max_history_items,
             commands::list_system_fonts,
+            commands::clean_history_by_count,
+            commands::clean_history_by_age,
             commands::paste_clipboard_item_at_index,
             commands::paste_clipboard_item_rotating,
             commands::reset_rotating_paste,

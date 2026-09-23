@@ -80,6 +80,77 @@
 
           <div class="setting-divider"></div>
 
+          <div class="setting-section-title">历史记录自动清理</div>
+          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
+            应用启动时自动清理历史记录（收藏的条目不会被清理）。
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">按条数清理</div>
+              <div class="setting-description">历史条数超过设定值时，删除最旧的非收藏条目</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="cleanup-count-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="cleanup-count-item">
+            <div class="setting-info">
+              <div class="setting-label">保留条数</div>
+              <div class="setting-description">历史记录最多保留多少条</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="cleanup-count-threshold"
+                min="10"
+                max="100000"
+                step="10"
+                placeholder="例如 500"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">按时间清理</div>
+              <div class="setting-description">删除指定天数之前的历史条目</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="cleanup-age-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="cleanup-age-item">
+            <div class="setting-info">
+              <div class="setting-label">保留天数</div>
+              <div class="setting-description">保留最近多少天的历史记录</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="cleanup-age-days"
+                min="1"
+                max="3650"
+                step="1"
+                placeholder="例如 30"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <div class="setting-divider"></div>
+
           <div class="setting-section-title">MCP 服务</div>
           <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
             Model Context Protocol 服务允许 AI 助手（如 Claude）访问和管理您的剪贴板历史。

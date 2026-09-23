@@ -322,6 +322,63 @@ impl DataStore {
         self.db.clear_history()
     }
 
+    /// 按条数清理：仅保留最新 keep_count 条历史（收藏项始终保留）。
+    /// 返回删除的非收藏条目数量。
+    pub fn clean_history_by_count(&self, keep_count: usize) -> Result<usize, String> {
+        let deleted_ids = self.db.delete_history_excess_by_count(keep_count)?;
+        let deleted_count = deleted_ids.len();
+        if deleted_count == 0 {
+            return Ok(0);
+        }
+
+        // 对于被删除的项，如果它们是图片且收藏表中不再引用同一张图片，才删除图片文件
+        // 这里采用保守策略：仅在被删除 id 列表里查找图片格式
+        for id in &deleted_ids {
+            if let Ok(Some(item)) = self.db.get_item(id) {
+                if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
+                    // 检查收藏表中是否还有引用同一 content 的项
+                    let favorites = self.db.load_favorites().unwrap_or_default();
+                    let still_in_use = favorites.iter().any(|f| f.content == item.content);
+                    if !still_in_use {
+                        if let Err(e) = self.delete_image(&item.content) {
+                            log::warn!("Failed to delete image file during count cleanup: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(deleted_count)
+    }
+
+    /// 按时间清理：删除早于 N 天前的条目（收藏项始终保留）。
+    /// 返回删除的条目数量。
+    pub fn clean_history_by_age_days(&self, days: i64) -> Result<usize, String> {
+        // 计算 cutoff 时间戳（毫秒）
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let cutoff_ms = now_ms - days * 24 * 60 * 60 * 1000;
+
+        let deleted_ids = self.db.delete_history_older_than(cutoff_ms)?;
+        let deleted_count = deleted_ids.len();
+        if deleted_count == 0 {
+            return Ok(0);
+        }
+
+        for id in &deleted_ids {
+            if let Ok(Some(item)) = self.db.get_item(id) {
+                if matches!(item.format, crate::common::models::ClipboardFormat::Image) {
+                    let favorites = self.db.load_favorites().unwrap_or_default();
+                    let still_in_use = favorites.iter().any(|f| f.content == item.content);
+                    if !still_in_use {
+                        if let Err(e) = self.delete_image(&item.content) {
+                            log::warn!("Failed to delete image file during age cleanup: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(deleted_count)
+    }
+
     /// 保存设置到文件
     pub fn save_settings(&self, settings: &serde_json::Value) -> Result<(), String> {
         let path = self.get_settings_path();

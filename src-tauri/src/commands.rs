@@ -66,6 +66,30 @@ pub fn get_clipboard_history(
     }
 }
 
+/// 按 id 获取单条剪贴板项的完整内容（用于前端按需懒加载，避免在列表中
+/// 把可能很大的 content/preview 全量塞进 DOM 造成主线程卡顿）。
+///
+/// 同时在历史和收藏表中查找，命中则返回完整 ClipboardItem；找不到则返回 None。
+#[tauri::command]
+pub fn get_clipboard_content(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Option<ClipboardItem> {
+    let history = state.history.lock().unwrap();
+    if let Some(item) = history.iter().find(|it| it.id == id) {
+        return Some(item.clone());
+    }
+    drop(history);
+
+    // 收藏表里也找一下（用户可能在收藏视图打开懒加载项）
+    if let Ok(items) = state.datastore.load_favorites() {
+        if let Some(item) = items.into_iter().find(|it| it.id == id) {
+            return Some(item);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn clear_history(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     // 1. 同步清理数据库（清理对应的图片文件）
@@ -1949,6 +1973,163 @@ pub fn update_max_history_items(
     *max_lock = max_items;
     info!("Max history items updated to: {:?}", max_items);
     Ok(())
+}
+
+/// 按条数清理历史（仅删除非收藏项）
+/// 返回实际删除的条目数。
+#[tauri::command]
+pub async fn clean_history_by_count(
+    state: State<'_, Arc<AppState>>,
+    keep_count: usize,
+) -> Result<usize, String> {
+    let datastore = state.datastore.clone();
+
+    // 将同步 I/O 操作放到 spawn_blocking 中执行
+    let deleted = tokio::task::spawn_blocking(move || {
+        datastore
+            .clean_history_by_count(keep_count)
+            .map_err(|e| format!("Failed to clean history by count: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
+    // 同步清理内存历史（按 id 剔除已被删除的项），并刷新 last_saved 缓存
+    if deleted > 0 {
+        let datastore = state.datastore.clone();
+        // 重新读取最新历史以保证内存与数据库一致
+        let history = tokio::task::spawn_blocking(move || datastore.load_clipboard_history())
+            .await
+            .map_err(|e| format!("Task join error: {}", e))??;
+        let mut history_lock = state.history.lock().unwrap();
+        *history_lock = history;
+        state.datastore.reset_last_saved_history();
+    }
+
+    info!("Cleaned history by count: deleted={}, keep={}", deleted, keep_count);
+    Ok(deleted)
+}
+
+/// 按时间清理历史（仅删除非收藏项）
+/// `days`：删除 N 天前的条目
+/// 返回实际删除的条目数。
+#[tauri::command]
+pub async fn clean_history_by_age(
+    state: State<'_, Arc<AppState>>,
+    days: i64,
+) -> Result<usize, String> {
+    if days <= 0 {
+        return Err("days must be positive".to_string());
+    }
+
+    let datastore = state.datastore.clone();
+
+    let deleted = tokio::task::spawn_blocking(move || {
+        datastore
+            .clean_history_by_age_days(days)
+            .map_err(|e| format!("Failed to clean history by age: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
+
+    if deleted > 0 {
+        let datastore = state.datastore.clone();
+        let history = tokio::task::spawn_blocking(move || datastore.load_clipboard_history())
+            .await
+            .map_err(|e| format!("Task join error: {}", e))??;
+        let mut history_lock = state.history.lock().unwrap();
+        *history_lock = history;
+        state.datastore.reset_last_saved_history();
+    }
+
+    info!(
+        "Cleaned history by age: deleted={}, days={}",
+        deleted, days
+    );
+    Ok(deleted)
+}
+
+/// 启动时根据设置执行一次历史清理。
+/// 不返回任何值，仅在内部记录日志。
+pub fn run_startup_history_cleanup(
+    state: &Arc<AppState>,
+    history_cleanup_settings: &serde_json::Value,
+) {
+    use serde_json::Value;
+
+    // 安全读取：缺失或类型不匹配均视为不启用
+    let cleanup_obj = match history_cleanup_settings {
+        Value::Object(_) => history_cleanup_settings,
+        _ => return,
+    };
+
+    // 1. 按条数清理
+    let count_enabled = cleanup_obj
+        .get("count_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let count_threshold = cleanup_obj
+        .get("count_threshold")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+
+    if count_enabled {
+        if let Some(keep) = count_threshold {
+            if keep > 0 {
+                info!(
+                    "启动清理：按条数保留最新 {} 条历史",
+                    keep
+                );
+                match state.datastore.clean_history_by_count(keep) {
+                    Ok(n) if n > 0 => {
+                        info!("启动清理：按条数删除了 {} 条历史", n);
+                    }
+                    Ok(_) => {
+                        info!("启动清理：按条数无需删除");
+                    }
+                    Err(e) => {
+                        log::error!("启动清理（按条数）失败: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 按时间清理
+    let age_enabled = cleanup_obj
+        .get("age_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let age_days = cleanup_obj
+        .get("age_days")
+        .and_then(|v| v.as_i64());
+
+    if age_enabled {
+        if let Some(days) = age_days {
+            if days > 0 {
+                info!("启动清理：删除 {} 天前的历史", days);
+                match state.datastore.clean_history_by_age_days(days) {
+                    Ok(n) if n > 0 => {
+                        info!("启动清理：按时间删除了 {} 条历史", n);
+                    }
+                    Ok(_) => {
+                        info!("启动清理：按时间无需删除");
+                    }
+                    Err(e) => {
+                        log::error!("启动清理（按时间）失败: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    // 同步内存历史到最新数据库状态
+    if count_enabled || age_enabled {
+        if let Ok(history) = state.datastore.load_clipboard_history() {
+            let mut history_lock = state.history.lock().unwrap();
+            *history_lock = history;
+        }
+        state.datastore.reset_last_saved_history();
+    }
 }
 
 /// 获取系统已安装的字体族列表
