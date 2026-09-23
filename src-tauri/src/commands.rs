@@ -11,7 +11,8 @@ use std::fs;
 use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
+    GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE,
+    HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::POINT;
@@ -501,23 +502,128 @@ pub fn apply_no_activate_style() {
     // 这里主要演示 Windows 方案
 }
 
+/// 强制把主窗口置顶（SetWindowPos(HWND_TOPMOST)）。
+///
+/// 适用于以下场景：
+/// 1. toggleWindowVisibility 调用 show() 之后，确保窗口回到 TOPMOST Z 序
+/// 2. 直接通过 set_window_focusable_raw 改过 ex-style 后，tao 内部的
+///    ALWAYS_ON_TOP 状态没变，apply_diff 不会主动调 SetWindowPos(HWND_TOPMOST)
+///    导致窗口被其它窗口盖住
+/// 3. 其它任何会丢失 Z 序的边界情况
+///
+/// 注意：本应用窗口始终置顶（tauri.conf.json: alwaysOnTop: true）。
+/// 与 WINDOW_PIN_STATE 解耦——pin 只控制"点击外部自动关闭"，不影响置顶。
+#[tauri::command]
+pub fn ensure_window_topmost() {
+    #[cfg(target_os = "windows")]
+    {
+        let app_handle_lock = APP_HANDLE.lock().unwrap();
+        if let Some(app_handle) = &*app_handle_lock {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                if let Ok(hwnd) = window.hwnd() {
+                    let hwnd = HWND(hwnd.0 as isize as _);
+                    unsafe {
+                        // 直接调 windows crate 的底层 API，绕过 Param trait 限制
+                        let result = windows::Win32::UI::WindowsAndMessaging::SetWindowPos(
+                            hwnd,
+                            HWND_TOPMOST,
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE,
+                        );
+                        let _ = result;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 直接在 Win32 层设置窗口是否可激活（toggle WS_EX_NOACTIVATE），
+/// 完全绕过 tao 的 apply_diff 状态机。
+///
+/// 实现要点：
+/// - focusable=true 时，从 ex-style 中移除 WS_EX_NOACTIVATE，保留 WS_EX_TOPMOST
+/// - focusable=false 时，向 ex-style 中加入 WS_EX_NOACTIVATE 和 WS_EX_TOPMOST
+/// - **任何调用都额外调一次 SetWindowPos(HWND_TOPMOST)**，强制窗口
+///   重新进入 TOPMOST Z 序。这是因为：
+///   1. set_focusable 直接 SetWindowLongPtrW 改 ex-style 时没有触发
+///      tao 的 SetWindowPos 路径，可能丢失 Z 序；
+///   2. update_window_pin_state 的 set_always_on_top 在 tao 内部走
+///      apply_diff，但因为我们直接改过 ex-style，tao 内部 diff 为空，
+///      不会再调 SetWindowPos(HWND_TOPMOST)，导致窗口被其它窗口遮住。
+///
+/// 为什么不用 Tauri 自身的 appWindow.setFocusable(...)：
+/// tao 在 set_focusable 内部用 apply_diff 把整个 ex-style 整体重写
+/// （SetWindowLongW(GWL_EXSTYLE, ...)）。WebView2 在某些时序下会
+/// 触发自身的 focus 处理逻辑，与 tao 的状态产生竞争，导致：
+/// 1) 失焦路径后 setFocusable(false) 不再生效；
+/// 2) 整个窗口的全局快捷键路由被卡住。
+/// 直接调 Win32 API 可以避开这条链路，并且幂等。
+#[tauri::command]
+pub fn set_window_focusable_raw(focusable: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        let app_handle_lock = APP_HANDLE.lock().unwrap();
+        if let Some(app_handle) = &*app_handle_lock {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                if let Ok(hwnd) = window.hwnd() {
+                    let hwnd = HWND(hwnd.0 as isize as _);
+                    unsafe {
+                        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                        let new_style = if focusable {
+                            // 移除 WS_EX_NOACTIVATE，但保留 WS_EX_TOPMOST
+                            style & !(WS_EX_NOACTIVATE.0 as isize)
+                        } else {
+                            // 加上 WS_EX_NOACTIVATE 和 WS_EX_TOPMOST
+                            style | (WS_EX_NOACTIVATE.0 as isize) | (WS_EX_TOPMOST.0 as isize)
+                        };
+
+                        if new_style != style {
+                            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
+                            info!(
+                                "set_window_focusable_raw: focusable={}, ex_style: {:x} -> {:x}",
+                                focusable, style, new_style
+                            );
+                        }
+
+                        // 关键修复：强制把窗口重新置顶。无论 focusable 如何，
+                        // 只要调用本函数都确保一次 SetWindowPos(HWND_TOPMOST)，
+                        // 避免 Z 序被其它窗口抢走。
+                        let result = windows::Win32::UI::WindowsAndMessaging::SetWindowPos(
+                            hwnd,
+                            HWND_TOPMOST,
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE,
+                        );
+                        let _ = result;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn update_window_pin_state(
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     is_pinned: bool,
 ) -> Result<(), String> {
-    // 更新全局的WINDOW_PIN_STATE变量
+    // 关键修复：pin 状态只控制"点击窗口外部是否自动关闭窗口"，
+    // **不**控制窗口置顶——窗口永远置顶（alwaysOnTop: true in tauri.conf.json）。
+    //
+    // 之前错误地把 pin 状态与 set_always_on_top 耦合：pin=false 时会把
+    // 窗口从 TOPMOST 移除，导致窗口被其它应用盖住。
+    //
+    // 这里只更新全局状态供 mouse_listener.rs 等模块读取。
     {
         let mut pin_state_lock = WINDOW_PIN_STATE.lock().unwrap();
         *pin_state_lock = is_pinned;
-    }
-
-    // 实际应用窗口置顶状态（修复前遗漏：仅更新全局变量但未改变窗口行为）
-    if let Some(window) = app_handle.get_webview_window("main") {
-        if let Err(e) = window.set_always_on_top(is_pinned) {
-            error!("Failed to set window always_on_top({}): {:?}", is_pinned, e);
-            return Err(format!("Failed to set always_on_top: {:?}", e));
-        }
     }
 
     info!("Updated global window pin state to: {}", is_pinned);
