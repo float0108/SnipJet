@@ -34,6 +34,8 @@ commands.allow = [
     "copy_to_clipboard_no_history",
     "update_global_last_hash",
     "apply_no_activate_style",
+    "set_window_focusable_raw",
+    "ensure_window_topmost",
     "get_mouse_position",
     "save_clipboard_history",
     "load_clipboard_history_command",

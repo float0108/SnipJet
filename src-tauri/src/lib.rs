@@ -377,6 +377,8 @@ where
             commands::copy_to_clipboard_no_history,
             commands::update_global_last_hash,
             commands::apply_no_activate_style,
+            commands::set_window_focusable_raw,
+            commands::ensure_window_topmost,
             commands::update_window_pin_state,
             commands::print_message,
             commands::get_mouse_position,

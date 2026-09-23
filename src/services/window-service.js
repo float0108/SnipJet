@@ -291,11 +291,15 @@ async function calculateWindowPosition(
  * 设置窗口是否可激活（是否抢焦点）
  * @param {boolean} focusable - true 表示可激活（抢焦点），false 表示不可激活
  * @returns {Promise<void>}
+ *
+ * 直接调用 Rust 命令 set_window_focusable_raw 切换 WS_EX_NOACTIVATE，
+ * 绕过 tao 自身的 setFocusable（避免 tao 与 WebView2 focus 路由的
+ * 状态机竞争，导致全局快捷键失效）。
  */
 export async function setWindowFocusable(focusable) {
   try {
-    const appWindow = getCurrentWebviewWindow();
-    await appWindow.setFocusable(focusable);
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("set_window_focusable_raw", { focusable });
     await log(`窗口焦点状态已设置: ${focusable ? "可激活" : "不可激活"}`);
   } catch (err) {
     await error("设置窗口焦点状态失败:", err);
@@ -305,6 +309,10 @@ export async function setWindowFocusable(focusable) {
 /**
  * 切换当前窗口可见性
  * 显示时窗口位置跟随鼠标
+ *
+ * 注意：WS_EX_NOACTIVATE 标志由 Rust 端 set_window_focusable_raw 直接管理，
+ * 本函数不去触碰 setFocusable（避免触发 tao 与 WebView2 focus 路由的竞争）。
+ * 进入搜索时主动把 WS_EX_NOACTIVATE 临时去掉，搜索退出/失焦时保持它不变。
  */
 export async function toggleWindowVisibility() {
   // 防抖动检查
@@ -324,53 +332,48 @@ export async function toggleWindowVisibility() {
       isVisible = await appWindow.isVisible();
     } catch (visibilityError) {
       await error("获取窗口可见性状态失败:", visibilityError);
-      // 尝试直接切换，不依赖可见性状态
       try {
-        // 先尝试隐藏
         await appWindow.hide();
-        // 短暂延迟后尝试显示
         setTimeout(async () => {
-          await appWindow.show();
-          // 重置防抖动标志
-          isTogglingWindow = false;
+          try { await appWindow.show(); }
+          finally { isTogglingWindow = false; }
         }, 100);
       } catch (toggleError) {
         await error("直接切换窗口状态失败:", toggleError);
-        // 重置防抖动标志
         isTogglingWindow = false;
       }
       return;
     }
 
     if (isVisible) {
+      // 当前可见 → 隐藏。无需操作 WS_EX_NOACTIVATE（Rust 端管理）。
       await appWindow.hide();
     } else {
-      // 获取鼠标位置并移动窗口
+      // 当前隐藏 → 显示并移动到鼠标位置。
       const mousePos = await getMousePosition();
-
-      // 获取窗口尺寸
       const windowSize = await appWindow.outerSize();
-
-      // 计算窗口位置，处理四个方向的溢出（支持多显示器）
       const position = await calculateWindowPosition(
         mousePos.x,
         mousePos.y,
         windowSize.width,
         windowSize.height
       );
-
-      // 设置窗口为不可激活（不抢焦点）
-      await appWindow.setFocusable(false);
-
-      // 设置窗口位置
       await appWindow.setPosition(new PhysicalPosition(position.x, position.y));
       await appWindow.show();
+      // 兜底：显式重新置顶。如果之前直接调过 set_window_focusable_raw
+      // 改过 ex-style，tao 内部的 ALWAYS_ON_TOP 状态没变，apply_diff
+      // 不会主动调 SetWindowPos(HWND_TOPMOST)，Z 序会被其它窗口盖住。
+      // 通过 Rust 直接 SetWindowPos 强制修正。
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("ensure_window_topmost");
+      } catch (e) {
+        await error("重新置顶失败:", e);
+      }
     }
   } catch (err) {
     await error("切换窗口可见性失败:", err);
   } finally {
-    // 操作完成后重置防抖动标志
-    // 添加小延迟，确保操作完全完成
     setTimeout(() => {
       isTogglingWindow = false;
     }, 200);
