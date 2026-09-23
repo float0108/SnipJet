@@ -1,5 +1,7 @@
 :root {
   /* --- 浅色主题变量 --- */
+  /* 让原生控件（select、取色器、滚动条等）跟随主题 */
+  color-scheme: light;
   --bg-body: #f3f4f6;
   /* 整体背景偏灰 */
   --bg-surface: #ffffff;
@@ -22,6 +24,22 @@
   --favorite-color: #eab308;
   /* 收藏色的 R,G,B 分量，供 rgb() 透明度混合使用（JS 会按用户设置覆盖） */
   --favorite-color-rgb: 234, 179, 8;
+
+  /* 语义色的 R,G,B 分量，供 rgba() 透明度混合使用 */
+  --primary-color-rgb: 59, 130, 246;
+  --danger-color-rgb: 239, 68, 68;
+  --success-color-rgb: 16, 185, 129;
+  --warning-color-rgb: 245, 158, 11;
+
+  /* 内容类型标签色 */
+  --type-html-color: #0284c7;
+  --type-markdown-color: #059669;
+  --type-image-color: #9333ea;
+
+  /* 遮罩与滚动条 */
+  --overlay-color: rgba(15, 23, 42, 0.35);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.5);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.8);
 
   /* --- 字号变量 --- */
   --font-size-base: 14px;
@@ -55,6 +73,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
     /* --- 深色主题变量（系统自动） --- */
+    color-scheme: dark;
     --bg-body: #0f172a;
     --bg-surface: #1e293b;
     --bg-hover: #334155;
@@ -68,6 +87,16 @@
     --warning-color: #fbbf24;
     --favorite-color: #fbbf24;
     --favorite-color-rgb: 251, 191, 36;
+    --primary-color-rgb: 96, 165, 250;
+    --danger-color-rgb: 248, 113, 113;
+    --success-color-rgb: 52, 211, 153;
+    --warning-color-rgb: 251, 191, 36;
+    --type-html-color: #38bdf8;
+    --type-markdown-color: #34d399;
+    --type-image-color: #c084fc;
+    --overlay-color: rgba(0, 0, 0, 0.55);
+    --scrollbar-thumb: rgba(148, 163, 184, 0.35);
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
   }
@@ -76,6 +105,7 @@
 /* 手动设置深色主题 */
 [data-theme="dark"] {
   /* --- 深色主题变量 --- */
+  color-scheme: dark;
   --bg-body: #0f172a;
   --bg-surface: #1e293b;
   --bg-hover: #334155;
@@ -89,6 +119,16 @@
   --warning-color: #fbbf24;
   --favorite-color: #fbbf24;
   --favorite-color-rgb: 251, 191, 36;
+  --primary-color-rgb: 96, 165, 250;
+  --danger-color-rgb: 248, 113, 113;
+  --success-color-rgb: 52, 211, 153;
+  --warning-color-rgb: 251, 191, 36;
+  --type-html-color: #38bdf8;
+  --type-markdown-color: #34d399;
+  --type-image-color: #c084fc;
+  --overlay-color: rgba(0, 0, 0, 0.55);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.35);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
 }
@@ -96,6 +136,7 @@
 /* 手动设置浅色主题 */
 [data-theme="light"] {
   /* --- 浅色主题变量 --- */
+  color-scheme: light;
   --bg-body: #f3f4f6;
   --bg-surface: #ffffff;
   --bg-hover: #f1f5f9;
@@ -109,6 +150,16 @@
   --warning-color: #f59e0b;
   --favorite-color: #eab308;
   --favorite-color-rgb: 234, 179, 8;
+  --primary-color-rgb: 59, 130, 246;
+  --danger-color-rgb: 239, 68, 68;
+  --success-color-rgb: 16, 185, 129;
+  --warning-color-rgb: 245, 158, 11;
+  --type-html-color: #0284c7;
+  --type-markdown-color: #059669;
+  --type-image-color: #9333ea;
+  --overlay-color: rgba(15, 23, 42, 0.35);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.5);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.8);
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md:
     0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);

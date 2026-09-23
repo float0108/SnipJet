@@ -306,8 +306,8 @@ async function updateMcpService() {
   }
 }
 
-// 更新软件设置
-export function updateSoftwareSettings() {
+// 更新常规设置
+export function updateGeneralSettings() {
   // 更新开机启动
   const startupLaunch = document.getElementById("startup-launch");
   if (startupLaunch) {
@@ -320,15 +320,22 @@ export function updateSoftwareSettings() {
     checkUpdates.checked = settings.software?.check_updates ?? true;
   }
 
-  // 更新历史清理设置
-  updateHistoryCleanupSettings();
-
-  // 更新 MCP 设置
-  updateMcpSettings();
+  // 更新界面语言
+  const language = document.getElementById("language");
+  if (language) {
+    language.value = settings.interface?.language ?? "cn";
+  }
 }
 
-// 更新历史清理设置
-function updateHistoryCleanupSettings() {
+// 更新历史记录设置
+export function updateHistorySettings() {
+  // 更新最大历史条目数（空值表示不限制）
+  const maxHistoryItems = document.getElementById("max-history-items");
+  if (maxHistoryItems) {
+    const value = settings.interface?.max_history_items;
+    maxHistoryItems.value = value ? value : "";
+  }
+
   const cleanup = settings.history_cleanup || {};
 
   const countEnabled = document.getElementById("cleanup-count-enabled");
@@ -368,8 +375,15 @@ function updateCleanupVisibility() {
   }
 }
 
-// 更新 MCP 设置
-async function updateMcpSettings() {
+// 更新高级设置
+export async function updateAdvancedSettings() {
+  // 更新搜索扫描上限（空值表示使用默认 1024 KB）
+  const searchScanLimit = document.getElementById("search-scan-limit");
+  if (searchScanLimit) {
+    const value = settings.interface?.search_scan_limit_kb;
+    searchScanLimit.value = value ? value : "";
+  }
+
   const mcpEnabled = document.getElementById("mcp-enabled");
   const mcpPort = document.getElementById("mcp-port");
   const mcpStatus = document.getElementById("mcp-status");
@@ -402,15 +416,30 @@ async function updateMcpSettings() {
   }
 }
 
-// 更新粘贴设置
-export function updatePasteSettings() {
-  // 更新使用 Pandoc 粘贴 Markdown
+// 更新剪贴板设置
+export function updateClipboardSettings() {
+  // 记录：自动监听 / 划词复制
+  const autoCopy = document.getElementById("auto-copy");
+  if (autoCopy) {
+    autoCopy.checked = settings.copy?.auto_copy ?? true;
+  }
+
+  const copyOnSelect = document.getElementById("copy-on-select");
+  if (copyOnSelect) {
+    copyOnSelect.checked = settings.copy?.copy_on_select ?? false;
+  }
+
+  // 粘贴格式：去除格式 / Pandoc
+  const stripFormatting = document.getElementById("strip-formatting");
+  if (stripFormatting) {
+    stripFormatting.checked = settings.copy?.strip_formatting ?? false;
+  }
+
   const usePandocForMarkdown = document.getElementById("use-pandoc-for-markdown");
   if (usePandocForMarkdown) {
     usePandocForMarkdown.checked = settings.paste?.use_pandoc_for_markdown ?? false;
   }
 
-  // 更新 Pandoc 模板路径
   const pandocTemplatePath = document.getElementById("pandoc-template-path");
   if (pandocTemplatePath) {
     pandocTemplatePath.value = settings.paste?.pandoc_template_path ?? "";
@@ -423,39 +452,18 @@ export function updatePasteSettings() {
   }
 }
 
-// 更新复制设置
-export function updateCopySettings() {
-  // 更新去除格式
-  const stripFormatting = document.getElementById("strip-formatting");
-  if (stripFormatting) {
-    stripFormatting.checked = settings.copy?.strip_formatting ?? false;
-  }
-
-  // 更新自动复制
-  const autoCopy = document.getElementById("auto-copy");
-  if (autoCopy) {
-    autoCopy.checked = settings.copy?.auto_copy ?? true;
-  }
-
-  // 更新选择时复制
-  const copyOnSelect = document.getElementById("copy-on-select");
-  if (copyOnSelect) {
-    copyOnSelect.checked = settings.copy?.copy_on_select ?? false;
-  }
-}
-
-// 更新界面设置
-export function updateInterfaceSettings() {
+// 更新外观设置
+export function updateAppearanceSettings() {
   // 更新主题
   const theme = document.getElementById("theme");
   if (theme) {
     theme.value = settings.interface?.theme ?? "light";
   }
 
-  // 更新语言
-  const language = document.getElementById("language");
-  if (language) {
-    language.value = settings.interface?.language ?? "cn";
+  // 更新收藏主题色
+  const favoriteColor = document.getElementById("favorite-color");
+  if (favoriteColor) {
+    favoriteColor.value = settings.interface?.favorite_color ?? "#eab308";
   }
 
   // 更新界面字体（先确保下拉框已加载系统字体）
@@ -465,12 +473,6 @@ export function updateInterfaceSettings() {
   const fontSize = document.getElementById("font-size");
   if (fontSize) {
     fontSize.value = settings.interface?.font_size ?? 14;
-  }
-
-  // 更新自动隐藏
-  const autoHide = document.getElementById("auto-hide");
-  if (autoHide) {
-    autoHide.checked = settings.interface?.auto_hide ?? true;
   }
 
   // 更新预览行数
@@ -485,24 +487,10 @@ export function updateInterfaceSettings() {
     imagePreviewSize.value = settings.interface?.image_preview_size ?? "medium";
   }
 
-  // 更新收藏主题色
-  const favoriteColor = document.getElementById("favorite-color");
-  if (favoriteColor) {
-    favoriteColor.value = settings.interface?.favorite_color ?? "#eab308";
-  }
-
-  // 更新最大历史条目数（空值表示不限制）
-  const maxHistoryItems = document.getElementById("max-history-items");
-  if (maxHistoryItems) {
-    const value = settings.interface?.max_history_items;
-    maxHistoryItems.value = value ? value : "";
-  }
-
-  // 更新搜索扫描上限（空值表示使用默认 1024 KB）
-  const searchScanLimit = document.getElementById("search-scan-limit");
-  if (searchScanLimit) {
-    const value = settings.interface?.search_scan_limit_kb;
-    searchScanLimit.value = value ? value : "";
+  // 更新失去焦点隐藏
+  const autoHide = document.getElementById("auto-hide");
+  if (autoHide) {
+    autoHide.checked = settings.interface?.auto_hide ?? true;
   }
 }
 
@@ -722,10 +710,11 @@ export function bindSettingsListeners() {
 export async function restoreOriginalSettings() {
   settings = JSON.parse(JSON.stringify(originalSettings));
   // 更新UI
-  updateSoftwareSettings();
-  updatePasteSettings();
-  updateCopySettings();
-  updateInterfaceSettings();
+  updateGeneralSettings();
+  updateAppearanceSettings();
+  updateClipboardSettings();
+  updateHistorySettings();
+  await updateAdvancedSettings();
   // 更新快捷键UI
   const { updateShortcutInputs } = await import("./shortcuts.js");
   updateShortcutInputs();

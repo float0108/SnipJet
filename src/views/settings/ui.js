@@ -55,11 +55,61 @@ export async function cancelAndClose() {
   }
 }
 
+// 侧边栏分区：标题 -> { 内容容器 id, 进入分区时刷新控件状态 }
+const SECTIONS = {
+  常规: {
+    content: "general-content",
+    reload: () =>
+      import("./handlers.js").then(({ updateGeneralSettings }) =>
+        updateGeneralSettings()
+      ),
+  },
+  外观: {
+    content: "appearance-content",
+    reload: () =>
+      import("./handlers.js").then(({ updateAppearanceSettings }) =>
+        updateAppearanceSettings()
+      ),
+  },
+  快捷键: {
+    content: "shortcuts-content",
+    reload: () =>
+      import("./shortcuts.js").then(({ updateShortcutInputs }) =>
+        updateShortcutInputs()
+      ),
+  },
+  剪贴板: {
+    content: "clipboard-content",
+    reload: () =>
+      import("./handlers.js").then(({ updateClipboardSettings }) =>
+        updateClipboardSettings()
+      ),
+  },
+  历史记录: {
+    content: "history-content",
+    reload: () =>
+      import("./handlers.js").then(({ updateHistorySettings }) =>
+        updateHistorySettings()
+      ),
+  },
+  高级: {
+    content: "advanced-content",
+    reload: () =>
+      import("./handlers.js").then(({ updateAdvancedSettings }) =>
+        updateAdvancedSettings()
+      ),
+  },
+};
+
 // 设置侧边栏切换
 export function setupSidebar() {
   // 侧边栏切换
   document.querySelectorAll(".sidebar-item").forEach((item) => {
     item.addEventListener("click", function () {
+      const title = this.textContent;
+      const section = SECTIONS[title];
+      if (!section) return;
+
       // 移除所有活动状态
       document
         .querySelectorAll(".sidebar-item")
@@ -67,44 +117,17 @@ export function setupSidebar() {
       // 添加当前活动状态
       this.classList.add("active");
 
-      // 切换内容
-      const title = this.textContent;
+      // 更新标题
       document.querySelector(".section-title").textContent = title;
 
-      // 隐藏所有内容
-      document.getElementById("software-content").style.display = "none";
-      document.getElementById("shortcuts-content").style.display = "none";
-      document.getElementById("paste-content").style.display = "none";
-      document.getElementById("copy-content").style.display = "none";
-      document.getElementById("interface-content").style.display = "none";
+      // 隐藏所有内容，显示当前分区
+      Object.values(SECTIONS).forEach(({ content }) => {
+        document.getElementById(content).style.display = "none";
+      });
+      document.getElementById(section.content).style.display = "block";
 
-      // 显示对应内容
-      if (title === "软件设置") {
-        document.getElementById("software-content").style.display = "block";
-        import("./handlers.js").then(({updateSoftwareSettings}) => {
-          updateSoftwareSettings();
-        });
-      } else if (title === "快捷键设置") {
-        document.getElementById("shortcuts-content").style.display = "block";
-        import("./shortcuts.js").then(({updateShortcutInputs}) => {
-          updateShortcutInputs();
-        });
-      } else if (title === "粘贴设置") {
-        document.getElementById("paste-content").style.display = "block";
-        import("./handlers.js").then(({updatePasteSettings}) => {
-          updatePasteSettings();
-        });
-      } else if (title === "复制设置") {
-        document.getElementById("copy-content").style.display = "block";
-        import("./handlers.js").then(({updateCopySettings}) => {
-          updateCopySettings();
-        });
-      } else if (title === "界面设置") {
-        document.getElementById("interface-content").style.display = "block";
-        import("./handlers.js").then(({updateInterfaceSettings}) => {
-          updateInterfaceSettings();
-        });
-      }
+      // 刷新该分区的控件状态
+      section.reload();
     });
   });
 }

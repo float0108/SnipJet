@@ -24,16 +24,17 @@
   <body>
     <div class="settings-container">
       <div class="sidebar">
-        <div class="sidebar-item active">软件设置</div>
-        <div class="sidebar-item">快捷键设置</div>
-        <div class="sidebar-item">粘贴设置</div>
-        <div class="sidebar-item">复制设置</div>
-        <div class="sidebar-item">界面设置</div>
+        <div class="sidebar-item active">常规</div>
+        <div class="sidebar-item">外观</div>
+        <div class="sidebar-item">快捷键</div>
+        <div class="sidebar-item">剪贴板</div>
+        <div class="sidebar-item">历史记录</div>
+        <div class="sidebar-item">高级</div>
       </div>
 
       <div class="content">
         <div class="header-top" data-tauri-drag-region>
-          <h1 class="section-title">软件设置</h1>
+          <h1 class="section-title">常规</h1>
           <div class="header-actions" data-tauri-drag-region="false">
             <button class="window-close-btn" id="close-button">
               <svg
@@ -51,8 +52,8 @@
           </div>
         </div>
 
-        <!-- 软件设置 -->
-        <div id="software-content">
+        <!-- 常规 -->
+        <div id="general-content">
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">开机启动</div>
@@ -78,126 +79,122 @@
             </div>
           </div>
 
-          <div class="setting-divider"></div>
-
-          <div class="setting-section-title">历史记录自动清理</div>
-          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
-            应用启动时自动清理历史记录（收藏的条目不会被清理）。
-          </div>
-
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">按条数清理</div>
-              <div class="setting-description">历史条数超过设定值时，删除最旧的非收藏条目</div>
+              <div class="setting-label">界面语言</div>
             </div>
             <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="cleanup-count-enabled" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item" id="cleanup-count-item">
-            <div class="setting-info">
-              <div class="setting-label">保留条数</div>
-              <div class="setting-description">历史记录最多保留多少条</div>
-            </div>
-            <div class="setting-control">
-              <input
-                type="number"
-                class="number-input"
-                id="cleanup-count-threshold"
-                min="10"
-                max="100000"
-                step="10"
-                placeholder="例如 500"
-                style="width: 100px;"
-              />
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">按时间清理</div>
-              <div class="setting-description">删除指定天数之前的历史条目</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="cleanup-age-enabled" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item" id="cleanup-age-item">
-            <div class="setting-info">
-              <div class="setting-label">保留天数</div>
-              <div class="setting-description">保留最近多少天的历史记录</div>
-            </div>
-            <div class="setting-control">
-              <input
-                type="number"
-                class="number-input"
-                id="cleanup-age-days"
-                min="1"
-                max="3650"
-                step="1"
-                placeholder="例如 30"
-                style="width: 100px;"
-              />
-            </div>
-          </div>
-
-          <div class="setting-divider"></div>
-
-          <div class="setting-section-title">MCP 服务</div>
-          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
-            Model Context Protocol 服务允许 AI 助手（如 Claude）访问和管理您的剪贴板历史。
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">启用 MCP 服务</div>
-              <div class="setting-description">开启后 AI 助手可以访问剪贴板历史</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="mcp-enabled" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item" id="mcp-port-item">
-            <div class="setting-info">
-              <div class="setting-label">服务端口</div>
-              <div class="setting-description">MCP 服务的监听端口</div>
-            </div>
-            <div class="setting-control">
-              <input
-                type="number"
-                class="number-input"
-                id="mcp-port"
-                min="1024"
-                max="65535"
-                step="1"
-                style="width: 100px;"
-              />
-            </div>
-          </div>
-
-          <div class="setting-item" id="mcp-status-item">
-            <div class="setting-info">
-              <div class="setting-label">服务状态</div>
-            </div>
-            <div class="setting-control">
-              <span id="mcp-status" class="status-badge status-stopped">未运行</span>
+              <select class="select-input" id="language">
+                <option value="cn">简体中文</option>
+                <option value="en">English</option>
+              </select>
             </div>
           </div>
         </div>
 
-        <!-- 快捷键设置 -->
+        <!-- 外观 -->
+        <div id="appearance-content" style="display: none">
+          <div class="setting-section-title">主题</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">主题模式</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="theme">
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
+                <option value="system">跟随系统</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">收藏主题色</div>
+              <div class="setting-description">收藏视图背景与收藏卡片的强调色</div>
+            </div>
+            <div class="setting-control">
+              <input type="color" class="color-input" id="favorite-color" value="#eab308" />
+            </div>
+          </div>
+
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-title">文字</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">界面字体</div>
+              <div class="setting-description">从系统已安装的字体中选择（启动时自动枚举）</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="font-family" style="width: 200px;">
+                <option value="">系统默认</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">基础字号</div>
+              <div class="setting-description">界面文字的基础大小</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="font-size">
+                <option value="12">12px (小)</option>
+                <option value="14">14px (中)</option>
+                <option value="16">16px (大)</option>
+                <option value="18">18px (特大)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-title">列表与窗口</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">预览行数</div>
+              <div class="setting-description">列表项最多显示的文字行数</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="preview-lines">
+                <option value="2">2 行</option>
+                <option value="3">3 行</option>
+                <option value="5">5 行</option>
+                <option value="8">8 行</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">图片预览大小</div>
+              <div class="setting-description">列表中图片缩略图的显示大小</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="image-preview-size">
+                <option value="large">大 (100%)</option>
+                <option value="medium">中 (60%)</option>
+                <option value="small">小 (30%)</option>
+                <option value="none">无 (仅显示元信息)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">失去焦点隐藏</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="auto-hide" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 快捷键 -->
         <div id="shortcuts-content" style="display: none">
           <div class="setting-item">
             <div class="setting-info">
@@ -278,8 +275,51 @@
           </div>
         </div>
 
-        <!-- 粘贴设置 -->
-        <div id="paste-content" style="display: none">
+        <!-- 剪贴板 -->
+        <div id="clipboard-content" style="display: none">
+          <div class="setting-section-title">记录</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">自动监听</div>
+              <div class="setting-description">剪贴板变化时自动记录</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="auto-copy" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">划词复制</div>
+              <div class="setting-description">选中文本后自动复制</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="copy-on-select" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-title">粘贴格式</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">去除格式</div>
+              <div class="setting-description">粘贴时仅保留纯文本</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="strip-formatting" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">使用 Pandoc 粘贴 Markdown</div>
@@ -308,157 +348,11 @@
               />
             </div>
           </div>
-
         </div>
 
-        <!-- 复制设置 -->
-        <div id="copy-content" style="display: none">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">去除格式</div>
-              <div class="setting-description">粘贴时仅保留纯文本</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="strip-formatting" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">自动监听</div>
-              <div class="setting-description">剪贴板变化时自动记录</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="auto-copy" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">划词复制</div>
-              <div class="setting-description">选中文本后自动复制</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="copy-on-select" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- 界面设置 -->
-        <div id="interface-content" style="display: none">
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">主题模式</div>
-            </div>
-            <div class="setting-control">
-              <select class="select-input" id="theme">
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-                <option value="system">跟随系统</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">收藏主题色</div>
-              <div class="setting-description">收藏视图背景与收藏卡片的强调色</div>
-            </div>
-            <div class="setting-control">
-              <input type="color" class="color-input" id="favorite-color" value="#eab308" />
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">界面语言</div>
-            </div>
-            <div class="setting-control">
-              <select class="select-input" id="language">
-                <option value="cn">简体中文</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">基础字号</div>
-              <div class="setting-description">界面文字的基础大小</div>
-            </div>
-            <div class="setting-control">
-              <select class="select-input" id="font-size">
-                <option value="12">12px (小)</option>
-                <option value="14">14px (中)</option>
-                <option value="16">16px (大)</option>
-                <option value="18">18px (特大)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">界面字体</div>
-              <div class="setting-description">从系统已安装的字体中选择（启动时自动枚举）</div>
-            </div>
-            <div class="setting-control">
-              <select class="select-input" id="font-family" style="width: 200px;">
-                <option value="">系统默认</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">失去焦点隐藏</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="auto-hide" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">预览行数</div>
-              <div class="setting-description">列表项最多显示的文字行数</div>
-            </div>
-            <div class="setting-control">
-              <select class="select-input" id="preview-lines">
-                <option value="2">2 行</option>
-                <option value="3">3 行</option>
-                <option value="5">5 行</option>
-                <option value="8">8 行</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">图片预览大小</div>
-              <div class="setting-description">列表中图片缩略图的显示大小</div>
-            </div>
-            <div class="setting-control">
-              <select class="select-input" id="image-preview-size">
-                <option value="large">大 (100%)</option>
-                <option value="medium">中 (60%)</option>
-                <option value="small">小 (30%)</option>
-                <option value="none">无 (仅显示元信息)</option>
-              </select>
-            </div>
-          </div>
-
+        <!-- 历史记录 -->
+        <div id="history-content" style="display: none">
+          <div class="setting-section-title">存储上限</div>
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">最大历史条目数</div>
@@ -478,6 +372,128 @@
             </div>
           </div>
 
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-title">自动清理</div>
+          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
+            应用启动时自动清理历史记录（收藏的条目不会被清理）。
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">按条数清理</div>
+              <div class="setting-description">历史条数超过设定值时，删除最旧的非收藏条目</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="cleanup-count-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="cleanup-count-item">
+            <div class="setting-info">
+              <div class="setting-label">保留条数</div>
+              <div class="setting-description">历史记录最多保留多少条</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="cleanup-count-threshold"
+                min="10"
+                max="100000"
+                step="10"
+                placeholder="例如 500"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">按时间清理</div>
+              <div class="setting-description">删除指定天数之前的历史条目</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="cleanup-age-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="cleanup-age-item">
+            <div class="setting-info">
+              <div class="setting-label">保留天数</div>
+              <div class="setting-description">保留最近多少天的历史记录</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="cleanup-age-days"
+                min="1"
+                max="3650"
+                step="1"
+                placeholder="例如 30"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 高级 -->
+        <div id="advanced-content" style="display: none">
+          <div class="setting-section-title">MCP 服务</div>
+          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
+            Model Context Protocol 服务允许 AI 助手（如 Claude）访问和管理您的剪贴板历史。
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">启用 MCP 服务</div>
+              <div class="setting-description">开启后 AI 助手可以访问剪贴板历史</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-switch">
+                <input type="checkbox" id="mcp-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-item" id="mcp-port-item">
+            <div class="setting-info">
+              <div class="setting-label">服务端口</div>
+              <div class="setting-description">MCP 服务的监听端口</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="mcp-port"
+                min="1024"
+                max="65535"
+                step="1"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <div class="setting-item" id="mcp-status-item">
+            <div class="setting-info">
+              <div class="setting-label">服务状态</div>
+            </div>
+            <div class="setting-control">
+              <span id="mcp-status" class="status-badge status-stopped">未运行</span>
+            </div>
+          </div>
+
+          <div class="setting-divider"></div>
+
+          <div class="setting-section-title">性能</div>
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">搜索扫描上限 (KB)</div>

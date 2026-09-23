@@ -52,11 +52,11 @@
 /* 置顶状态按钮 */
 .toolbar-btn.pinned {
   color: var(--primary-color);
-  background-color: rgba(59, 130, 246, 0.1);
+  background-color: rgba(var(--primary-color-rgb), 0.1);
 }
 
 .toolbar-btn.pinned:hover {
-  background-color: rgba(59, 130, 246, 0.2);
+  background-color: rgba(var(--primary-color-rgb), 0.2);
 }
 
 /* 收藏按钮激活状态：与 pin 保持一致的背景填充 */
