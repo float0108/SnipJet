@@ -84,8 +84,20 @@ pub fn run_with_setup<F>(setup: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnOnce(&mut tauri::App) -> Result<(), Box<dyn std::error::Error>> + Send + Sync + 'static,
 {
+    // 日志等级策略：
+    // - dev 构建（debug_assertions 启用）：Trace，全量输出便于排查
+    // - release 构建：Info，屏蔽调试/追踪级别，减少磁盘 IO 和日志噪声
+    #[cfg(debug_assertions)]
+    let log_level = log::LevelFilter::Trace;
+    #[cfg(not(debug_assertions))]
+    let log_level = log::LevelFilter::Info;
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log_level)
+                .build(),
+        )
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
@@ -401,7 +413,11 @@ where
             commands::restart_mcp_service,
             commands::copy_markdown_as_docx,
             commands::update_max_history_items,
-            commands::list_system_fonts
+            commands::list_system_fonts,
+            commands::paste_clipboard_item_at_index,
+            commands::paste_clipboard_item_rotating,
+            commands::reset_rotating_paste,
+            commands::setup_quick_paste_shortcuts
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

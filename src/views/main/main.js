@@ -566,6 +566,22 @@ async function init() {
         console.error("[settings-changed] 更新最大历史条目数失败:", e);
       }
 
+      // 快捷粘贴修饰键模式变化：重新注册快捷键
+      try {
+        const newMode = event.payload?.shortcuts?.quick_paste_mode;
+        const newRotating = event.payload?.shortcuts?.rotating_paste;
+        if (newMode !== undefined || newRotating !== undefined) {
+          const { setupQuickPasteShortcuts } = await import("../../services/shortcut-service.js");
+          await setupQuickPasteShortcuts(
+            newMode || "ctrl",
+            newRotating || ""
+          );
+          console.log("[settings-changed] 快捷粘贴已更新:", { newMode, newRotating });
+        }
+      } catch (e) {
+        console.error("[settings-changed] 更新快捷粘贴模式失败:", e);
+      }
+
       // 重新应用筛选，这会重新渲染整个列表
       applyFilters(container, statusElement);
     });

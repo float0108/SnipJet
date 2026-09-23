@@ -27,7 +27,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{
-    APP_HANDLE, LAST_HASH, SYSTEM_FONTS_CACHE, WINDOW_PIN_STATE, set_clipboard_ignore_for,
+    APP_HANDLE, LAST_HASH, ROTATING_PASTE_LAST_INDEX, SHORTCUT_ACTION_MAP, SYSTEM_FONTS_CACHE,
+    WINDOW_PIN_STATE, set_clipboard_ignore_for,
 };
 use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
@@ -383,8 +384,23 @@ pub async fn paste_to_active_window(
     execute_paste().await
 }
 
+/// 全局互斥锁：保证 `execute_paste` 的按键序列不会与其它粘贴调用并发。
+///
+/// 背景：Enigo 在不同线程下创建的实例共享同一份底层 OS 键盘状态。
+/// 如果两个 `execute_paste` 并发执行（比如快速连按 Ctrl+1 / Ctrl+2），
+/// 第二个调用的 `key_down(Control)` 可能与第一个调用的 `key_up(Control)`
+/// 交错，导致最终只有单独的 V 被发送（看起来就是"按出来单独的 v"）。
+/// 修复：所有粘贴按键模拟必须串行执行。
+static PASTE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 执行粘贴操作（模拟 Ctrl+V / Cmd+V）
+///
+/// 注意：本函数持有全局 `PASTE_LOCK`，确保任何时刻只有一个按键序列在执行。
+/// 在持有锁期间，OS 级别的 Ctrl/Cmd + V 不会被其它粘贴调用打断。
 async fn execute_paste() -> Result<(), String> {
+    // 阻塞等到锁：上一个粘贴（如果有）完全结束后才开始新的。
+    let _guard = PASTE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
     // 模拟组合键 (增强版)
     let paste_handle = thread::spawn(move || {
         let mut enigo = Enigo::new();
@@ -431,7 +447,332 @@ async fn execute_paste() -> Result<(), String> {
     // 忽略 1000ms，确保 Word 生成的 RTF 不会被误记录
     set_clipboard_ignore_for(1000);
 
+    // _guard 在这里 drop，释放锁给下一次粘贴
     Ok(())
+}
+
+/// 按历史序数粘贴指定索引的剪贴板项，不改变剪贴板历史排序。
+///
+/// 与 `paste_to_active_window` 不同：本命令不会在粘贴完成后将该项
+/// 重新置顶（即使原 watcher 在短时间窗口内偶然触发，也不会影响）。
+///
+/// `index`: 历史中的 0-based 序号（与 `get_clipboard_history` 返回顺序一致）。
+/// `modifier_kind`: "ctrl" / "num" / "none" — 仅用于日志和后续可扩展语义。
+#[tauri::command]
+pub async fn paste_clipboard_item_at_index(
+    state: State<'_, Arc<AppState>>,
+    index: usize,
+    modifier_kind: Option<String>,
+) -> Result<(), String> {
+    // 1. 取历史中的目标项（克隆出来，避免后续锁内长时间操作）
+    let item = {
+        let history_lock = state.history.lock().unwrap();
+        if history_lock.is_empty() {
+            return Err("剪贴板历史为空".to_string());
+        }
+        if index >= history_lock.len() {
+            return Err(format!(
+                "索引越界：index={}, history_len={}",
+                index,
+                history_lock.len()
+            ));
+        }
+        history_lock[index].clone()
+    };
+
+    let content = item.content.clone();
+    let format_str = item.format.as_str().to_string();
+
+    // 2. 复用现有的 paste_to_active_window 路径，但通过一个独立的"忽略窗口"
+    //    防止 watcher 在粘贴后将该项重新插入到历史顶部。
+    //
+    //    paste_to_active_window 内部会在写入剪贴板前/后各 set_clipboard_ignore_for 一次。
+    //    我们在外面把窗口延长到 3000ms，覆盖大多数情况下 watcher 的延迟触发，
+    //    保证历史中该项的位置不会被刷新。
+    set_clipboard_ignore_for(3000);
+
+    // 调用现有的粘贴逻辑（写入剪贴板 + 模拟 Ctrl+V）
+    paste_to_active_window_inner(
+        state,
+        content,
+        format_str,
+        None,                 // 不指定 content_type，按 format 推断
+    )
+    .await?;
+
+    info!(
+        "粘贴历史项 index={}, modifier={:?}, 长度 {}",
+        index,
+        modifier_kind,
+        item.preview.len()
+    );
+
+    // 3. 再延长一次忽略窗口，覆盖 Ctrl+V 之后的延迟 watcher 事件
+    set_clipboard_ignore_for(3000);
+    Ok(())
+}
+
+/// 轮转粘贴：从历史第 1 项开始，按调用顺序依次粘贴下一项，
+/// 走到末尾后回到第 1 项循环。不改变历史排序。
+///
+/// 索引保存在全局 `ROTATING_PASTE_LAST_INDEX` 中，跨调用累积：
+/// - `usize::MAX` 表示尚未粘贴过，下一次粘贴使用索引 0（最新一项）。
+/// - 其它情况下使用 `(last + 1) % len`。
+#[tauri::command]
+pub async fn paste_clipboard_item_rotating(
+    state: State<'_, Arc<AppState>>,
+) -> Result<usize, String> {
+    // 计算下一项索引
+    let next_index = {
+        let history_lock = state.history.lock().unwrap();
+        let len = history_lock.len();
+        if len == 0 {
+            return Err("剪贴板历史为空".to_string());
+        }
+        let mut last_lock = ROTATING_PASTE_LAST_INDEX.lock().unwrap();
+        let next = if *last_lock == usize::MAX {
+            0
+        } else {
+            (*last_lock + 1) % len
+        };
+        *last_lock = next;
+        next
+    };
+
+    info!("轮转粘贴: 选中 index={}", next_index);
+
+    // 复用按序粘贴逻辑（不改变历史排序）
+    paste_clipboard_item_at_index(state, next_index, Some("rotating".to_string())).await?;
+    Ok(next_index)
+}
+
+/// 一键清理轮转粘贴的进度（下次按下从第 1 项开始）。
+#[tauri::command]
+pub fn reset_rotating_paste() -> Result<(), String> {
+    let mut last_lock = ROTATING_PASTE_LAST_INDEX.lock().unwrap();
+    *last_lock = usize::MAX;
+    info!("轮转粘贴进度已重置");
+    Ok(())
+}
+
+/// 统一注册/重新注册快捷粘贴快捷键。
+///
+/// 由前端在启动和设置变更时调用一次性 invoke，避免前端多次调用
+/// `register_global_shortcut` 时产生的竞态和重复事件。
+///
+/// 输入：
+/// - `quick_paste_mode`: "ctrl" | "num" | "none"
+/// - `rotating_shortcut`: 可选的轮转粘贴快捷键字符串（空 = 不启用）
+///
+/// 行为：
+/// 1. 先按 mode 注册 Ctrl+1..9 或 Numpad1..9，对应 action "quick_paste_{1..9}"。
+/// 2. 如果 rotating_shortcut 非空，注册它对应 action "rotating_paste"。
+/// 3. 同一个 action 重复注册会自动先注销旧的。
+#[tauri::command]
+pub async fn setup_quick_paste_shortcuts(
+    app_handle: AppHandle,
+    quick_paste_mode: Option<String>,
+    rotating_shortcut: Option<String>,
+) -> Result<(), String> {
+    use tauri::Emitter;
+
+    let mode = quick_paste_mode.as_deref().unwrap_or("ctrl");
+    info!(
+        "[setup_quick_paste] mode={:?}, rotating={:?}",
+        quick_paste_mode, rotating_shortcut
+    );
+
+    let global_shortcut = app_handle.global_shortcut();
+
+    // 1. 先注销旧的 quick_paste_* 和 rotating_paste（不碰 toggle/function_paste）
+    for i in 1..=9 {
+        let action = format!("quick_paste_{}", i);
+        // 通过 SHORTCUT_ACTION_MAP 反查快捷键字符串
+        let shortcut_to_remove: Option<String> = {
+            let map = SHORTCUT_ACTION_MAP.lock().unwrap();
+            map.iter()
+                .find_map(|(k, v)| if v == &action { Some(k.clone()) } else { None })
+        };
+        if let Some(sc) = shortcut_to_remove {
+            if let Ok(parsed) = sc.parse::<Shortcut>() {
+                let _ = global_shortcut.unregister(parsed);
+            }
+            SHORTCUT_ACTION_MAP.lock().unwrap().remove(&sc);
+        }
+    }
+    {
+        let map = SHORTCUT_ACTION_MAP.lock().unwrap();
+        if let Some(sc) = map
+            .iter()
+            .find_map(|(k, v)| if v == "rotating_paste" { Some(k.clone()) } else { None })
+        {
+            drop(map);
+            if let Ok(parsed) = sc.parse::<Shortcut>() {
+                let _ = global_shortcut.unregister(parsed);
+            }
+            SHORTCUT_ACTION_MAP.lock().unwrap().remove(&sc);
+        }
+    }
+
+    // 2. 注册序号粘贴快捷键
+    let shortcut_strs: Vec<String> = match mode {
+        "ctrl" => (1..=9).map(|i| format!("Ctrl+{}", i)).collect(),
+        "num" => (1..=9).map(|i| format!("Numpad{}", i)).collect(),
+        _ => Vec::new(),
+    };
+
+    for (i, shortcut) in shortcut_strs.iter().enumerate() {
+        let index = i;
+        let action = format!("quick_paste_{}", i + 1);
+
+        let app_handle_for_cb = app_handle.clone();
+        let action_for_cb = action.clone();
+
+        let shortcut_parsed: Shortcut = shortcut.parse().map_err(|e| {
+            format!("Failed to parse shortcut '{}': {:?}", shortcut, e)
+        })?;
+
+        // 如果已经在 SHORTCUT_ACTION_MAP 中（即旧的 toggle 等快捷键），
+        // 跳过避免误删；但 quick_paste 相关的我们已经在上面注销了。
+        global_shortcut
+            .on_shortcut(shortcut_parsed, move |_app, _shortcut, _event| {
+                info!("[shortcut] 触发 quick_paste: action={}", action_for_cb);
+                let _ = app_handle_for_cb
+                    .emit(&format!("shortcut-{}", action_for_cb), index as i64);
+            })
+            .map_err(|e| format!("Failed to register '{}': {:?}", shortcut, e))?;
+
+        SHORTCUT_ACTION_MAP
+            .lock()
+            .unwrap()
+            .insert(shortcut.clone(), action.clone());
+
+        info!("[setup_quick_paste] 注册: {} -> {}", shortcut, action);
+    }
+
+    // 3. 注册轮转粘贴快捷键
+    if let Some(rotating) = rotating_shortcut.as_ref() {
+        let rotating = rotating.trim();
+        if !rotating.is_empty() {
+            let app_handle_for_cb = app_handle.clone();
+            let shortcut_parsed: Shortcut = rotating.parse().map_err(|e| {
+                format!("Failed to parse rotating shortcut '{}': {:?}", rotating, e)
+            })?;
+
+            global_shortcut
+                .on_shortcut(shortcut_parsed, move |_app, _shortcut, _event| {
+                    info!("[shortcut] 触发 rotating_paste");
+                    let _ = app_handle_for_cb.emit("shortcut-rotating_paste", ());
+                })
+                .map_err(|e| format!("Failed to register rotating shortcut '{}': {:?}", rotating, e))?;
+
+            SHORTCUT_ACTION_MAP
+                .lock()
+                .unwrap()
+                .insert(rotating.to_string(), "rotating_paste".to_string());
+
+            info!("[setup_quick_paste] 注册: {} -> rotating_paste", rotating);
+        }
+    }
+
+    info!(
+        "[setup_quick_paste] 完成: mode={}, count={}",
+        mode,
+        shortcut_strs.len()
+    );
+    Ok(())
+}
+
+/// `paste_to_active_window` 的内部实现，不通过 Tauri 命令直接接受 String 参数。
+/// 方便 `paste_clipboard_item_at_index` 复用同样的剪贴板写入与按键模拟逻辑。
+async fn paste_to_active_window_inner(
+    state: State<'_, Arc<AppState>>,
+    content: String,
+    format: String,
+    content_type: Option<String>,
+) -> Result<(), String> {
+    // 计算 hash 并写入 LAST_HASH（与原 paste_to_active_window 一致）
+    let hash = ClipboardManager::generate_hash(content.as_bytes());
+    {
+        let mut last_hash_lock = LAST_HASH.lock().unwrap();
+        *last_hash_lock = hash;
+    }
+
+    let format_clone = format.clone();
+
+    // 图片格式：预读取图片字节
+    let image_data: Option<Vec<u8>> = if format == "image" {
+        let datastore = state.datastore.clone();
+        let content_clone = content.clone();
+        Some(
+            tokio::task::spawn_blocking(move || datastore.load_image(&content_clone))
+                .await
+                .map_err(|e| format!("Task join error: {}", e))??,
+        )
+    } else {
+        None
+    };
+
+    // markdown -> html
+    let content_for_clipboard = if format == "markdown" {
+        markdown_to_html(&content).unwrap_or(content.clone())
+    } else {
+        content.clone()
+    };
+
+    // 注意：快速粘贴路径下忽略 docx（Pandoc）选项，避免在快捷键路径上
+    // 触发耗时的 pandoc 转换；docx 选项仅在前端主动调用 paste_to_active_window 时生效。
+
+    let clipboard_type = content_type.unwrap_or_else(|| match format_clone.as_str() {
+        "image" => "image".to_string(),
+        "html" | "markdown" => "html".to_string(),
+        "rtf" => "rtf".to_string(),
+        _ => "text".to_string(),
+    });
+
+    let clipboard_handle = thread::spawn(move || -> Result<(), String> {
+        let ctx = ClipboardContext::new().map_err(|e| e.to_string())?;
+
+        let res: Result<(), String> = match clipboard_type.as_str() {
+            "image" => {
+                if let Some(data) = image_data {
+                    let img = RustImageData::from_bytes(&data)
+                        .map_err(|e| format!("Image load error: {:?}", e))?;
+                    ctx.set_image(img)
+                        .map_err(|e| format!("Set image error: {:?}", e))?;
+                    Ok(())
+                } else {
+                    Err("No image data".to_string())
+                }
+            }
+            "html" => {
+                let plain_text = nanohtml2text::html2text(&content_for_clipboard);
+                let contents = build_clipboard_contents("html", content_for_clipboard, plain_text);
+                ctx.set(contents)
+                    .map_err(|e| format!("Set HTML error: {:?}", e))
+            }
+            "rtf" => {
+                let plain_text = rtf_to_plain_text(&content_for_clipboard);
+                let contents = build_clipboard_contents("rtf", content_for_clipboard, plain_text);
+                ctx.set(contents)
+                    .map_err(|e| format!("Set RTF error: {:?}", e))
+            }
+            _ => ctx
+                .set_text(content_for_clipboard)
+                .map_err(|e| format!("Set text error: {:?}", e)),
+        };
+
+        res
+    });
+
+    if let Err(e) = clipboard_handle
+        .join()
+        .map_err(|_| "剪贴板线程 Panic".to_string())?
+    {
+        return Err(format!("剪贴板操作失败: {}", e));
+    }
+
+    execute_paste().await
 }
 
 #[tauri::command]
@@ -1093,6 +1434,8 @@ pub fn register_shortcut_internal(
     use crate::common::globals::SHORTCUT_ACTION_MAP;
     use tauri::Emitter;
 
+    info!("[shortcut] register_shortcut_internal: shortcut='{}', action='{}'", shortcut, action);
+
     // 解析快捷键字符串
     let shortcut_parsed: Shortcut = shortcut.parse()
         .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))?;
@@ -1102,6 +1445,7 @@ pub fn register_shortcut_internal(
 
     // 检查快捷键是否已注册，如果是则先注销
     if global_shortcut.is_registered(shortcut_parsed) {
+        info!("[shortcut] 已注册，先注销: {}", shortcut);
         global_shortcut.unregister(shortcut_parsed)
             .map_err(|e| format!("Failed to unregister existing shortcut: {:?}", e))?;
     }
@@ -1112,10 +1456,13 @@ pub fn register_shortcut_internal(
 
     // 注册新的快捷键，设置回调触发事件
     global_shortcut.on_shortcut(shortcut_parsed, move |_app, _shortcut, _event| {
+        info!("[shortcut] 触发回调: action={}", action_for_callback);
         // 发送事件给前端
         let _ = app_handle_for_callback.emit(&format!("shortcut-{}", action_for_callback), ());
     })
     .map_err(|e| format!("Failed to register shortcut with callback: {:?}", e))?;
+
+    info!("[shortcut] 注册成功: shortcut='{}', action='{}'", shortcut, action);
 
     // 存储快捷键到动作的映射
     {

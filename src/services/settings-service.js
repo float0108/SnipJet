@@ -32,6 +32,7 @@ async function loadSettings() {
       toggle_interface: "Ctrl+Shift+V",
       function_paste: "",
       quick_paste_mode: "ctrl",
+      rotating_paste: "",
     },
   };
 }

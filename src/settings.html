@@ -173,13 +173,36 @@
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">快捷粘贴修饰键</div>
-              <div class="setting-description">配合数字键 1~9 使用</div>
+              <div class="setting-description">配合数字键 1~9 使用，触发对应序数的历史项粘贴（不改变历史排序）。选择"无"可禁用该功能。</div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="quick-paste-mode">
                 <option value="ctrl">Ctrl</option>
                 <option value="num">NumPad</option>
+                <option value="none">无</option>
               </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">候选粘贴快捷键</div>
+              <div class="setting-description">按下后从第 1 项开始，依次轮转粘贴下一项（不改变历史排序）。留空可禁用该功能。</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="text"
+                class="shortcut-input"
+                id="rotating-paste"
+                placeholder="未设置"
+                readonly
+              />
+              <button
+                class="clear-btn"
+                onclick="clearShortcut('rotating-paste')"
+              >
+                清空
+              </button>
             </div>
           </div>
         </div>
