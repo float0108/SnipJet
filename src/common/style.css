@@ -20,6 +20,8 @@
   --success-color: #10b981;
   --warning-color: #f59e0b;
   --favorite-color: #eab308;
+  /* 收藏色的 R,G,B 分量，供 rgb() 透明度混合使用（JS 会按用户设置覆盖） */
+  --favorite-color-rgb: 234, 179, 8;
 
   /* --- 字号变量 --- */
   --font-size-base: 14px;
@@ -65,6 +67,7 @@
     --success-color: #34d399;
     --warning-color: #fbbf24;
     --favorite-color: #fbbf24;
+    --favorite-color-rgb: 251, 191, 36;
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
   }
@@ -85,6 +88,7 @@
   --success-color: #34d399;
   --warning-color: #fbbf24;
   --favorite-color: #fbbf24;
+  --favorite-color-rgb: 251, 191, 36;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
 }
@@ -104,6 +108,7 @@
   --success-color: #10b981;
   --warning-color: #f59e0b;
   --favorite-color: #eab308;
+  --favorite-color-rgb: 234, 179, 8;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md:
     0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);

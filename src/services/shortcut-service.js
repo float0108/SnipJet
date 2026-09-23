@@ -1,6 +1,6 @@
 import { log, error as logError, debug } from "../utils/logger.js";
 import { toggleWindowVisibility } from "./window-service.js";
-import { getClipboardHistory, listen } from "./tauri-api.js";
+import { getClipboardHistory, listen, getClipboardContent } from "./tauri-api.js";
 import { pinState } from "../views/main/titlebar.js";
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
@@ -144,15 +144,17 @@ async function handlePlainTextPaste() {
 
     // 2. 获取最新的项目（第一个）
     const latestItem = history[0];
-    const content = latestItem.content;
     const format = latestItem.format || "plain";
 
+    // 3. 完整内容按需从后端懒加载（列表数据里文本类格式不含 content）
+    const latestFull = await getClipboardContent(latestItem.id);
+    const content = latestFull?.content;
     if (!content) {
       await debug("最新剪贴板项内容为空");
       return;
     }
 
-    // 3. 转换为纯文本（如果是 HTML）- 使用与 listitem 点击相同的处理方式
+    // 4. 转换为纯文本（如果是 HTML）- 使用与 listitem 点击相同的处理方式
     let plainText = content;
     if (format === "html") {
       plainText = html2text(content);
@@ -160,7 +162,7 @@ async function handlePlainTextPaste() {
 
     await debug(`准备粘贴纯文本: ${plainText.substring(0, 50)}...`);
 
-    // 4. 复制纯文本到剪贴板（不触发历史更新）
+    // 5. 复制纯文本到剪贴板（不触发历史更新）
     try {
       await invoke("copy_to_clipboard_no_history", {
         content: plainText,

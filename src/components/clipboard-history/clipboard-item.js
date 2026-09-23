@@ -78,8 +78,7 @@ export function renderClipboardItem(item) {
   };
 
   const safeData = {
-    // encodedContent 已经是 URI 编码的，只包含安全字符，不需要 HTML 转义
-    content: item.encodedContent,
+    // 不再在 DOM 上存完整内容；交互时通过 id 调 get_clipboard_content 懒加载。
     // format 是内部枚举值 (html/plain/rtf)，只包含字母，无需转义
     // 转义会破坏 === "html" 的判断
     format: item.format || "plain",
@@ -123,7 +122,6 @@ export function renderClipboardItem(item) {
     <div
       class="clipboard-item ${safeData.isFavorite ? 'is-favorite' : ''}"
       id="${elementId}"
-      data-content="${safeData.content}"
       data-format="${safeData.format}"
       data-timestamp="${safeData.timestamp}"
       data-id="${uniqueId}"

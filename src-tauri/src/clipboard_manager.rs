@@ -90,9 +90,16 @@ impl ClipboardManager {
         }
 
         // 3. 发送全量状态给前端
+        //    列表只推送预览与元数据（文本类格式的 content 置空），
+        //    避免单条超大内容在 IPC 上全量传输、解析导致界面卡死；
+        //    前端需要完整内容时通过 get_clipboard_content 按需获取。
+        let list_items: Vec<ClipboardItem> = history_to_save
+            .iter()
+            .map(|it| it.to_list_item())
+            .collect();
         let payload = serde_json::json!({
             "type": "state-changed",
-            "items": history_to_save
+            "items": list_items
         });
         if let Err(e) = app_handle.emit("clipboard-update", &payload) {
             error!("Event emit error: {:?}", e);

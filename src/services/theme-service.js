@@ -98,6 +98,22 @@ export function getSystemFonts() {
   return systemFontsCache;
 }
 
+// 收藏主题色默认值（琥珀黄）
+const DEFAULT_FAVORITE_COLOR = "#eab308";
+
+// 应用收藏主题色
+// 同时写入 hex 与 rgb 分量两个变量，便于 CSS 中做透明度混合
+export function applyFavoriteColor(color) {
+  const root = document.documentElement;
+  const hex = /^#[0-9a-fA-F]{6}$/.test(color || "") ? color : DEFAULT_FAVORITE_COLOR;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  root.style.setProperty('--favorite-color', hex);
+  root.style.setProperty('--favorite-color-rgb', `${r}, ${g}, ${b}`);
+  console.log('收藏主题色已应用:', hex);
+}
+
 // 应用预览行数设置
 export function applyPreviewLines(lines) {
   const root = document.documentElement;
@@ -121,6 +137,8 @@ export function applyInterfaceSettings(interfaceSettings) {
   if (interfaceSettings.preview_lines) {
     applyPreviewLines(interfaceSettings.preview_lines);
   }
+  // 收藏主题色始终应用，确保字段缺失/清空时能回落到默认色
+  applyFavoriteColor(interfaceSettings.favorite_color);
 }
 
 // 从设置文件加载完整设置

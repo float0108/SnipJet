@@ -370,6 +370,16 @@
 
           <div class="setting-item">
             <div class="setting-info">
+              <div class="setting-label">收藏主题色</div>
+              <div class="setting-description">收藏视图背景与收藏卡片的强调色</div>
+            </div>
+            <div class="setting-control">
+              <input type="color" class="color-input" id="favorite-color" value="#eab308" />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
               <div class="setting-label">界面语言</div>
             </div>
             <div class="setting-control">
@@ -463,6 +473,25 @@
                 max="10000"
                 step="10"
                 placeholder="无限制"
+                style="width: 100px;"
+              />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">搜索扫描上限 (KB)</div>
+              <div class="setting-description">单条内容参与搜索检索的最大长度，超出部分不检索；留空使用默认 1024 KB</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="search-scan-limit"
+                min="16"
+                max="102400"
+                step="1024"
+                placeholder="1024"
                 style="width: 100px;"
               />
             </div>

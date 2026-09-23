@@ -1,5 +1,6 @@
 // 导航功能
 import { emit } from '@tauri-apps/api/event';
+import { getClipboardContent } from "../../services/tauri-api.js";
 
 /**
  * 处理导航事件
@@ -41,11 +42,16 @@ async function handleNavigation(payload, container) {
       const targetItem = items[targetIndex];
       console.log("找到目标项目:", targetItem.id);
 
-      // 获取目标项目的数据
-      const content = targetItem.getAttribute("data-content");
+      // 获取目标项目的数据（完整内容按需从后端懒加载）
+      const targetId = targetItem.id.replace("item-", "");
+      const targetData = await getClipboardContent(targetId);
+      if (!targetData) {
+        await emit("refresh-reader", { error: "未找到该剪贴板项的完整内容" });
+        return;
+      }
+      const content = targetData.content || "";
       const format = targetItem.getAttribute("data-format");
       const timestamp = targetItem.getAttribute("data-timestamp");
-      const targetId = targetItem.id.replace("item-", "");
       // 图片元数据
       const imageWidth = targetItem.getAttribute("data-image-width");
       const imageHeight = targetItem.getAttribute("data-image-height");
@@ -54,7 +60,7 @@ async function handleNavigation(payload, container) {
       // 收藏状态
       const isFavorite = targetItem.classList.contains("is-favorite");
 
-      console.log("目标项目数据:", { content, format, timestamp, targetId });
+      console.log("目标项目数据:", { format, timestamp, targetId });
 
       // 使用 localStorage 传递大数据内容，避免 URL 长度限制
       const storageKey = `transfer-${targetId}`;

@@ -1,6 +1,6 @@
 // 前端应用主入口
 
-import {listen, invoke} from "../../services/tauri-api.js";
+import {listen, invoke, getClipboardContent, searchClipboardHistory} from "../../services/tauri-api.js";
 import {openReaderWindow} from "../../services/window-service.js";
 import {initGlobalShortcuts, handlePasteAftermath} from "../../services/shortcut-service.js";
 import {
@@ -34,6 +34,26 @@ if (typeof window !== "undefined") {
       const blobText = new Blob([decodedContent], { type: "text/plain" });
       return [new ClipboardItem({ "text/plain": blobText })];
     }
+  }
+
+  // 从元素读取元数据（不再依赖 data-content，统一走懒加载）
+  function getItemMeta(element) {
+    const format = element.getAttribute("data-format") || "plain";
+    const id = element.getAttribute("data-id") || element.id.replace(/^item-/, "");
+    return { id, format };
+  }
+
+  // 懒加载项的完整内容；返回 { id, format, content }
+  async function fetchItemContent(element) {
+    const meta = getItemMeta(element);
+    const item = await getClipboardContent(meta.id);
+    if (!item) return null;
+    return {
+      id: meta.id,
+      format: item.format || meta.format,
+      content: item.content || "",
+      preview: item.preview || "",
+    };
   }
 
   // 分发粘贴键盘事件（共享逻辑）
@@ -94,14 +114,14 @@ if (typeof window !== "undefined") {
   }
 
   // 复制到剪贴板
-  window.copyToClipboard = async function (element) {
+window.copyToClipboard = async function (element) {
     try {
-      const content = element.getAttribute("data-content");
-      const format = element.getAttribute("data-format");
-      if (content) {
-        const decodedContent = decodeURIComponent(content);
-        const writeResult = await writeClipboardWithFallback(decodedContent, format);
+      const fetched = await fetchItemContent(element);
+      if (fetched && fetched.content) {
+        const writeResult = await writeClipboardWithFallback(fetched.content, fetched.format);
         await log(`内容已复制到剪贴板（${writeResult}）`);
+      } else {
+        await error("复制失败：未找到该剪贴板项的完整内容");
       }
     } catch (error) {
       await error("复制失败:", error);
@@ -127,20 +147,21 @@ if (typeof window !== "undefined") {
   }
 
   // 模拟粘贴到当前窗口
-  window.pasteToCurrentWindow = async function (element) {
+window.pasteToCurrentWindow = async function (element) {
     try {
-      const content = element.getAttribute("data-content");
-      const format = element.getAttribute("data-format");
-      if (!content) return;
-
-      const decodedContent = decodeURIComponent(content);
+      const fetched = await fetchItemContent(element);
+      if (!fetched || !fetched.content) {
+        await error("粘贴失败：未找到该剪贴板项的完整内容");
+        return;
+      }
+      const { format, content } = fetched;
 
       // 写入剪贴板
-      const writeResult = await writeClipboardWithFallback(decodedContent, format);
+      const writeResult = await writeClipboardWithFallback(content, format);
       await log(`内容已复制到剪贴板（${writeResult}），准备模拟粘贴`);
 
       // 后端粘贴
-      await executePasteToActiveWindow(decodedContent, format);
+      await executePasteToActiveWindow(content, format);
 
       // 前端模拟作为 fallback
       if (dispatchPasteEvent()) {
@@ -159,12 +180,14 @@ if (typeof window !== "undefined") {
   // 粘贴为纯文本
   window.pasteAsPlainText = async function (element) {
     try {
-      const content = element.getAttribute("data-content");
-      const format = element.getAttribute("data-format");
-      if (!content) return;
+      const fetched = await fetchItemContent(element);
+      if (!fetched || !fetched.content) {
+        console.error("粘贴纯文本失败：未找到该剪贴板项的完整内容");
+        return;
+      }
+      const { format, content } = fetched;
 
-      const encodedContent = decodeURIComponent(content);
-      let plainText = format === "html" ? html2text(encodedContent) : encodedContent;
+      const plainText = format === "html" ? html2text(content) : content;
 
       // 写入剪贴板
       const writeResult = await writeClipboardWithFallback(plainText, "plain");
@@ -338,45 +361,87 @@ let allClipboardItems = [];
 // 收藏项目数据（独立存储，与历史分开）
 let allFavorites = [];
 
-// 获取当前筛选后的项目
+// 搜索命中的 id 集合（由后端全文检索返回）；null 表示当前没有生效的搜索条件
+let searchMatchIds = null;
+// 搜索防抖与竞态控制
+let searchDebounceTimer = null;
+let searchRequestSeq = 0;
+const SEARCH_DEBOUNCE_MS = 150;
+
+// 获取当前筛选后的项目。
+// 正文已在后端剥离，本地无法做全文匹配，因此搜索命中的 id 集合由后端给出，
+// 这里只负责按 id 过滤当前视图的数据。
 function getFilteredItems() {
-  // 收藏视图：使用独立的 allFavorites 数组
-  if (filterState.showFavoritesOnly) {
-    if (!Array.isArray(allFavorites)) {
-      return [];
-    }
-    let items = [...allFavorites];
-
-    // 搜索筛选
-    const searchQuery = filterState.searchQuery.toLowerCase().trim();
-    if (searchQuery) {
-      items = items.filter(item => {
-        const content = (item.content || "").toLowerCase();
-        const preview = (item.preview || "").toLowerCase();
-        return content.includes(searchQuery) || preview.includes(searchQuery);
-      });
-    }
-    return items;
-  }
-
-  // 历史视图：使用 allClipboardItems
-  if (!Array.isArray(allClipboardItems)) {
+  const base = filterState.showFavoritesOnly ? allFavorites : allClipboardItems;
+  if (!Array.isArray(base)) {
     return [];
   }
 
-  let items = [...allClipboardItems];
+  const items = [...base];
 
-  // 搜索筛选
-  const searchQuery = filterState.searchQuery.toLowerCase().trim();
-  if (searchQuery) {
-    items = items.filter(item => {
-      const content = (item.content || "").toLowerCase();
-      const preview = (item.preview || "").toLowerCase();
-      return content.includes(searchQuery) || preview.includes(searchQuery);
-    });
+  const searchQuery = filterState.searchQuery.trim();
+  if (!searchQuery) {
+    return items;
   }
 
-  return items;
+  // 搜索尚无结果（首次检索或正在重新检索）时先不展示，避免闪现全部内容
+  if (!searchMatchIds) {
+    return [];
+  }
+
+  return items.filter(item => searchMatchIds.has(item.id));
+}
+
+// 统一渲染当前筛选结果
+function renderFiltered(container, statusElement) {
+  const filteredItems = getFilteredItems();
+
+  if (filteredItems.length > 0) {
+    renderHistory(filteredItems, container, statusElement);
+    return;
+  }
+
+  if (filterState.showFavoritesOnly && allFavorites.length === 0) {
+    container.innerHTML = renderEmptyState(t('empty.noFavorites'), t('empty.noFavoritesHint'));
+    updateStatus(statusElement, "");
+    return;
+  }
+
+  if (!filterState.showFavoritesOnly && allClipboardItems.length === 0) {
+    container.innerHTML = renderEmptyState(t('empty.noHistory'), t('empty.noHistoryHint'));
+    updateStatus(statusElement, "");
+    return;
+  }
+
+  // 有数据但没有匹配项
+  const emptyText = filterState.showFavoritesOnly ? t('empty.noFavoritesMatch') : t('empty.noHistoryMatch');
+  console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
+  container.innerHTML = renderEmptyState(emptyText, "");
+  updateStatus(statusElement, "");
+}
+
+// 防抖发起后端全文检索，避免每次按键都触发一次全量扫描
+function scheduleSearch(container, statusElement, query) {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+  }
+  searchDebounceTimer = setTimeout(() => {
+    searchDebounceTimer = null;
+    runSearch(container, statusElement, query);
+  }, SEARCH_DEBOUNCE_MS);
+}
+
+async function runSearch(container, statusElement, query) {
+  const seq = ++searchRequestSeq;
+  const ids = await searchClipboardHistory(query);
+
+  // 丢弃过期结果（用户已继续输入新的关键词或已清空搜索）
+  if (seq !== searchRequestSeq) {
+    return;
+  }
+
+  searchMatchIds = new Set(ids);
+  renderFiltered(container, statusElement);
 }
 
 // 应用筛选并重新渲染
@@ -385,23 +450,21 @@ async function applyFilters(container, statusElement) {
     return;
   }
 
-  const filteredItems = getFilteredItems();
-
-  if (filteredItems.length > 0) {
-    // 使用普通列表渲染
-    renderHistory(filteredItems, container, statusElement);
-  } else if (filterState.showFavoritesOnly && allFavorites.length === 0) {
-    container.innerHTML = renderEmptyState(t('empty.noFavorites'), t('empty.noFavoritesHint'));
-    updateStatus(statusElement, "");
-  } else if (!filterState.showFavoritesOnly && allClipboardItems.length === 0) {
-    container.innerHTML = renderEmptyState(t('empty.noHistory'), t('empty.noHistoryHint'));
-    updateStatus(statusElement, "");
-  } else {
-    let emptyText = filterState.showFavoritesOnly ? t('empty.noFavoritesMatch') : t('empty.noHistoryMatch');
-    console.log("[applyFilters] 有数据但筛选为空，显示:", emptyText);
-    container.innerHTML = renderEmptyState(emptyText, emptyDescription);
-    updateStatus(statusElement, "");
+  const query = filterState.searchQuery.trim();
+  if (query) {
+    // 有搜索条件：交给防抖 + 后端全文检索处理
+    scheduleSearch(container, statusElement, query);
+    return;
   }
+
+  // 无搜索条件：取消在途的搜索并立即渲染完整列表
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
+  }
+  searchRequestSeq++; // 让在途搜索结果失效
+  searchMatchIds = null;
+  renderFiltered(container, statusElement);
 }
 
 // 更新历史项目数据
@@ -564,6 +627,15 @@ async function init() {
         console.log("[settings-changed] 最大历史条目数已更新:", maxItems);
       } catch (e) {
         console.error("[settings-changed] 更新最大历史条目数失败:", e);
+      }
+
+      // 更新后端的搜索扫描上限设置
+      try {
+        const limitKb = event.payload?.interface?.search_scan_limit_kb;
+        await invoke("update_search_scan_limit_kb", { limitKb: limitKb || null });
+        console.log("[settings-changed] 搜索扫描上限已更新:", limitKb);
+      } catch (e) {
+        console.error("[settings-changed] 更新搜索扫描上限失败:", e);
       }
 
       // 快捷粘贴修饰键模式变化：重新注册快捷键

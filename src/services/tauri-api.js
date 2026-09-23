@@ -65,6 +65,57 @@ export async function testTauriConnection() {
 }
 
 /**
+ * 按 id 懒加载单条剪贴板项的完整内容。
+ * 带一层进程内缓存：同一 id 多次拉取不会重复命中后端。
+ *
+ * @param {string} id - 剪贴板项 id
+ * @returns {Promise<Object|null>} - 命中的 ClipboardItem，找不到为 null
+ */
+const _clipboardContentCache = new Map();
+
+export async function getClipboardContent(id) {
+  if (!id) return null;
+  if (_clipboardContentCache.has(id)) {
+    return _clipboardContentCache.get(id);
+  }
+  try {
+    const item = await tauriInvoke("get_clipboard_content", { id });
+    if (item) {
+      _clipboardContentCache.set(id, item);
+    }
+    return item;
+  } catch (error) {
+    console.error("[getClipboardContent] 懒加载失败:", error);
+    return null;
+  }
+}
+
+/**
+ * 清空懒加载缓存（例如历史被清空、收藏表更新时调用，避免拿到陈旧数据）。
+ */
+export function clearClipboardContentCache() {
+  _clipboardContentCache.clear();
+}
+
+/**
+ * 后端全文检索剪贴板历史与收藏，只返回命中的条目 id。
+ * 列表数据不含完整正文，因此搜索必须下推到后端。
+ *
+ * @param {string} query - 搜索关键词
+ * @returns {Promise<string[]>} - 命中的条目 id 列表
+ */
+export async function searchClipboardHistory(query) {
+  const q = (query || "").trim();
+  if (!q) return [];
+  try {
+    return await tauriInvoke("search_clipboard_history", { query: q });
+  } catch (error) {
+    console.error("[searchClipboardHistory] 检索失败:", error);
+    return [];
+  }
+}
+
+/**
  * 监听Tauri事件
  * @param {string} eventName - 事件名称
  * @param {Function} callback - 回调函数
