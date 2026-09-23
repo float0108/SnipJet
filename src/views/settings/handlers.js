@@ -2,7 +2,7 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
+import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
 import { setLocale } from '../../utils/i18n.js';
 
 export let settings = {};
@@ -32,7 +32,9 @@ function getDefaultSettings() {
       auto_hide: true,
       preview_lines: 5,
       image_preview_size: "medium",
+      favorite_color: "#eab308",
       max_history_items: 100,
+      search_scan_limit_kb: 1024,
     },
     copy: {
       strip_formatting: false,
@@ -177,6 +179,7 @@ export async function saveSettings() {
     if (settings.interface?.preview_lines) {
       applyPreviewLines(settings.interface.preview_lines);
     }
+    applyFavoriteColor(settings.interface?.favorite_color);
 
     // 更新原始设置备份（保存成功后）
     originalSettings = JSON.parse(JSON.stringify(settings));
@@ -482,11 +485,24 @@ export function updateInterfaceSettings() {
     imagePreviewSize.value = settings.interface?.image_preview_size ?? "medium";
   }
 
+  // 更新收藏主题色
+  const favoriteColor = document.getElementById("favorite-color");
+  if (favoriteColor) {
+    favoriteColor.value = settings.interface?.favorite_color ?? "#eab308";
+  }
+
   // 更新最大历史条目数（空值表示不限制）
   const maxHistoryItems = document.getElementById("max-history-items");
   if (maxHistoryItems) {
     const value = settings.interface?.max_history_items;
     maxHistoryItems.value = value ? value : "";
+  }
+
+  // 更新搜索扫描上限（空值表示使用默认 1024 KB）
+  const searchScanLimit = document.getElementById("search-scan-limit");
+  if (searchScanLimit) {
+    const value = settings.interface?.search_scan_limit_kb;
+    searchScanLimit.value = value ? value : "";
   }
 }
 
@@ -619,6 +635,15 @@ export function bindSettingsListeners() {
     });
   }
 
+  const searchScanLimit = document.getElementById("search-scan-limit");
+  if (searchScanLimit) {
+    searchScanLimit.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      const value = this.value.trim();
+      settings.interface.search_scan_limit_kb = value ? parseInt(value) : null;
+    });
+  }
+
   const language = document.getElementById("language");
   if (language) {
     language.addEventListener("change", function () {
@@ -662,6 +687,16 @@ export function bindSettingsListeners() {
     imagePreviewSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.image_preview_size = this.value;
+    });
+  }
+
+  const favoriteColor = document.getElementById("favorite-color");
+  if (favoriteColor) {
+    // 实时预览，无需等待保存
+    favoriteColor.addEventListener("input", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.favorite_color = this.value;
+      applyFavoriteColor(this.value);
     });
   }
 

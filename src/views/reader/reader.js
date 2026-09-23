@@ -103,22 +103,14 @@ async function init() {
   console.log("初始化参数:", params);
 
   const cacheKey = params.cacheKey;
-  // 尝试从 localStorage 获取内容，如果没有则尝试从 URL 直接获取 (兜底)
+  // 主窗口写入 localStorage 的是未编码的原始内容（完整内容按需懒加载后直接写入）
   const realContent = localStorage.getItem(cacheKey) || params.content;
 
   if (realContent) {
-    // 解码内容（先解码，后续都使用解码后的内容）
-    let decodedContent = realContent;
-    try {
-      // 有些内容可能被多次编码，根据实际情况调整
-      if (realContent.includes("%") && !realContent.includes("<html")) {
-        decodedContent = decodeURIComponent(realContent);
-      }
-    } catch (e) {
-      console.warn("解码可能失败，使用原内容", e);
-    }
+    // 内容已是原始文本，无需再做 URI 解码
+    const decodedContent = realContent;
 
-    // 保存解码后的内容到全局以便复制
+    // 保存内容到全局以便复制
     currentContent = decodedContent;
 
     // 初始化收藏按钮状态

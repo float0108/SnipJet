@@ -35,12 +35,13 @@ export function parseClipboardItem(item) {
   const result = {
     id: item.id,
     format: format,
+    // 列表数据里文本类格式的 content 为空（完整内容由后端按需懒加载），
+    // 仅图片/文件格式携带小体积的路径信息，列表渲染需要用到。
     content: item.content,
     preview: item.preview,
     timestamp: item.timestamp,
     wordCount: item.word_count || 0,
     formatLabel: getFormatLabel(format),
-    encodedContent: encodeURIComponent(item.content || ""),
     encodedTimestamp: encodeURIComponent(item.timestamp || ""),
     isFavorite: item.is_favorite || false,
   };

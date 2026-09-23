@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -56,12 +57,17 @@ pub fn get_clipboard_history(
         }
         None => {
             // limit=None 表示全部
-            history.iter().skip(offset).cloned().collect()
+            history.iter().skip(offset).map(|it| it.to_list_item()).collect()
         }
         Some(limit) => {
             // 指定 limit，最多为 500
             let limit = limit.min(500);
-            history.iter().skip(offset).take(limit).cloned().collect()
+            history
+                .iter()
+                .skip(offset)
+                .take(limit)
+                .map(|it| it.to_list_item())
+                .collect()
         }
     }
 }
@@ -69,25 +75,153 @@ pub fn get_clipboard_history(
 /// 按 id 获取单条剪贴板项的完整内容（用于前端按需懒加载，避免在列表中
 /// 把可能很大的 content/preview 全量塞进 DOM 造成主线程卡顿）。
 ///
-/// 同时在历史和收藏表中查找，命中则返回完整 ClipboardItem；找不到则返回 None。
+/// 同时在历史和收藏列表中查找，命中则返回完整 ClipboardItem；找不到则返回 None。
 #[tauri::command]
 pub fn get_clipboard_content(
     state: State<'_, Arc<AppState>>,
     id: String,
 ) -> Option<ClipboardItem> {
-    let history = state.history.lock().unwrap();
-    if let Some(item) = history.iter().find(|it| it.id == id) {
-        return Some(item.clone());
-    }
-    drop(history);
-
-    // 收藏表里也找一下（用户可能在收藏视图打开懒加载项）
-    if let Ok(items) = state.datastore.load_favorites() {
-        if let Some(item) = items.into_iter().find(|it| it.id == id) {
-            return Some(item);
+    {
+        let history = state.history.lock().unwrap();
+        if let Some(item) = history.iter().find(|it| it.id == id) {
+            return Some(item.clone());
         }
     }
-    None
+
+    // 收藏列表里也找一下（用户可能在收藏视图打开该项）
+    let favorites = state.favorites.lock().unwrap();
+    favorites.iter().find(|it| it.id == id).cloned()
+}
+
+/// 判断 haystack 是否包含 needle（ASCII 大小写不敏感，非 ASCII 按字节精确匹配）。
+///
+/// 为了避开逐字节窗口扫描（以及 `to_lowercase()` 产生的巨额临时分配），
+/// 这里优先走 std 的 SIMD/子串查找快速路径，只有确实需要大小写折叠时才回退：
+/// 1. 关键词不含 ASCII 字母（纯中文、数字、符号等）：大小写折叠无意义，
+///    直接 `contains`，由 std 用 memchr/Two-Way 加速。
+/// 2. 关键词含 ASCII 字母：先精确匹配一次，命中即返回；未命中再回退到
+///    不敏感扫描（典型场景是用户输入的大小写与正文不一致）。
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if needle.len() > haystack.len() {
+        return false;
+    }
+
+    // 快速路径 1：无需大小写折叠
+    if !needle.bytes().any(|b| b.is_ascii_alphabetic()) {
+        return haystack.contains(needle);
+    }
+
+    // 快速路径 2：大小写完全一致的情况（绝大多数命中都属于这种）
+    if haystack.contains(needle) {
+        return true;
+    }
+
+    // 回退：ASCII 大小写不敏感扫描
+    let h = haystack.as_bytes();
+    let n = needle.as_bytes();
+    h.windows(n.len()).any(|w| w.eq_ignore_ascii_case(n))
+}
+
+/// 按字节上限截断字符串，并保证截断点落在字符边界上（避免切片 panic）。
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// 把一组条目中命中关键词的 id 收集到 `ids` 中（用 `seen` 去重）。
+///
+/// `scan_limit_bytes` 是单条 content 的扫描上限：超出部分不参与检索，
+/// 用于把单次搜索的最坏耗时钉在常数级。`preview` 本身很短，始终完整扫描。
+fn collect_search_matches(
+    items: &[ClipboardItem],
+    needle: &str,
+    scan_limit_bytes: usize,
+    ids: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+) {
+    for item in items {
+        if seen.contains(&item.id) {
+            continue;
+        }
+        let haystack = truncate_at_char_boundary(&item.content, scan_limit_bytes);
+        if contains_ignore_ascii_case(haystack, needle)
+            || contains_ignore_ascii_case(&item.preview, needle)
+        {
+            seen.insert(item.id.clone());
+            ids.push(item.id.clone());
+        }
+    }
+}
+
+/// 在内存中全文检索剪贴板历史与收藏，返回命中的条目 id 列表。
+///
+/// 列表数据里文本类格式的 content 已被剥离（见 `to_list_item`），前端无法再
+/// 本地做全文匹配，因此把检索下推到后端；只回传 id 集合，正文不出内存。
+///
+/// 扫描可能遍历大量超大正文，因此：单条按设置的上限截断，并放到
+/// spawn_blocking 中执行，避免阻塞主线程。
+#[tauri::command]
+pub async fn search_clipboard_history(
+    state: State<'_, Arc<AppState>>,
+    query: String,
+) -> Result<Vec<String>, String> {
+    let needle = query.trim().to_string();
+    if needle.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let scan_limit_bytes = *state.search_scan_limit_bytes.lock().unwrap();
+    let history = state.history.clone();
+    let favorites = state.favorites.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let mut ids: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+
+        {
+            let history = history.lock().unwrap();
+            collect_search_matches(&history, &needle, scan_limit_bytes, &mut ids, &mut seen);
+        }
+        {
+            let favorites = favorites.lock().unwrap();
+            collect_search_matches(&favorites, &needle, scan_limit_bytes, &mut ids, &mut seen);
+        }
+
+        ids
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))
+}
+
+/// 更新搜索时单条内容的扫描上限（单位 KB）。
+///
+/// `None` / `0` 视为使用默认上限（1 MB）。为避免把上限设得过大导致搜索重新
+/// 变卡，这里对传入值做了上限收敛。
+#[tauri::command]
+pub fn update_search_scan_limit_kb(
+    state: State<'_, Arc<AppState>>,
+    limit_kb: Option<usize>,
+) -> Result<(), String> {
+    const MAX_SCAN_LIMIT_KB: usize = 100 * 1024; // 100 MB
+
+    let bytes = match limit_kb.filter(|kb| *kb > 0) {
+        Some(kb) => kb.min(MAX_SCAN_LIMIT_KB).saturating_mul(1024),
+        None => crate::DEFAULT_SEARCH_SCAN_LIMIT_BYTES,
+    };
+
+    let mut limit_lock = state.search_scan_limit_bytes.lock().unwrap();
+    *limit_lock = bytes;
+    info!("Search scan limit updated to: {} bytes", bytes);
+    Ok(())
 }
 
 #[tauri::command]
@@ -120,7 +254,7 @@ pub fn delete_clipboard_item(
     {
         let mut history_lock = state.history.lock().unwrap();
         history_lock.retain(|item| item.id != id);
-        history_to_save = history_lock.clone();
+        history_to_save = history_lock.iter().map(|it| it.to_list_item()).collect();
         info!("Deleted clipboard item with id: {} from history", id);
     }
 
@@ -197,7 +331,13 @@ pub fn toggle_favorite(
     }
 
     // 发送全量状态给前端
-    let history_to_save = state.history.lock().unwrap().clone();
+    let history_to_save: Vec<ClipboardItem> = state
+        .history
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|it| it.to_list_item())
+        .collect();
     let app_handle = state.app_handle.clone();
     let payload = serde_json::json!({
         "type": "state-changed",
@@ -215,7 +355,13 @@ pub fn toggle_favorite(
 pub fn get_favorite_items(
     state: State<'_, Arc<AppState>>,
 ) -> Vec<ClipboardItem> {
-    state.favorites.lock().unwrap().clone()
+    state
+        .favorites
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|it| it.to_list_item())
+        .collect()
 }
 
 #[tauri::command]
@@ -225,12 +371,17 @@ pub fn load_favorites_from_db(
     let datastore = &state.datastore;
     let loaded_favorites = datastore.load_favorites()?;
 
-    // 更新内存中的收藏列表
+    // 更新内存中的收藏列表（内存中保留完整内容，供懒加载使用）
     let mut favorites_lock = state.favorites.lock().unwrap();
     *favorites_lock = loaded_favorites.clone();
 
     info!("Loaded {} favorites from database", loaded_favorites.len());
-    Ok(loaded_favorites)
+
+    // 返回给前端的列表只携带预览与元数据
+    Ok(loaded_favorites
+        .iter()
+        .map(|it| it.to_list_item())
+        .collect())
 }
 
 #[tauri::command]

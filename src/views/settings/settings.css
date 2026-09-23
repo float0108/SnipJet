@@ -172,6 +172,38 @@ body {
   width: 60px;
 }
 
+/* 取色器 */
+.color-input {
+  width: 40px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-body);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.color-input:hover {
+  border-color: var(--primary-color);
+}
+
+.color-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* 隐藏系统取色器默认的内边距（WebView2/Chromium） */
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
 .shortcut-input:focus,
 .select-input:focus,
 .shortcut-input:focus {

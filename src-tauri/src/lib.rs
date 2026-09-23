@@ -26,11 +26,19 @@ use crate::mcp::start_mcp_server;
 use crate::common::globals::MCP_SERVER_HANDLE;
 use tauri::{Emitter, Listener, AppHandle};
 
+/// 搜索时单条内容的默认扫描上限（1 MB）。
+///
+/// 超过该上限的部分不参与检索，用于把单次搜索的最坏耗时钉在常数级，
+/// 避免内存里存在超长正文时搜索卡顿。可在设置中调整。
+pub const DEFAULT_SEARCH_SCAN_LIMIT_BYTES: usize = 1024 * 1024;
+
 /// 应用状态，包含剪贴板历史和收藏
 pub struct AppState {
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
     pub favorites: Arc<Mutex<Vec<ClipboardItem>>>,
     pub max_history_items: Arc<Mutex<Option<usize>>>,
+    /// 搜索时单条内容的扫描上限（字节）
+    pub search_scan_limit_bytes: Arc<Mutex<usize>>,
     pub datastore: Arc<DataStore>,
     pub app_handle: AppHandle,
 }
@@ -41,6 +49,7 @@ impl AppState {
             history: Arc::new(Mutex::new(Vec::new())),
             favorites: Arc::new(Mutex::new(Vec::new())),
             max_history_items: Arc::new(Mutex::new(None)),
+            search_scan_limit_bytes: Arc::new(Mutex::new(DEFAULT_SEARCH_SCAN_LIMIT_BYTES)),
             datastore: Arc::new(datastore),
             app_handle,
         }
@@ -157,6 +166,22 @@ where
                         let mut max_lock = state_for_setup.max_history_items.lock().unwrap();
                         *max_lock = max_items;
                         info!("Max history items set to: {:?}", max_items);
+                    }
+
+                    // 加载搜索扫描上限设置（单位 KB，缺省/非法值回退到默认 1 MB）
+                    let search_scan_kb = loaded_settings.get("interface")
+                        .and_then(|i| i.get("search_scan_limit_kb"))
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as usize)
+                        .filter(|kb| *kb > 0);
+                    let search_scan_bytes = match search_scan_kb {
+                        Some(kb) => kb.saturating_mul(1024),
+                        None => DEFAULT_SEARCH_SCAN_LIMIT_BYTES,
+                    };
+                    {
+                        let mut limit_lock = state_for_setup.search_scan_limit_bytes.lock().unwrap();
+                        *limit_lock = search_scan_bytes;
+                        info!("Search scan limit set to: {} bytes", search_scan_bytes);
                     }
 
                     // 根据设置启用/禁用自启动
@@ -394,6 +419,7 @@ where
         .invoke_handler(tauri::generate_handler!(
             commands::get_clipboard_history,
             commands::get_clipboard_content,
+            commands::search_clipboard_history,
             commands::clear_history,
             commands::delete_clipboard_item,
             commands::delete_favorite_item,
@@ -430,6 +456,7 @@ where
             commands::restart_mcp_service,
             commands::copy_markdown_as_docx,
             commands::update_max_history_items,
+            commands::update_search_scan_limit_kb,
             commands::list_system_fonts,
             commands::clean_history_by_count,
             commands::clean_history_by_age,

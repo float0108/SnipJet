@@ -8,9 +8,11 @@
     "theme": "light",
     "language": "cn",
     "font_family": "",
+    "favorite_color": "#eab308",
     "auto_hide": true,
     "preview_size": "small",
-    "max_history_items": 100
+    "max_history_items": 100,
+    "search_scan_limit_kb": 1024
   },
   "copy": {
     "strip_formatting": false,

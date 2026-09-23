@@ -3,6 +3,7 @@ import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewW
 import { cursorPosition, monitorFromPoint } from '@tauri-apps/api/window';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { log, error } from "../utils/logger.js";
+import { getClipboardContent } from "./tauri-api.js";
 
 // 防抖动控制变量
 let isTogglingWindow = false;
@@ -126,10 +127,15 @@ export async function openReaderWindow(element) {
   // 但我们的 getNormalizedKey 会识别 "reader-" 前缀并统一 Key
   const label = `reader-${contentId}`;
 
-  // 2. 获取数据
-  const content = element.getAttribute("data-content");
-  const format = element.getAttribute("data-format");
-  const timestamp = element.getAttribute("data-timestamp");
+  // 2. 获取数据（完整内容按需从后端懒加载）
+  const item = await getClipboardContent(contentId);
+  if (!item) {
+    await error(`打开查看器失败：未找到剪贴板项 ${contentId}`);
+    return;
+  }
+  const content = item.content || "";
+  const format = element.getAttribute("data-format") || item.format;
+  const timestamp = element.getAttribute("data-timestamp") || item.timestamp;
   // 图片元数据
   const imageWidth = element.getAttribute("data-image-width");
   const imageHeight = element.getAttribute("data-image-height");

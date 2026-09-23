@@ -59,14 +59,14 @@
   background-color: rgba(59, 130, 246, 0.2);
 }
 
-/* 收藏按钮激活状态 */
+/* 收藏按钮激活状态：与 pin 保持一致的背景填充 */
 .toolbar-btn.favorites-active {
   color: var(--favorite-color);
-  background-color: rgba(234, 179, 8, 0.1);
+  background-color: rgba(var(--favorite-color-rgb), 0.1);
 }
 
 .toolbar-btn.favorites-active:hover {
-  background-color: rgba(234, 179, 8, 0.2);
+  background-color: rgba(var(--favorite-color-rgb), 0.2);
 }
 
 /* 搜索框样式 */
@@ -133,6 +133,22 @@
 }
 
 /* --- 主内容容器 --- */
+
+/* 收藏视图：主背景融入收藏主题色，与卡片左侧色条形成整体氛围 */
+body.favorites-view {
+  background-color: color-mix(in srgb, var(--favorite-color) 10%, var(--bg-body));
+}
+
+@media (prefers-color-scheme: dark) {
+  body.favorites-view:not([data-theme="light"]) {
+    background-color: color-mix(in srgb, var(--favorite-color) 14%, var(--bg-body));
+  }
+}
+
+[data-theme="dark"] body.favorites-view {
+  background-color: color-mix(in srgb, var(--favorite-color) 14%, var(--bg-body));
+}
+
 .container {
   max-width: 800px;
   margin: 0 auto;

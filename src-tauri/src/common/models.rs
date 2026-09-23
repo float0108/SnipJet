@@ -109,6 +109,22 @@ impl ClipboardItem {
         format!("{}</html>", content)
     }
 
+    /// 生成用于列表展示的轻量副本：剔除可能很大的 content，
+    /// 只保留列表渲染所需的预览与元数据。
+    ///
+    /// - 文本类格式（text/html/markdown/rtf/custom）：content 置空，
+    ///   前端需要完整内容时通过 `get_clipboard_content(id)` 按需获取。
+    /// - 图片 / 文件格式：content 仅是一个相对路径或文件路径 JSON，体积很小，
+    ///   且列表图片预览本身就要用到，予以保留。
+    pub fn to_list_item(&self) -> Self {
+        let mut item = self.clone();
+        match self.format {
+            ClipboardFormat::Image | ClipboardFormat::Files => {}
+            _ => item.content = String::new(),
+        }
+        item
+    }
+
     /// 通用基础构造器
     /// 修改：word_count 现在作为参数传入，避免在 base 内部重复计算或解析
     fn base(
