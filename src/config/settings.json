@@ -21,6 +21,12 @@
     "startup_launch": true,
     "check_updates": true
   },
+  "history_cleanup": {
+    "count_enabled": false,
+    "count_threshold": 500,
+    "age_enabled": false,
+    "age_days": 30
+  },
   "mcp": {
     "enabled": false,
     "port": 3000

@@ -47,6 +47,12 @@ function getDefaultSettings() {
       startup_launch: true,
       check_updates: true,
     },
+    history_cleanup: {
+      count_enabled: false,
+      count_threshold: 500,
+      age_enabled: false,
+      age_days: 30,
+    },
     mcp: {
       enabled: false,
       port: 3000,
@@ -311,8 +317,52 @@ export function updateSoftwareSettings() {
     checkUpdates.checked = settings.software?.check_updates ?? true;
   }
 
+  // 更新历史清理设置
+  updateHistoryCleanupSettings();
+
   // 更新 MCP 设置
   updateMcpSettings();
+}
+
+// 更新历史清理设置
+function updateHistoryCleanupSettings() {
+  const cleanup = settings.history_cleanup || {};
+
+  const countEnabled = document.getElementById("cleanup-count-enabled");
+  const countThreshold = document.getElementById("cleanup-count-threshold");
+  const ageEnabled = document.getElementById("cleanup-age-enabled");
+  const ageDays = document.getElementById("cleanup-age-days");
+
+  if (countEnabled) {
+    countEnabled.checked = !!cleanup.count_enabled;
+  }
+  if (countThreshold) {
+    countThreshold.value = cleanup.count_threshold ?? 500;
+  }
+  if (ageEnabled) {
+    ageEnabled.checked = !!cleanup.age_enabled;
+  }
+  if (ageDays) {
+    ageDays.value = cleanup.age_days ?? 30;
+  }
+
+  // 联动显示：根据开关状态显示/隐藏对应输入项
+  updateCleanupVisibility();
+}
+
+// 根据开关状态显示/隐藏清理阈值输入框
+function updateCleanupVisibility() {
+  const countEnabled = document.getElementById("cleanup-count-enabled");
+  const countItem = document.getElementById("cleanup-count-item");
+  const ageEnabled = document.getElementById("cleanup-age-enabled");
+  const ageItem = document.getElementById("cleanup-age-item");
+
+  if (countItem && countEnabled) {
+    countItem.style.display = countEnabled.checked ? "flex" : "none";
+  }
+  if (ageItem && ageEnabled) {
+    ageItem.style.display = ageEnabled.checked ? "flex" : "none";
+  }
 }
 
 // 更新 MCP 设置
@@ -456,6 +506,43 @@ export function bindSettingsListeners() {
     checkUpdates.addEventListener("change", function () {
       if (!settings.software) settings.software = {};
       settings.software.check_updates = this.checked;
+    });
+  }
+
+  // 监听历史清理设置变化
+  const cleanupCountEnabled = document.getElementById("cleanup-count-enabled");
+  if (cleanupCountEnabled) {
+    cleanupCountEnabled.addEventListener("change", function () {
+      if (!settings.history_cleanup) settings.history_cleanup = {};
+      settings.history_cleanup.count_enabled = this.checked;
+      updateCleanupVisibility();
+    });
+  }
+
+  const cleanupCountThreshold = document.getElementById("cleanup-count-threshold");
+  if (cleanupCountThreshold) {
+    cleanupCountThreshold.addEventListener("change", function () {
+      if (!settings.history_cleanup) settings.history_cleanup = {};
+      const value = this.value.trim();
+      settings.history_cleanup.count_threshold = value ? parseInt(value) : null;
+    });
+  }
+
+  const cleanupAgeEnabled = document.getElementById("cleanup-age-enabled");
+  if (cleanupAgeEnabled) {
+    cleanupAgeEnabled.addEventListener("change", function () {
+      if (!settings.history_cleanup) settings.history_cleanup = {};
+      settings.history_cleanup.age_enabled = this.checked;
+      updateCleanupVisibility();
+    });
+  }
+
+  const cleanupAgeDays = document.getElementById("cleanup-age-days");
+  if (cleanupAgeDays) {
+    cleanupAgeDays.addEventListener("change", function () {
+      if (!settings.history_cleanup) settings.history_cleanup = {};
+      const value = this.value.trim();
+      settings.history_cleanup.age_days = value ? parseInt(value) : null;
     });
   }
 

@@ -252,6 +252,140 @@ impl Database {
         Ok(())
     }
 
+    /// 按条数清理：仅保留最新的 `keep_count` 条记录。
+    /// 收藏表中的项目不会被删除（即使它们对应的历史项要被清理）。
+    /// 返回被删除记录的 id 列表（用于上层清理对应的图片文件）。
+    pub fn delete_history_excess_by_count(
+        &self,
+        keep_count: usize,
+    ) -> Result<Vec<String>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Failed to lock connection: {}", e))?;
+
+        // 收藏 id 集合（需要排除的历史 id）
+        let favorite_ids: std::collections::HashSet<String> = {
+            let mut stmt = conn
+                .prepare("SELECT id FROM favorites")
+                .map_err(|e| format!("Failed to prepare favorites query: {}", e))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| format!("Failed to query favorites: {}", e))?;
+            let mut set = std::collections::HashSet::new();
+            for id in rows {
+                if let Ok(id) = id {
+                    set.insert(id);
+                }
+            }
+            set
+        };
+
+        // 取出全部历史 id，按 timestamp DESC 排序
+        let mut stmt = conn
+            .prepare("SELECT id, timestamp FROM clipboard_items ORDER BY timestamp DESC")
+            .map_err(|e| format!("Failed to prepare history query: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| format!("Failed to query history: {}", e))?;
+
+        let mut all: Vec<(String, i64)> = Vec::new();
+        for r in rows {
+            all.push(r.map_err(|e| format!("Failed to read history row: {}", e))?);
+        }
+
+        // 计算需要保留的非收藏条目数
+        // 收藏项永远保留，其余按时间倒序保留最新 keep_count 条
+        let non_favorite_count = all.iter().filter(|(id, _)| !favorite_ids.contains(id)).count();
+        let to_delete_from_non_fav = non_favorite_count.saturating_sub(keep_count);
+
+        if to_delete_from_non_fav == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut deleted_ids: Vec<String> = Vec::with_capacity(to_delete_from_non_fav);
+        let mut skipped = 0usize;
+        for (id, _ts) in all.iter() {
+            if favorite_ids.contains(id) {
+                continue;
+            }
+            if skipped < to_delete_from_non_fav {
+                deleted_ids.push(id.clone());
+                skipped += 1;
+            } else {
+                break;
+            }
+        }
+
+        // 批量执行删除
+        if !deleted_ids.is_empty() {
+            let placeholders = std::iter::repeat("?")
+                .take(deleted_ids.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "DELETE FROM clipboard_items WHERE id IN ({})",
+                placeholders
+            );
+            let params: Vec<&dyn rusqlite::ToSql> =
+                deleted_ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+            conn.execute(&sql, params.as_slice())
+                .map_err(|e| format!("Failed to delete excess history: {}", e))?;
+            info!(
+                "Deleted {} history items by count (keep={})",
+                deleted_ids.len(),
+                keep_count
+            );
+        }
+
+        Ok(deleted_ids)
+    }
+
+    /// 按时间清理：删除 timestamp 早于 cutoff_ts 的历史记录。
+    /// 收藏的项目不会被删除。
+    /// 返回被删除的 id 列表。
+    pub fn delete_history_older_than(
+        &self,
+        cutoff_ts: i64,
+    ) -> Result<Vec<String>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Failed to lock connection: {}", e))?;
+
+        // 先查询出将被删除的 id 列表（用于上层清理图片文件）
+        let mut stmt = conn
+            .prepare("SELECT id FROM clipboard_items WHERE timestamp < ?1")
+            .map_err(|e| format!("Failed to prepare old history query: {}", e))?;
+        let rows = stmt
+            .query_map([cutoff_ts], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to query old history: {}", e))?;
+        let mut ids: Vec<String> = Vec::new();
+        for r in rows {
+            ids.push(r.map_err(|e| format!("Failed to read old history row: {}", e))?);
+        }
+
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "DELETE FROM clipboard_items WHERE id IN ({})",
+            placeholders
+        );
+        let params: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        conn.execute(&sql, params.as_slice())
+            .map_err(|e| format!("Failed to delete old history: {}", e))?;
+        info!(
+            "Deleted {} history items older than timestamp {}",
+            ids.len(),
+            cutoff_ts
+        );
+
+        Ok(ids)
+    }
+
     // ==================== 收藏表独立操作 ====================
 
     /// 检查项目是否已收藏
