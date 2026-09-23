@@ -22,7 +22,7 @@
     background: var(--bg-surface);
     /* 保持背景，或者非常淡的 hover */
     border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-md);
     /* 更柔和的投影 */
     transform: translateY(-2px);
     z-index: 10;
@@ -172,18 +172,18 @@
 
 /* 特定类型的颜色微调，但不要太刺眼 */
 .type-html {
-    color: #0284c7;
-    background: rgba(2, 132, 199, 0.08);
+    color: var(--type-html-color);
+    background: color-mix(in srgb, var(--type-html-color) 12%, transparent);
 }
 
 .type-markdown {
-    color: #059669;
-    background: rgba(5, 150, 105, 0.08);
+    color: var(--type-markdown-color);
+    background: color-mix(in srgb, var(--type-markdown-color) 12%, transparent);
 }
 
 .type-image {
-    color: #9333ea;
-    background: rgba(147, 51, 234, 0.08);
+    color: var(--type-image-color);
+    background: color-mix(in srgb, var(--type-image-color) 12%, transparent);
 }
 
 .type-text {
@@ -231,7 +231,7 @@
     padding: 2px;
     border-radius: 6px;
     border: 1px solid var(--border-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
 }
 
 .clipboard-item:hover .item-actions-overlay {
@@ -258,7 +258,7 @@
 }
 
 .card-btn.btn-delete:hover {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(var(--danger-color-rgb), 0.1);
     color: var(--danger-color);
 }
 

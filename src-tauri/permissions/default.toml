@@ -23,8 +23,11 @@ description = "允许前端执行剪贴板操作"
 # 关键改动：commands 后面要接 .allow
 commands.allow = [
     "get_clipboard_history",
+    "get_clipboard_content",
+    "search_clipboard_history",
     "clear_history",
     "delete_clipboard_item",
+    "delete_favorite_item",
     "toggle_favorite",
     "get_favorite_items",
     "load_favorites_from_db",
@@ -43,6 +46,8 @@ commands.allow = [
     "get_mouse_position",
     "save_clipboard_history",
     "load_clipboard_history_command",
+    "update_max_history_items",
+    "update_search_scan_limit_kb",
     "save_settings",
     "load_settings_command"
 ]

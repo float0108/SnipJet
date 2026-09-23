@@ -141,7 +141,7 @@
 
 .filter-select:focus {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
 }
 
 /* 搜索框样式 */
@@ -237,7 +237,7 @@
 
 .rule-item:hover {
   border-color: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
   z-index: 10;
 }
@@ -264,7 +264,7 @@
 }
 
 .delete-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(var(--danger-color-rgb), 0.1);
   color: var(--danger-color);
   opacity: 1;
 }
@@ -290,21 +290,21 @@
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-weight: 600;
   color: var(--primary-color);
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(var(--primary-color-rgb), 0.08);
   width: 90px;
   transition: all 0.2s;
 }
 
 .rule-trigger-input:hover {
   border-color: var(--border-color);
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(var(--primary-color-rgb), 0.12);
 }
 
 .rule-trigger-input:focus {
   outline: none;
   border-color: var(--primary-color);
   background: var(--bg-body);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.1);
 }
 
 /* 箭头分隔符 */
@@ -341,7 +341,7 @@
   outline: none;
   border-color: var(--primary-color);
   background: var(--bg-body);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.1);
 }
 
 .rule-content-input::placeholder {
@@ -409,7 +409,7 @@
 }
 
 .group-tag-input:focus {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
 }
 
 /* 下拉建议列表 */
@@ -448,7 +448,7 @@
 }
 
 .group-suggestion-item.selected {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(var(--primary-color-rgb), 0.1);
   color: var(--primary-color);
 }
 
@@ -532,7 +532,7 @@
 
 .btn-confirm:hover {
   opacity: 0.9;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.3);
 }
 
 /* --- 提示气泡 --- */
@@ -590,7 +590,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--overlay-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -668,34 +668,4 @@
 
 .dialog-btn-confirm:hover {
   opacity: 0.9;
-}
-
-/* --- 深色主题适配 --- */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    .rule-item:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
-
-    .btn-confirm:hover {
-      box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
-    }
-
-    .dialog-overlay {
-      background: rgba(0, 0, 0, 0.6);
-    }
-  }
-}
-
-/* 手动深色主题 */
-[data-theme="dark"] .rule-item:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .btn-confirm:hover {
-  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.3);
-}
-
-[data-theme="dark"] .dialog-overlay {
-  background: rgba(0, 0, 0, 0.6);
 }

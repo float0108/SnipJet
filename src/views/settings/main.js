@@ -21,18 +21,20 @@ async function init() {
     updateShortcutInputs();
     initShortcuts();
 
-    // 更新软件设置
+    // 更新各分区设置
     const {
-      updateSoftwareSettings,
-      updatePasteSettings,
-      updateCopySettings,
-      updateInterfaceSettings,
+      updateGeneralSettings,
+      updateAppearanceSettings,
+      updateClipboardSettings,
+      updateHistorySettings,
+      updateAdvancedSettings,
       bindSettingsListeners,
     } = await import("./handlers.js");
-    updateSoftwareSettings();
-    updatePasteSettings();
-    updateCopySettings();
-    updateInterfaceSettings();
+    updateGeneralSettings();
+    updateAppearanceSettings();
+    updateClipboardSettings();
+    updateHistorySettings();
+    updateAdvancedSettings();
 
     // 绑定设置变化监听器
     bindSettingsListeners();
