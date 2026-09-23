@@ -114,6 +114,14 @@
 }
 
 body {
+  user-select: none;
+  /* 整个主页面禁用选中复制 */
+  -webkit-user-select: none;
+  /* Safari */
+  -moz-user-select: none;
+  /* Firefox */
+  -ms-user-select: none;
+  /* IE/Edge */
   font-family: var(--font-family);
   font-size: var(--font-size-base);
   margin: 0;
@@ -181,22 +189,18 @@ body {
 /* --- 幽灵滚动条样式 --- */
 /* 适用于主页面的滚动区域 */
 .ghost-scrollbar {
-  scrollbar-width: thin;
-  /* Firefox */
-  scrollbar-color: transparent transparent;
-  /* Firefox */
-  -ms-overflow-style: auto;
-  /* IE/Edge */
+  scrollbar-width: none;
+  /* Firefox：禁用原生滚动条占位 */
+  -ms-overflow-style: none;
+  /* IE/Edge：禁用原生滚动条 */
   overflow-y: auto;
   /* 允许垂直滚动 */
-  overflow-y: overlay;
-  /* 允许垂直滚动，滚动条覆盖在内容上 */
 }
 
+/* Chrome/Safari：禁用原生滚动条，不占任何空间 */
 .ghost-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-  /* 始终为滚动条预留宽度 */
+  width: 0px;
+  height: 0px;
 }
 
 .ghost-scrollbar::-webkit-scrollbar-track {
@@ -206,19 +210,4 @@ body {
 .ghost-scrollbar::-webkit-scrollbar-thumb {
   background-color: transparent;
   border-radius: 3px;
-}
-
-/* 当鼠标悬停时显示滚动条 */
-.ghost-scrollbar:hover {
-  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
-  /* Firefox */
-}
-
-.ghost-scrollbar:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.5);
-  border-radius: 3px;
-}
-
-.ghost-scrollbar:hover::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(148, 163, 184, 0.8);
 }
