@@ -27,7 +27,15 @@ export function updateShortcutInputs() {
     // 更新快捷粘贴快捷键模式
     const quickModeSelect = document.getElementById("quick-paste-mode");
     if (quickModeSelect) {
-      quickModeSelect.value = settings.shortcuts?.quick_paste_mode || "ctrl";
+      const mode = settings.shortcuts?.quick_paste_mode || "ctrl";
+      // 兼容旧值：如果不是已知模式，默认为 ctrl
+      quickModeSelect.value = ["ctrl", "num", "none"].includes(mode) ? mode : "ctrl";
+    }
+
+    // 更新候选粘贴快捷键
+    const rotatingInput = document.getElementById("rotating-paste");
+    if (rotatingInput) {
+      rotatingInput.value = settings.shortcuts?.rotating_paste || "";
     }
   });
 }

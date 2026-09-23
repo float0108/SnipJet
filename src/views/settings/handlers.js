@@ -22,6 +22,7 @@ function getDefaultSettings() {
       toggle_interface: "",
       function_paste: "",
       quick_paste_mode: "ctrl",
+      rotating_paste: "",
     },
     interface: {
       theme: "light",
@@ -80,6 +81,14 @@ export async function loadSettings() {
           settings.shortcuts.quick_paste_mode = settings.shortcuts.quick_paste_shortcut;
           delete settings.shortcuts.quick_paste_shortcut;
         }
+        // 兼容旧版 rotating_paste_shortcut
+        if (
+          settings.shortcuts.rotating_paste_shortcut &&
+          !settings.shortcuts.rotating_paste
+        ) {
+          settings.shortcuts.rotating_paste = settings.shortcuts.rotating_paste_shortcut;
+        }
+        delete settings.shortcuts.rotating_paste_shortcut;
       }
 
       console.log("设置加载成功:", settings);
@@ -224,6 +233,21 @@ async function updateShortcutRegistrations() {
           console.error("注册快捷键失败:", e);
         }
       }
+    }
+  }
+
+  // 快捷粘贴修饰键模式变化 或 轮转粘贴快捷键变化：触发后端统一重新注册
+  const oldMode = originalSettings.shortcuts?.quick_paste_mode || "ctrl";
+  const newMode = settings.shortcuts?.quick_paste_mode || "ctrl";
+  const oldRotating = originalSettings.shortcuts?.rotating_paste || "";
+  const newRotating = settings.shortcuts?.rotating_paste || "";
+  if (oldMode !== newMode || oldRotating !== newRotating) {
+    try {
+      const { setupQuickPasteShortcuts } = await import("../../services/shortcut-service.js");
+      await setupQuickPasteShortcuts(newMode, newRotating);
+      console.log(`快捷粘贴已更新: mode ${oldMode}->${newMode}, rotating '${oldRotating}'->'${newRotating}'`);
+    } catch (e) {
+      console.error("更新快捷粘贴失败:", e);
     }
   }
 }
