@@ -17,6 +17,16 @@
         if (s) document.documentElement.style.setProperty('--font-size-base', s + 'px');
       } catch (e) {}
     </script>
+    <script>
+      // 首帧渲染前同步应用界面缩放：读取 localStorage 中的缩放系数，
+      // 避免设置异步加载完成后整页缩放跳变
+      try {
+        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
+        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
+          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
+        }
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="./common/style.css" />
     <link rel="stylesheet" href="./views/settings/settings.css" />
     <link rel="stylesheet" href="./common/icon.css" />
@@ -110,6 +120,16 @@
 
           <div class="setting-item">
             <div class="setting-info">
+              <div class="setting-label">界面主题色</div>
+              <div class="setting-description">按钮、选中项等界面强调色</div>
+            </div>
+            <div class="setting-control">
+              <input type="color" class="color-input" id="primary-color" value="#3b82f6" />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
               <div class="setting-label">收藏主题色</div>
               <div class="setting-description">收藏视图背景与收藏卡片的强调色</div>
             </div>
@@ -151,6 +171,25 @@
           <div class="setting-divider"></div>
 
           <div class="setting-section-title">列表与窗口</div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">界面缩放</div>
+              <div class="setting-description">对所有窗口界面等比缩放，1 表示原始大小（可精确到小数点后两位）</div>
+            </div>
+            <div class="setting-control">
+              <input
+                type="number"
+                class="number-input"
+                id="zoom-level"
+                min="0.5"
+                max="2"
+                step="0.01"
+                value="1"
+                style="width: 80px;"
+              />
+            </div>
+          </div>
+
           <div class="setting-item">
             <div class="setting-info">
               <div class="setting-label">最新条目预览行数</div>

@@ -74,7 +74,10 @@
   --radius-lg: 12px;
   --radius-pill: 9999px;
 
-  --toolbar-height: 36px;
+  /* 主界面工具栏高度 */
+  --toolbar-height: 40px;
+  /* 设置/编辑/扩展三个窗口的顶部栏高度（以设置界面标题栏为准） */
+  --header-height: 51px;
   /* 缩小到原来一半的高度 */
   --titlebar-height: 36px;
   /* 自定义标题栏高度 */

@@ -1,6 +1,7 @@
 // 主题服务 - 管理应用主题设置
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 // 主题模式: light, dark, system
 let currentThemeMode = 'light';
@@ -114,12 +115,68 @@ export function applyFavoriteColor(color) {
   console.log('收藏主题色已应用:', hex);
 }
 
+// 应用界面主题色（主色）
+// 有效 hex 时覆盖 --primary-color 与 rgb 分量；
+// 空值/非法值时移除覆盖，回落到各主题在 CSS 中定义的默认主色
+export function applyPrimaryColor(color) {
+  const root = document.documentElement;
+  const hex = /^#[0-9a-fA-F]{6}$/.test(color || "") ? color.toLowerCase() : "";
+  if (hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    root.style.setProperty('--primary-color', hex);
+    root.style.setProperty('--primary-color-rgb', `${r}, ${g}, ${b}`);
+  } else {
+    root.style.removeProperty('--primary-color');
+    root.style.removeProperty('--primary-color-rgb');
+  }
+  console.log('界面主题色已应用:', hex || '跟随主题默认');
+}
+
+// 获取当前生效的界面主题色（设置页颜色控件回显用）：
+// 未自定义时返回当前主题的默认主色
+export function getEffectivePrimaryColor() {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue('--primary-color')
+    .trim();
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#3b82f6';
+}
+
 // 应用预览行数设置：最新条目与历史条目分开控制
 export function applyPreviewLines({ latest, history } = {}) {
   const root = document.documentElement;
   root.style.setProperty('--latest-preview-lines', latest || 5);
   root.style.setProperty('--history-preview-lines', history || 1);
   console.log('预览行数已应用:', { latest, history });
+}
+
+// 界面缩放范围（Windows WebView2 的 ZoomFactor 支持 0.25 ~ 5）
+const MIN_ZOOM_LEVEL = 0.5;
+const MAX_ZOOM_LEVEL = 2;
+
+// 归一化缩放系数：非法值回落到 1，限制在合理区间并保留两位小数
+export function normalizeZoomLevel(zoomLevel) {
+  const value = Number(zoomLevel);
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const clamped = Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, value));
+  return Math.round(clamped * 100) / 100;
+}
+
+// 应用界面缩放：对当前窗口整体 UI 等比缩放（窗口物理尺寸不变）
+// 使用 WebView 原生缩放，等价于浏览器 Ctrl+滚轮；系数写入 localStorage，
+// 供各窗口首帧渲染前同步应用，避免加载后跳变
+export function applyZoomLevel(zoomLevel) {
+  const zoom = normalizeZoomLevel(zoomLevel);
+  try {
+    localStorage.setItem('snipjet.zoom_level', String(zoom));
+  } catch (e) {}
+  try {
+    getCurrentWebview().setZoom(zoom).catch(() => {});
+  } catch (e) {
+    // 非 Tauri 环境（如浏览器预览）下忽略
+  }
+  console.log('界面缩放已应用:', zoom);
 }
 
 // 应用所有界面设置
@@ -129,6 +186,8 @@ export function applyInterfaceSettings(interfaceSettings) {
   if (interfaceSettings.theme) {
     applyTheme(interfaceSettings.theme);
   }
+  // 缩放字段始终应用，确保字段缺失/清空时能回落到 1（不缩放）
+  applyZoomLevel(interfaceSettings.zoom_level);
   // 字体字段始终应用，确保切回默认（空串）时能正确还原
   applyFontFamily(interfaceSettings.font_family);
   if (interfaceSettings.font_size) {
@@ -142,6 +201,8 @@ export function applyInterfaceSettings(interfaceSettings) {
   });
   // 收藏主题色始终应用，确保字段缺失/清空时能回落到默认色
   applyFavoriteColor(interfaceSettings.favorite_color);
+  // 界面主题色始终应用，确保字段缺失/清空时能回落到主题默认色
+  applyPrimaryColor(interfaceSettings.primary_color);
 }
 
 // 从设置文件加载完整设置

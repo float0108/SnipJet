@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SnipJet - 内容查看器</title>
+    <script>
+      // 首帧渲染前同步应用界面缩放（系数由设置窗口写入 localStorage），避免加载后跳变
+      try {
+        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
+        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
+          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
+        }
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="./common/style.css" />
     <link rel="stylesheet" href="./views/reader/reader.css" />
     <link rel="stylesheet" href="./components/frames/text-frame.css" />
@@ -15,9 +24,15 @@
     <div class="reader-container">
       <div class="header">
         <div class="header-top">
-          <h1>剪贴板内容</h1>
+          <div class="meta">
+            <span class="type" id="meta-type"></span>
+            <span class="time" id="meta-time"></span>
+            <span class="divider" id="meta-divider">|</span>
+            <span class="char-count" id="meta-count"></span>
+          </div>
           <div class="header-actions">
-            <div id="view-toggle" class="view-toggle" style="display: none">
+            <!-- 纯文本/图片格式下隐藏但保留占位（visibility），避免切换时 header 高度变化导致内容抖动 -->
+            <div id="view-toggle" class="view-toggle" style="visibility: hidden">
               <button
                 class="toggle-btn active"
                 data-mode="render"
@@ -54,14 +69,6 @@
               </svg>
             </button>
           </div>
-        </div>
-
-        <div class="meta">
-          <span class="type" id="meta-type"></span>
-          <span class="divider">|</span>
-          <span class="size" id="meta-size"></span>
-          <span class="divider">|</span>
-          <span class="time" id="meta-time"></span>
         </div>
       </div>
 
@@ -111,7 +118,7 @@
         <div class="button-group">
           <button class="action-btn favorite-btn" onclick="addToFavorites()">
             <span class="icon icon-favorite-solid"></span>
-            添加到收藏
+            <span class="btn-text">添加到收藏</span>
           </button>
         </div>
       </div>

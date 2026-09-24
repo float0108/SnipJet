@@ -7,8 +7,10 @@
   "interface": {
     "theme": "light",
     "language": "cn",
+    "zoom_level": 1,
     "font_family": "",
     "favorite_color": "#eab308",
+    "primary_color": "",
     "auto_hide": true,
     "preview_size": "small",
     "max_history_items": 100,

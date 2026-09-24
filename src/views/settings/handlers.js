@@ -2,7 +2,7 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
+import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
 import { setLocale } from '../../utils/i18n.js';
 
 export let settings = {};
@@ -27,6 +27,7 @@ function getDefaultSettings() {
     interface: {
       theme: "light",
       language: "cn",
+      zoom_level: 1,
       font_family: "",
       font_size: 14,
       auto_hide: true,
@@ -35,6 +36,7 @@ function getDefaultSettings() {
       preview_max_chars: 600,
       image_preview_size: "medium",
       favorite_color: "#eab308",
+      primary_color: "",
       max_history_items: 100,
       search_scan_limit_kb: 1024,
     },
@@ -187,6 +189,8 @@ export async function saveSettings() {
     if (settings.interface?.font_size) {
       applyFontSize(settings.interface.font_size);
     }
+    // 界面缩放始终应用，确保字段缺失时回落到 1（不缩放）
+    applyZoomLevel(settings.interface?.zoom_level);
     // 预览行数：最新条目与历史条目分开应用
     applyPreviewLines({
       latest:
@@ -195,6 +199,7 @@ export async function saveSettings() {
       history: settings.interface?.history_preview_lines,
     });
     applyFavoriteColor(settings.interface?.favorite_color);
+    applyPrimaryColor(settings.interface?.primary_color);
 
     // 更新原始设置备份（保存成功后）
     originalSettings = JSON.parse(JSON.stringify(settings));
@@ -481,6 +486,13 @@ export function updateAppearanceSettings() {
     favoriteColor.value = settings.interface?.favorite_color ?? "#eab308";
   }
 
+  // 更新界面主题色（未自定义时回显当前主题的默认主色）
+  const primaryColor = document.getElementById("primary-color");
+  if (primaryColor) {
+    primaryColor.value =
+      settings.interface?.primary_color || getEffectivePrimaryColor();
+  }
+
   // 更新界面字体（先确保下拉框已加载系统字体）
   populateFontFamilyOptions();
 
@@ -488,6 +500,12 @@ export function updateAppearanceSettings() {
   const fontSize = document.getElementById("font-size");
   if (fontSize) {
     fontSize.value = settings.interface?.font_size ?? 14;
+  }
+
+  // 更新界面缩放
+  const zoomLevel = document.getElementById("zoom-level");
+  if (zoomLevel) {
+    zoomLevel.value = normalizeZoomLevel(settings.interface?.zoom_level);
   }
 
   // 更新预览行数（最新条目 / 历史条目）
@@ -691,6 +709,19 @@ export function bindSettingsListeners() {
     });
   }
 
+  const zoomLevel = document.getElementById("zoom-level");
+  if (zoomLevel) {
+    // 实时预览：修改后立即对当前窗口应用缩放，保存时再由事件广播到其它窗口
+    zoomLevel.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      const zoom = normalizeZoomLevel(this.value);
+      settings.interface.zoom_level = zoom;
+      // 回填归一化后的值（非法值回落 1、限制区间、保留两位小数）
+      this.value = zoom;
+      applyZoomLevel(zoom);
+    });
+  }
+
   const latestPreviewLines = document.getElementById("latest-preview-lines");
   if (latestPreviewLines) {
     latestPreviewLines.addEventListener("change", function () {
@@ -733,6 +764,16 @@ export function bindSettingsListeners() {
     });
   }
 
+  const primaryColor = document.getElementById("primary-color");
+  if (primaryColor) {
+    // 实时预览，无需等待保存
+    primaryColor.addEventListener("input", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.primary_color = this.value;
+      applyPrimaryColor(this.value);
+    });
+  }
+
   // 监听 MCP 设置变化
   const mcpEnabled = document.getElementById("mcp-enabled");
   if (mcpEnabled) {
@@ -757,6 +798,8 @@ export async function restoreOriginalSettings() {
   // 更新UI
   updateGeneralSettings();
   updateAppearanceSettings();
+  // 恢复界面缩放（可能在实时预览时已被改动）
+  applyZoomLevel(settings.interface?.zoom_level);
   updateClipboardSettings();
   updateHistorySettings();
   await updateAdvancedSettings();

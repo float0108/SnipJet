@@ -7,18 +7,23 @@
   background-color: var(--bg-body);
   overflow: hidden;
   /* 防止最外层出现滚动条 */
+  /* 内容卡片（.content-container）的外边距：
+     header 与底部按钮条的水平内边距与之对齐，保证二者左右边界与卡片边界一致 */
+  --content-margin: 12px;
 }
 
-/* --- 顶部 Header --- */
+/* --- 顶部 Header（单行，与设置/扩展界面顶栏等高） --- */
 .header {
   flex-shrink: 0;
   /* 防止被压缩 */
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border-color);
-  padding: 12px 16px;
+  /* 左侧缩进 16px（与卡片内边距等宽），右侧与卡片外边界对齐（关闭按钮） */
+  padding: 0 var(--content-margin) 0 16px;
+  height: var(--header-height);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  justify-content: center;
   box-shadow: var(--shadow-sm);
   z-index: 10;
 }
@@ -33,6 +38,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .window-close-btn {
@@ -40,7 +46,9 @@
   border: none;
   cursor: pointer;
   color: var(--text-secondary);
-  padding: 4px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -53,31 +61,25 @@
   color: var(--text-primary);
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 /* --- 视图切换开关 (Toggle) --- */
 .view-toggle {
   display: flex;
-  background-color: var(--bg-body);
-  /* 使用背景色作为轨道颜色 */
+  gap: 2px;
   padding: 2px;
-  border-radius: var(--radius-sm);
-  /* 小一点的圆角 */
+  /* 整体高度 30px，与左侧类型胶囊、底栏按钮分量对等 */
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-body);
   border: 1px solid var(--border-color);
 }
 
 .toggle-btn {
+  height: 24px;
+  padding: 0 14px;
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  font-size: 12px;
-  padding: 4px 12px;
-  border-radius: var(--radius-xs);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   transition: all 0.2s;
   font-weight: 500;
@@ -87,31 +89,68 @@
   color: var(--text-primary);
 }
 
-/* 激活状态 */
+/* 激活状态：用主题色浅底，与左侧类型胶囊呼应 */
 .toggle-btn.active {
-  background-color: var(--bg-surface);
+  background-color: rgba(var(--primary-color-rgb), 0.12);
   color: var(--primary-color);
-  box-shadow: var(--shadow-sm);
   font-weight: 600;
 }
 
-/* --- 元数据行 --- */
+/* --- 元数据行（顶部栏左侧：类型胶囊 + 时间） --- */
 .meta {
   display: flex;
   align-items: center;
-  font-size: 12px;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--font-size-sm);
   color: var(--text-tertiary);
-  gap: 8px;
 }
 
+/* 类型胶囊：用主题色标识内容格式，为左侧提供视觉锚点 */
 .meta .type {
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  background: rgba(var(--primary-color-rgb), 0.1);
   color: var(--primary-color);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
+/* 格式尚未写入时（初始为空）不占位，避免出现空胶囊 */
+.meta .type:empty {
+  display: none;
+}
+
+.meta .time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 日期与字数之间的分隔符 */
 .meta .divider {
-  color: var(--border-color);
-  font-size: 10px;
+  flex-shrink: 0;
+  color: var(--border-strong);
+}
+
+/* 字数：未选中时显示总字数，选中内容时显示选中字数 */
+.meta .char-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 无字数可统计（如图片）时整体隐藏 */
+.meta .divider[hidden],
+.meta .char-count[hidden] {
+  display: none;
 }
 
 /* --- 内容区域 (核心) --- */
@@ -121,7 +160,7 @@
   position: relative;
   background-color: var(--bg-surface);
   /* 内容区白色背景 */
-  margin: 12px;
+  margin: var(--content-margin);
   /* 留出一点边距 */
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -139,10 +178,11 @@
 }
 
 
-/* --- 底部按钮组 --- */
+/* --- 底部按钮组（与设置/扩展界面底栏等高） --- */
 .bottom-buttons {
   flex-shrink: 0;
-  padding: 12px 16px;
+  /* 垂直 16px、左右与内容卡片的外边界对齐 */
+  padding: 16px var(--content-margin);
   background-color: var(--bg-surface);
   border-top: 1px solid var(--border-color);
   display: flex;
@@ -170,7 +210,7 @@
   gap: 6px;
   padding: 8px 16px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -206,7 +246,7 @@
   transform: translateY(1px);
 }
 
-/* 收藏按钮 */
+/* 收藏按钮（已收藏时仅图标变为实心，颜色始终保持主题色） */
 .favorite-btn {
   background-color: var(--primary-color);
   border: 1px solid var(--primary-color);
@@ -219,17 +259,6 @@
 
 .favorite-btn:active {
   transform: translateY(1px);
-}
-
-/* 收藏按钮激活状态 */
-.favorite-btn.active {
-  background-color: var(--favorite-color);
-  border-color: var(--favorite-color);
-  color: white;
-}
-
-.favorite-btn.active:hover {
-  opacity: 0.9;
 }
 
 /* 关闭按钮 (次要按钮) */
@@ -253,7 +282,7 @@
   gap: 6px;
   padding: 8px 16px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;

@@ -3,7 +3,10 @@
   margin: 0;
   padding: 0;
   overflow: hidden;
-  padding-top: var(--toolbar-height);
+  /* 顶部栏与设置/编辑界面等高 */
+  padding-top: var(--header-height);
+  /* 底部按钮区总高度（垂直内边距 16px*2 + 按钮高度 + 上边框），供内容区高度计算 */
+  --footer-height: 67px;
 }
 
 /* --- 固定工具栏 --- */
@@ -12,7 +15,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: var(--toolbar-height);
+  height: var(--header-height);
   background-color: var(--bg-surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -20,7 +23,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  /* 左右内边距与内容区一致（12px），使分组筛选框左边距与下方卡片对齐 */
+  padding: 4px 12px;
   z-index: 100;
   box-shadow: var(--shadow-sm);
 }
@@ -37,13 +41,6 @@
 
 .toolbar-right {
   gap: 6px;
-}
-
-.toolbar-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--border-color);
-  margin: 0 4px;
 }
 
 /* 帮助下拉框 */
@@ -117,11 +114,13 @@
 }
 
 .filter-select {
-  padding: 4px 8px;
-  padding-right: 20px;
+  /* 高度、上下内边距、字号对齐工具栏的搜索框 */
+  height: 28px;
+  padding: 2px 10px;
+  padding-right: 26px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: 13px;
   background: var(--bg-body);
   color: var(--text-primary);
   cursor: pointer;
@@ -129,7 +128,7 @@
   transition: all 0.2s;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 6px center;
+  background-position: right 8px center;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -209,7 +208,7 @@
 
 /* --- 主内容区域 --- */
 .expander-content {
-  height: calc(100vh - var(--toolbar-height) - 56px);
+  height: calc(100vh - var(--header-height) - var(--footer-height));
   overflow-y: auto;
   padding: 12px;
 }
@@ -218,37 +217,37 @@
 .rules-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* 规则卡片 */
+/* 规则卡片（参考编辑界面的内容卡片：radius-lg 圆角 + border-strong 描边 + shadow-sm） */
 .rule-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   position: relative;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: border-color 0.2s;
 }
 
 .rule-item:hover {
   border-color: var(--primary-color);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-  z-index: 10;
 }
 
-/* 删除按钮 - 左侧位置 */
+/* 删除按钮 - 最右侧（与主界面卡片的删除按钮风格一致） */
 .delete-btn {
-  padding: 2px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -256,7 +255,6 @@
   justify-content: center;
   flex-shrink: 0;
   opacity: 0.3;
-  margin-right: 2px;
 }
 
 .rule-item:hover .delete-btn {
@@ -274,6 +272,32 @@
   height: 16px;
 }
 
+/* 新卡片确认按钮 - 最右侧（点击后该卡片才算添加完成） */
+.confirm-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--primary-color);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.confirm-btn:hover {
+  background: rgba(var(--primary-color-rgb), 0.12);
+}
+
+.confirm-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* 触发词区域 */
 .rule-trigger {
   display: flex;
@@ -283,20 +307,23 @@
 }
 
 .rule-trigger-input {
-  padding: 6px 10px;
-  border: 1px solid transparent;
+  width: 90px;
+  height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
+  /* 触发词保留等宽字体，便于辨识按键 */
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-weight: 600;
+  /* 触发词用主题色强调，作为整行的视觉锚点 */
   color: var(--primary-color);
   background: rgba(var(--primary-color-rgb), 0.08);
-  width: 90px;
   transition: all 0.2s;
 }
 
 .rule-trigger-input:hover {
-  border-color: var(--border-color);
+  border-color: var(--primary-color);
   background: rgba(var(--primary-color-rgb), 0.12);
 }
 
@@ -305,6 +332,13 @@
   border-color: var(--primary-color);
   background: var(--bg-body);
   box-shadow: var(--focus-ring);
+}
+
+/* 提示文字更浅更细，避免和正文（加粗的主题色触发词）抢注意力 */
+.rule-trigger-input::placeholder,
+.rule-content-input::placeholder {
+  color: var(--text-tertiary);
+  font-weight: 400;
 }
 
 /* 箭头分隔符 */
@@ -323,29 +357,20 @@
 
 .rule-content-input {
   width: 100%;
-  padding: 6px 10px;
-  border: 1px solid transparent;
+  height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  background: transparent;
+  font-size: var(--font-size-sm);
+  background: var(--bg-body);
   color: var(--text-primary);
   transition: all 0.2s;
-}
-
-.rule-content-input:hover {
-  border-color: var(--border-color);
-  background: var(--bg-hover);
 }
 
 .rule-content-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  background: var(--bg-body);
   box-shadow: var(--focus-ring);
-}
-
-.rule-content-input::placeholder {
-  color: var(--text-tertiary);
 }
 
 /* 分组标签 - 可输入组件 */
@@ -371,14 +396,17 @@
   height: 14px;
 }
 
-/* 标签显示态 */
+/* 标签显示态 - 用主题色标识分组归属 */
 .group-tag-display {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
   padding: 4px 10px;
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
+  background: rgba(var(--primary-color-rgb), 0.1);
+  color: var(--primary-color);
   cursor: pointer;
   transition: all 0.2s;
   max-width: 100px;
@@ -389,19 +417,20 @@
 }
 
 .group-tag-display:hover {
-  background: var(--bg-body);
-  border-color: var(--border-color);
+  background: rgba(var(--primary-color-rgb), 0.18);
+  border-color: var(--primary-color);
 }
 
 /* 标签输入态 */
 .group-tag-input {
+  height: 28px;
   padding: 4px 10px;
   border-radius: var(--radius-pill);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   background: var(--bg-body);
   color: var(--text-primary);
-  border: 1px solid var(--primary-color);
+  border: 1px solid var(--border-strong);
   outline: none;
   width: 100px;
   min-width: 60px;
@@ -409,6 +438,7 @@
 }
 
 .group-tag-input:focus {
+  border-color: var(--primary-color);
   box-shadow: var(--focus-ring);
 }
 
@@ -497,7 +527,8 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 12px 16px;
+  /* 垂直 16px；水平与内容区的 12px 内边距对齐（参考设置界面底部按钮区） */
+  padding: 16px 12px;
   border-top: 1px solid var(--border-color);
   background: var(--bg-surface);
   z-index: 100;
@@ -506,7 +537,7 @@
 .btn {
   padding: 8px 24px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;

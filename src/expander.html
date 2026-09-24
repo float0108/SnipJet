@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SnipJet - 文本扩展</title>
+    <script>
+      // 首帧渲染前同步应用界面缩放（系数由设置窗口写入 localStorage），避免加载后跳变
+      try {
+        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
+        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
+          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
+        }
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="./common/style.css" />
     <link rel="stylesheet" href="./views/expander/expander.css" />
     <link rel="stylesheet" href="./common/icon.css" />
@@ -12,10 +21,6 @@
     <!-- 固定工具栏 -->
     <div class="toolbar" data-tauri-drag-region>
       <div class="toolbar-group toolbar-left">
-        <button id="add-rule-btn" class="toolbar-btn" title="添加规则">
-          <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        </button>
-        <div class="toolbar-divider"></div>
         <div class="filter-group">
           <select id="group-filter" class="filter-select" title="按分组筛选">
             <option value="">全部分组</option>
@@ -39,7 +44,7 @@
           <div class="help-dropdown" id="help-dropdown">
             <div class="help-item"><strong>触发词</strong> - 输入关键词自动触发扩展</div>
             <div class="help-item"><strong>分组</strong> - 点击标签编辑，用于归类管理</div>
-            <div class="help-item"><strong>保存</strong> - 点击底部保存按钮或 Ctrl+S</div>
+            <div class="help-item"><strong>确认</strong> - 点击底部确认按钮或 Ctrl+S</div>
             <div class="help-item"><strong>搜索</strong> - Ctrl+F 打开搜索框</div>
             <div class="help-item"><strong>Esc</strong> - 取消更改并关闭窗口</div>
           </div>
@@ -60,7 +65,7 @@
     <!-- 底部按钮区域 -->
     <div class="button-footer">
       <button class="btn btn-cancel" id="cancel-btn">取消</button>
-      <button class="btn btn-confirm" id="save-rules-btn">保存</button>
+      <button class="btn btn-confirm" id="save-rules-btn">确认</button>
     </div>
 
     <!-- 提示气泡容器 -->

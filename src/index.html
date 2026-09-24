@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SnipJet - 剪贴板监控</title>
+    <script>
+      // 首帧渲染前同步应用界面缩放（系数由设置窗口写入 localStorage），避免加载后跳变
+      try {
+        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
+        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
+          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
+        }
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="./common/style.css" />
     <link rel="stylesheet" href="./views/main/index.css" />
     <link rel="stylesheet" href="./common/icon.css" />

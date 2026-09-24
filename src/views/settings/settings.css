@@ -1,6 +1,14 @@
 /* 全局重置与基础字体 */
 * {
   box-sizing: border-box;
+  /* 隐藏设置页所有滚动条（保留滚动能力） */
+  scrollbar-width: none;
+}
+
+/* WebView2/Chromium：滚动条宽度设为 0 */
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 /* 首帧渲染阶段禁用所有过渡/动画，避免设置异步应用时 toggle 等控件播放状态切换动画 */
@@ -300,6 +308,10 @@ input:checked+.toggle-slider:before {
   background: var(--bg-surface);
   margin-top: auto;
   flex-shrink: 0;
+  /* 吸附在滚动容器底部：内容过高时按钮常驻可见，各分页通用 */
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 .btn {

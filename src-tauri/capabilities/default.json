@@ -17,6 +17,7 @@
     "core:menu:default",
     "core:tray:default",
     "core:webview:default",
+    "core:webview:allow-set-webview-zoom",
     "core:webview:allow-internal-toggle-devtools",
     "core:webview:allow-create-webview-window",
     "core:event:allow-listen",

@@ -10,6 +10,24 @@ let currentGroup = "";
 let searchQuery = "";
 let allGroups = [];
 
+// 顶部常驻的“新建规则”空卡片：不属于 rules，填写后点 ✔ 才加入列表
+let draftRule = null;
+
+function resetDraft() {
+  draftRule = {
+    key: "",
+    content: "",
+    group: currentGroup || "default",
+    description: "",
+    date: new Date().toISOString().split('T')[0],
+  };
+}
+
+// 卡片索引：-1 表示顶部草稿卡片，其余为 rules 下标
+function getRuleAt(index) {
+  return index < 0 ? draftRule : rules[index];
+}
+
 // 前缀冲突检查 - 返回有冲突的触发词集合
 function findPrefixConflicts(ruleList) {
   const conflicts = new Set();
@@ -151,8 +169,9 @@ function hideSuggestions() {
 function selectSuggestion(group) {
   if (activeGroupInput) {
     const index = parseInt(activeGroupInput.dataset.index);
-    if (rules[index]) {
-      rules[index].group = group;
+    const rule = getRuleAt(index);
+    if (rule) {
+      rule.group = group;
       // 如果是新分组，更新列表
       if (!allGroups.includes(group)) {
         allGroups.push(group);
@@ -201,13 +220,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  document.getElementById("add-rule-btn")?.addEventListener("click", () => addRule());
   document.getElementById("close-btn")?.addEventListener("click", closeWindow);
   document.getElementById("save-rules-btn")?.addEventListener("click", saveRules);
   document.getElementById("cancel-btn")?.addEventListener("click", cancelChanges);
 
   document.getElementById("group-filter")?.addEventListener("change", (e) => {
     currentGroup = e.target.value;
+    // 顶部新建卡片跟随当前分组筛选
+    draftRule.group = currentGroup || "default";
     renderRules();
   });
 
@@ -286,6 +306,7 @@ async function loadRules() {
     const loadedRules = await invoke('load_text_expand_rules');
     rules = loadedRules?.length > 0 ? loadedRules : getDefaultRules();
     originalRules = JSON.parse(JSON.stringify(rules));
+    resetDraft();
     updateAllGroups();
     updateGroupFilter();
     renderRules();
@@ -294,6 +315,7 @@ async function loadRules() {
     console.error("[expander] 加载规则失败:", err);
     rules = getDefaultRules();
     originalRules = JSON.parse(JSON.stringify(rules));
+    resetDraft();
     updateAllGroups();
     updateGroupFilter();
     renderRules();
@@ -330,6 +352,39 @@ function updateGroupFilter() {
   if (allGroups.includes(currentGroup)) filterSelect.value = currentGroup;
 }
 
+// 渲染单条规则卡片；index 为 -1 时表示顶部常驻的新建卡片
+function ruleItemHtml(rule, index, conflicts) {
+  const isDraft = index < 0;
+  const currentGroupValue = rule.group || "default";
+  const hasConflict = !isDraft && conflicts.has((rule.key || "").trim().toLowerCase());
+  const conflictIcon = hasConflict ? `
+      <span class="prefix-conflict-icon" title="前缀冲突：此触发词可能无法被触发">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+      </span>
+    ` : '';
+
+  return `
+    <div class="rule-item${isDraft ? ' draft' : ''}" data-index="${index}">
+      <div class="rule-trigger">
+        ${conflictIcon}
+        <input type="text" class="rule-trigger-input" placeholder="触发词" value="${escapeHtml(rule.key)}" data-field="key" data-index="${index}" />
+      </div>
+      <span class="rule-arrow">→</span>
+      <div class="rule-content-wrapper">
+        <input type="text" class="rule-content-input" placeholder="扩展后的内容" value="${escapeHtml(rule.content)}" data-field="content" data-index="${index}" />
+      </div>
+      <div class="rule-group-tag">
+        <span class="group-tag-display" data-index="${index}">${escapeHtml(currentGroupValue)}</span>
+      </div>
+      <button class="${isDraft ? 'confirm-btn' : 'delete-btn'}" data-index="${index}" title="${isDraft ? '确认添加' : '删除'}">
+        ${isDraft
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`}
+      </button>
+    </div>
+  `;
+}
+
 function renderRules() {
   const container = document.getElementById("rules-list");
   if (!container) return;
@@ -348,47 +403,21 @@ function renderRules() {
   // 检查前缀冲突
   const conflicts = findPrefixConflicts(rules);
 
+  // 顶部始终保留一张新建卡片，下面才是已有规则
+  let html = ruleItemHtml(draftRule, -1, conflicts);
+  html += filteredRules.map(rule => ruleItemHtml(rule, rules.indexOf(rule), conflicts)).join('');
+
   if (filteredRules.length === 0) {
-    container.innerHTML = `
+    html += `
       <div class="empty-state">
         <div class="empty-icon">📝</div>
         <div class="empty-text">${searchQuery ? "未找到匹配的规则" : (currentGroup ? "该分组暂无规则" : "暂无文本扩展规则")}</div>
-        <div class="empty-hint">${searchQuery ? "尝试其他搜索关键词" : "点击工具栏的 + 按钮创建新规则"}</div>
+        <div class="empty-hint">${searchQuery ? "尝试其他搜索关键词" : "在上方空卡片填写触发词与扩展内容，点击 ✔ 即可添加"}</div>
       </div>
     `;
-    return;
   }
 
-  container.innerHTML = filteredRules.map((rule) => {
-    const originalIndex = rules.indexOf(rule);
-    const currentGroupValue = rule.group || "default";
-    const keyLower = (rule.key || "").trim().toLowerCase();
-    const hasConflict = conflicts.has(keyLower);
-    const conflictIcon = hasConflict ? `
-      <span class="prefix-conflict-icon" title="前缀冲突：此触发词可能无法被触发">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-      </span>
-    ` : '';
-
-    return `
-    <div class="rule-item" data-index="${originalIndex}">
-      <button class="delete-btn" data-index="${originalIndex}" title="删除">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-      </button>
-      <div class="rule-trigger">
-        ${conflictIcon}
-        <input type="text" class="rule-trigger-input" placeholder=":te" value="${escapeHtml(rule.key)}" data-field="key" data-index="${originalIndex}" />
-      </div>
-      <span class="rule-arrow">→</span>
-      <div class="rule-content-wrapper">
-        <input type="text" class="rule-content-input" placeholder="扩展内容..." value="${escapeHtml(rule.content)}" data-field="content" data-index="${originalIndex}" />
-      </div>
-      <div class="rule-group-tag">
-        <span class="group-tag-display" data-index="${originalIndex}">${escapeHtml(currentGroupValue)}</span>
-      </div>
-    </div>
-  `}).join('');
-
+  container.innerHTML = html;
   bindRuleEvents();
 }
 
@@ -413,12 +442,15 @@ function bindRuleEvents() {
     btn.addEventListener('click', handleDelete);
   });
 
+  container.querySelectorAll('.confirm-btn').forEach(btn => {
+    btn.addEventListener('click', handleConfirmAdd);
+  });
+
   // 分组标签点击 -> 变成输入框
   container.querySelectorAll('.group-tag-display').forEach(tag => {
     tag.addEventListener('click', (e) => {
       e.stopPropagation();
       const index = parseInt(tag.dataset.index);
-      const currentGroupValue = rules[index]?.group || "default";
 
       // 替换为输入框
       const parent = tag.parentElement;
@@ -475,8 +507,9 @@ function bindRuleEvents() {
 function handleInputChange(e) {
   const index = parseInt(e.target.dataset.index);
   const field = e.target.dataset.field;
-  if (rules[index]) {
-    rules[index][field] = e.target.value;
+  const rule = getRuleAt(index);
+  if (rule) {
+    rule[field] = e.target.value;
   }
 }
 
@@ -491,20 +524,32 @@ async function handleDelete(e) {
   }
 }
 
-function addRule() {
-  rules.push({
-    key: "", content: "", group: currentGroup || "default", description: "", date: new Date().toISOString().split('T')[0]
-  });
+// 确认添加顶部空卡片中的新规则
+function handleConfirmAdd() {
+  if (!draftRule.key.trim() || !draftRule.content.trim()) {
+    showToast('触发词和扩展内容不能为空', 'warning');
+    return;
+  }
+
+  rules.push({ ...draftRule });
+  resetDraft();
   updateAllGroups();
   updateGroupFilter();
   renderRules();
+  showToast('规则已添加', 'success');
+
+  // 继续聚焦顶部新卡片，便于连续添加
   setTimeout(() => {
-    const inputs = document.querySelectorAll('.rule-trigger-input');
-    inputs[inputs.length - 1]?.focus();
+    document.querySelector('.rule-item.draft .rule-trigger-input')?.focus();
   }, 10);
 }
 
 async function saveRules() {
+  // 顶部空卡片若已填写，一并作为新规则保存
+  if (draftRule.key.trim() && draftRule.content.trim()) {
+    rules.push({ ...draftRule });
+  }
+
   const validRules = rules.filter(r => r.key.trim() && r.content.trim());
 
   if (validRules.length !== rules.length) {
@@ -531,7 +576,8 @@ async function saveRules() {
     await invoke('save_text_expand_rules', { rules: validRules });
     await invoke('reload_text_expand_rules');
     originalRules = JSON.parse(JSON.stringify(rules));
-    showToast('规则保存成功', 'success');
+    // 保存成功后直接关闭窗口，不再弹提示
+    await closeWindow();
   } catch (err) {
     console.error("[expander] 保存规则失败:", err);
     showToast('保存失败: ' + err, 'error');
@@ -543,6 +589,7 @@ async function cancelChanges() {
   if (hasChanges && !await showConfirm('放弃更改', '有未保存的更改，确定要放弃吗？')) return;
 
   rules = JSON.parse(JSON.stringify(originalRules));
+  resetDraft();
   updateAllGroups();
   currentGroup = "";
   searchQuery = "";
@@ -559,6 +606,5 @@ function escapeHtml(text) {
 }
 
 window.closeWindow = closeWindow;
-window.addRule = addRule;
 window.saveRules = saveRules;
 window.cancelChanges = cancelChanges;

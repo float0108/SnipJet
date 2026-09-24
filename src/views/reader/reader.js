@@ -77,6 +77,115 @@ function switchMode(mode) {
     sourceView.style.display = "block";
     textFallback.style.display = "none";
   }
+
+  // 不同视图统计的文字范围不同，切换后重新统计总字数
+  refreshTotalCharCount();
+}
+
+// ========== 字数统计 ==========
+
+// 当前视图的总字数；null 表示当前视图无文字可统计（如图片）
+let totalCharCount = null;
+
+// 读取当前视图的文字内容（无文字可统计时返回 null）
+function getActiveViewText() {
+  const htmlFrame = document.getElementById("html-frame");
+  const sourceView = document.getElementById("source-view");
+  const textFallback = document.getElementById("text-fallback");
+  const imageView = document.getElementById("image-view");
+
+  // 图片视图没有文字
+  if (imageView && imageView.style.display !== "none") return null;
+
+  // 渲染模式：以 iframe 内实际渲染的文字为准
+  if (htmlFrame && htmlFrame.style.display !== "none") {
+    try {
+      const rendered = htmlFrame.contentDocument?.body?.innerText;
+      if (rendered) return rendered;
+    } catch (e) {
+      // 跨域等异常时退回纯文本视图
+    }
+    // iframe 尚未加载完成时退回纯文本视图，避免总字数先显示为 0
+  }
+
+  if (sourceView && sourceView.style.display !== "none") {
+    return sourceView.textContent || "";
+  }
+
+  return textFallback?.querySelector(".text-content")?.textContent || "";
+}
+
+// 读取当前选中的文字（仅统计内容区内的选区，避免把顶栏、底栏文字算进来）
+function getSelectedContentText() {
+  const htmlFrame = document.getElementById("html-frame");
+
+  // 渲染模式的选区在 iframe 内
+  if (htmlFrame && htmlFrame.style.display !== "none") {
+    try {
+      const sel = htmlFrame.contentWindow?.getSelection();
+      return sel ? sel.toString() : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "";
+
+  const container = document.getElementById("content-container");
+  const anchor = sel.anchorNode;
+  const anchorEl = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentNode);
+  if (!container || !anchorEl || !container.contains(anchorEl)) return "";
+  return sel.toString();
+}
+
+// 刷新顶栏字数显示：未选中显示总字数，选中则显示选中字数
+function updateCharCount() {
+  const divider = document.getElementById("meta-divider");
+  const countEl = document.getElementById("meta-count");
+  if (!countEl) return;
+
+  if (totalCharCount === null) {
+    divider.hidden = true;
+    countEl.hidden = true;
+    countEl.textContent = "";
+    return;
+  }
+
+  const selectedText = getSelectedContentText();
+  countEl.textContent = selectedText
+    ? `已选 ${selectedText.length} 字`
+    : `共 ${totalCharCount} 字`;
+  divider.hidden = false;
+  countEl.hidden = false;
+}
+
+// 重新计算并缓存当前视图的总字数（内容或视图变化时调用）
+function refreshTotalCharCount() {
+  const text = getActiveViewText();
+  totalCharCount = text === null ? null : text.length;
+  updateCharCount();
+}
+
+// 监听选区变化（含 iframe 内的选区），实时切换显示总字数/选中字数
+function bindCharCountListeners() {
+  document.addEventListener("selectionchange", updateCharCount);
+
+  const htmlFrame = document.getElementById("html-frame");
+  if (htmlFrame) {
+    // iframe 每次写入 srcdoc 都会重建文档，需在每次加载后重新绑定
+    htmlFrame.addEventListener("load", () => {
+      try {
+        htmlFrame.contentDocument?.addEventListener(
+          "selectionchange",
+          updateCharCount
+        );
+      } catch (e) {
+        // 忽略跨域等异常
+      }
+      refreshTotalCharCount();
+    });
+  }
 }
 
 // 格式化文件大小
@@ -139,7 +248,7 @@ async function init() {
     // --- 图片处理逻辑 ---
     if (params.format === "image") {
       // 隐藏其他视图
-      viewToggle.style.display = "none";
+      viewToggle.style.visibility = "hidden";
       htmlFrame.style.display = "none";
       sourceView.style.display = "none";
       textFallback.style.display = "none";
@@ -150,11 +259,6 @@ async function init() {
       // 更新类型显示（显示具体格式）
       const imageFormat = params.imageFormat || "png";
       document.getElementById("meta-type").textContent = imageFormat.toUpperCase();
-
-      // 更新大小显示
-      document.getElementById("meta-size").textContent = params.imageSize
-        ? formatSize(params.imageSize)
-        : "未知";
 
       // 异步加载图片
       try {
@@ -205,7 +309,7 @@ async function init() {
       if (imageView) imageView.style.display = "none";
 
       // A. 显示切换开关
-      viewToggle.style.display = "flex";
+      viewToggle.style.visibility = "visible";
 
       // 对于 markdown，需要转换为 HTML 再渲染
       let contentToRender = decodedContent;
@@ -274,7 +378,7 @@ async function init() {
       // --- 纯文本/其他 处理逻辑 ---
 
       // 隐藏切换开关
-      viewToggle.style.display = "none";
+      viewToggle.style.visibility = "hidden";
       htmlFrame.style.display = "none";
       sourceView.style.display = "none";
 
@@ -293,6 +397,9 @@ async function init() {
     textContent.textContent = "无法读取内容或内容已过期。";
     textFallback.style.display = "block";
   }
+
+  // 内容渲染完成后刷新字数统计（图片等无文字内容会自动隐藏）
+  refreshTotalCharCount();
 }
 
 // 保存文本内容（当用户编辑纯文本模式下的内容时调用）
@@ -308,6 +415,9 @@ function saveTextContent(element) {
       setTimeout(() => (btn.innerHTML = originalText), 2000);
     }
   }
+
+  // 编辑后文字内容变了，重新统计字数
+  refreshTotalCharCount();
 }
 
 // 编辑内容
@@ -353,6 +463,10 @@ function updateFavoriteButton(isFavorite) {
     const icon = btn.querySelector(".icon");
     if (icon) {
       icon.className = isFavorite ? "icon icon-favorite-solid" : "icon icon-favorite";
+    }
+    const text = btn.querySelector(".btn-text");
+    if (text) {
+      text.textContent = isFavorite ? "取消收藏" : "添加到收藏";
     }
   }
 }
@@ -664,13 +778,16 @@ async function initialize() {
     // 1. 初始化内容渲染
     init();
 
-    // 2. 初始化事件监听 (刷新等)
+    // 2. 绑定字数统计的选区监听（含 iframe 内选区）
+    bindCharCountListeners();
+
+    // 3. 初始化事件监听 (刷新等)
     await initEventListeners();
 
-    // 3. 初始化拖拽 (自定义标题栏)
+    // 4. 初始化拖拽 (自定义标题栏)
     await initDragWindow();
 
-    // 4. 初始化窗口尺寸监听 (关键)
+    // 5. 初始化窗口尺寸监听 (关键)
     console.log("调用 setupWindowResizeHandler...");
     await setupWindowResizeHandler();
     console.log("✅ setupWindowResizeHandler 调用完成");
