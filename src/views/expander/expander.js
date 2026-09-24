@@ -2,6 +2,8 @@
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 import { log, error } from "../../utils/logger.js";
+import { renderEmptyState } from "../../components/empty-state/empty-state.js";
+import { t, loadLocaleFromSettings, applyI18n } from "../../utils/i18n.js";
 
 // 规则列表
 let rules = [];
@@ -89,8 +91,8 @@ function showConfirm(title, message) {
         <div class="dialog-title">${title}</div>
         <div class="dialog-message">${message}</div>
         <div class="dialog-buttons">
-          <button class="dialog-btn dialog-btn-cancel">取消</button>
-          <button class="dialog-btn dialog-btn-confirm">确定</button>
+          <button class="dialog-btn dialog-btn-cancel">${t("expander.dialog.cancel")}</button>
+          <button class="dialog-btn dialog-btn-confirm">${t("expander.dialog.confirm")}</button>
         </div>
       </div>
     `;
@@ -144,7 +146,7 @@ function showSuggestions(inputEl, searchText) {
   if (isNewGroup) {
     html += `<div class="group-suggestion-item group-suggestion-create" data-group="${escapeHtml(search)}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-      <span>创建 "${escapeHtml(search)}"</span>
+      <span>${escapeHtml(t("expander.createGroup").replace("{name}", search))}</span>
     </div>`;
   }
 
@@ -190,6 +192,10 @@ function selectSuggestion(group) {
  */
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("[expander] 初始化文本扩展管理器");
+
+  // 先加载语言设置并应用静态文案，确保首次渲染列表前即为目标语言
+  loadLocaleFromSettings();
+  applyI18n();
 
   // 初始化主题
   try {
@@ -341,7 +347,7 @@ function updateGroupFilter() {
   if (!filterSelect) return;
 
   const currentValue = filterSelect.value;
-  filterSelect.innerHTML = `<option value="">全部分组 (${rules.length})</option>`;
+  filterSelect.innerHTML = `<option value="">${t("expander.filter.allWithCount").replace("{n}", rules.length)}</option>`;
   allGroups.forEach(group => {
     const count = rules.filter(r => (r.group || "default") === group).length;
     const option = document.createElement("option");
@@ -358,7 +364,7 @@ function ruleItemHtml(rule, index, conflicts) {
   const currentGroupValue = rule.group || "default";
   const hasConflict = !isDraft && conflicts.has((rule.key || "").trim().toLowerCase());
   const conflictIcon = hasConflict ? `
-      <span class="prefix-conflict-icon" title="前缀冲突：此触发词可能无法被触发">
+      <span class="prefix-conflict-icon" title="${t("expander.rule.prefixConflict")}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
       </span>
     ` : '';
@@ -367,16 +373,16 @@ function ruleItemHtml(rule, index, conflicts) {
     <div class="rule-item${isDraft ? ' draft' : ''}" data-index="${index}">
       <div class="rule-trigger">
         ${conflictIcon}
-        <input type="text" class="rule-trigger-input" placeholder="触发词" value="${escapeHtml(rule.key)}" data-field="key" data-index="${index}" />
+        <input type="text" class="rule-trigger-input" placeholder="${t("expander.rule.triggerPlaceholder")}" value="${escapeHtml(rule.key)}" data-field="key" data-index="${index}" />
       </div>
       <span class="rule-arrow">→</span>
       <div class="rule-content-wrapper">
-        <input type="text" class="rule-content-input" placeholder="扩展后的内容" value="${escapeHtml(rule.content)}" data-field="content" data-index="${index}" />
+        <input type="text" class="rule-content-input" placeholder="${t("expander.rule.contentPlaceholder")}" value="${escapeHtml(rule.content)}" data-field="content" data-index="${index}" />
       </div>
       <div class="rule-group-tag">
         <span class="group-tag-display" data-index="${index}">${escapeHtml(currentGroupValue)}</span>
       </div>
-      <button class="${isDraft ? 'confirm-btn' : 'delete-btn'}" data-index="${index}" title="${isDraft ? '确认添加' : '删除'}">
+      <button class="${isDraft ? 'confirm-btn' : 'delete-btn'}" data-index="${index}" title="${isDraft ? t("expander.rule.confirmAdd") : t("expander.rule.delete")}">
         ${isDraft
           ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
           : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`}
@@ -408,13 +414,17 @@ function renderRules() {
   html += filteredRules.map(rule => ruleItemHtml(rule, rules.indexOf(rule), conflicts)).join('');
 
   if (filteredRules.length === 0) {
-    html += `
-      <div class="empty-state">
-        <div class="empty-icon">📝</div>
-        <div class="empty-text">${searchQuery ? "未找到匹配的规则" : (currentGroup ? "该分组暂无规则" : "暂无文本扩展规则")}</div>
-        <div class="empty-hint">${searchQuery ? "尝试其他搜索关键词" : "在上方空卡片填写触发词与扩展内容，点击 ✔ 即可添加"}</div>
-      </div>
-    `;
+    // 与主界面共用同一套空状态组件
+    html += renderEmptyState(
+      searchQuery
+        ? t("expander.empty.noMatch")
+        : currentGroup
+          ? t("expander.empty.noGroupRules")
+          : t("expander.empty.noRules"),
+      searchQuery
+        ? t("expander.empty.noMatchHint")
+        : t("expander.empty.noRulesHint"),
+    );
   }
 
   container.innerHTML = html;
@@ -454,7 +464,7 @@ function bindRuleEvents() {
 
       // 替换为输入框
       const parent = tag.parentElement;
-      parent.innerHTML = `<input type="text" class="group-tag-input" data-index="${index}" placeholder="分组名..." value="" />`;
+      parent.innerHTML = `<input type="text" class="group-tag-input" data-index="${index}" placeholder="${t("expander.rule.groupPlaceholder")}" value="" />`;
       const input = parent.querySelector('.group-tag-input');
       input.focus();
 
@@ -515,19 +525,19 @@ function handleInputChange(e) {
 
 async function handleDelete(e) {
   const index = parseInt(e.currentTarget.dataset.index);
-  if (await showConfirm('删除规则', '确定要删除这条规则吗？')) {
+  if (await showConfirm(t("expander.deleteDialog.title"), t("expander.deleteDialog.message"))) {
     rules.splice(index, 1);
     updateAllGroups();
     updateGroupFilter();
     renderRules();
-    showToast('规则已删除', 'success');
+    showToast(t("expander.toast.deleted"), 'success');
   }
 }
 
 // 确认添加顶部空卡片中的新规则
 function handleConfirmAdd() {
   if (!draftRule.key.trim() || !draftRule.content.trim()) {
-    showToast('触发词和扩展内容不能为空', 'warning');
+    showToast(t("expander.toast.required"), 'warning');
     return;
   }
 
@@ -536,7 +546,7 @@ function handleConfirmAdd() {
   updateAllGroups();
   updateGroupFilter();
   renderRules();
-  showToast('规则已添加', 'success');
+  showToast(t("expander.toast.added"), 'success');
 
   // 继续聚焦顶部新卡片，便于连续添加
   setTimeout(() => {
@@ -553,14 +563,14 @@ async function saveRules() {
   const validRules = rules.filter(r => r.key.trim() && r.content.trim());
 
   if (validRules.length !== rules.length) {
-    showToast('触发词和扩展内容不能为空', 'warning');
+    showToast(t("expander.toast.required"), 'warning');
     return;
   }
 
   const keys = validRules.map(r => r.key);
   const duplicates = keys.filter((item, idx) => keys.indexOf(item) !== idx);
   if (duplicates.length > 0) {
-    showToast(`发现重复的触发词: ${duplicates.join(', ')}`, 'error');
+    showToast(t("expander.toast.duplicateKeys").replace("{keys}", duplicates.join(', ')), 'error');
     return;
   }
 
@@ -568,7 +578,10 @@ async function saveRules() {
   const conflicts = findPrefixConflicts(validRules);
   if (conflicts.size > 0) {
     const conflictKeys = [...conflicts].join(', ');
-    const confirmed = await showConfirm('前缀冲突警告', `以下触发词可能无法被触发：${conflictKeys}\n\n这是因为存在更短的前缀触发词。是否仍要保存？`);
+    const confirmed = await showConfirm(
+      t("expander.prefixConflictDialog.title"),
+      t("expander.prefixConflictDialog.message").replace("{keys}", conflictKeys),
+    );
     if (!confirmed) return;
   }
 
@@ -580,13 +593,13 @@ async function saveRules() {
     await closeWindow();
   } catch (err) {
     console.error("[expander] 保存规则失败:", err);
-    showToast('保存失败: ' + err, 'error');
+    showToast(t("expander.toast.saveFailed").replace("{error}", err), 'error');
   }
 }
 
 async function cancelChanges() {
   const hasChanges = JSON.stringify(rules) !== JSON.stringify(originalRules);
-  if (hasChanges && !await showConfirm('放弃更改', '有未保存的更改，确定要放弃吗？')) return;
+  if (hasChanges && !await showConfirm(t("expander.discardDialog.title"), t("expander.discardDialog.message"))) return;
 
   rules = JSON.parse(JSON.stringify(originalRules));
   resetDraft();

@@ -1,4 +1,6 @@
 // handlers.js 的引用可以缓存，避免重复 import
+import { t } from "../../utils/i18n.js";
+
 let settingsModule = null;
 async function getHandlers() {
   if (!settingsModule) settingsModule = await import("./handlers.js");
@@ -51,11 +53,11 @@ export function initShortcuts() {
       if (currentInput === this) return;
 
       // 重置之前的输入框状态
-      if (currentInput) currentInput.placeholder = "按下快捷键...";
+      if (currentInput) currentInput.placeholder = t("settings.shortcuts.placeholderIdle");
 
       currentInput = this;
       this.value = ""; // 录制时清空当前值
-      this.placeholder = "请录制组合键...";
+      this.placeholder = t("settings.shortcuts.placeholderRecording");
       this.classList.add("recording"); // 建议增加 CSS 样式反馈
     });
 
@@ -68,7 +70,7 @@ export function initShortcuts() {
           // 将短横线格式的ID转换为下划线格式的key
           const key = this.id.replace(/-/g, "_");
           this.value = settings.shortcuts?.[key] || "";
-          this.placeholder = "按下快捷键...";
+          this.placeholder = t("settings.shortcuts.placeholderIdle");
           this.classList.remove("recording");
         });
       }
@@ -130,7 +132,7 @@ export function initShortcuts() {
       if (isDuplicate) {
         // 显示重复提示
         import("./ui.js").then(({showNotification}) => {
-          showNotification("该快捷键已被占用");
+          showNotification(t("settings.shortcuts.toastOccupied"));
         });
         currentInput.blur();
         return;
@@ -158,6 +160,13 @@ export function initShortcuts() {
     if (!settings.shortcuts) settings.shortcuts = {};
     settings.shortcuts.quick_paste_mode = this.value;
     console.log("快捷粘贴模式已更新到内存:", this.value);
+  });
+
+  // 清空按钮：data-clear-for 指向要清空的输入框 id（原先写在 HTML 的内联 onclick 里）
+  document.querySelectorAll(".clear-btn[data-clear-for]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      clearShortcut(btn.dataset.clearFor);
+    });
   });
 }
 

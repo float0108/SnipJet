@@ -1,5 +1,6 @@
 // 显示通知
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { t } from "../../utils/i18n.js";
 
 export function showNotification(message) {
   // 创建通知元素
@@ -55,44 +56,45 @@ export async function cancelAndClose() {
   }
 }
 
-// 侧边栏分区：标题 -> { 内容容器 id, 进入分区时刷新控件状态 }
+// 侧边栏分区：分区标识 -> { 内容容器 id, 进入分区时刷新控件状态 }
+// 标识取自 HTML 中 .sidebar-item 的 data-section（与界面语言无关，翻译后查表依然有效）
 const SECTIONS = {
-  常规: {
+  general: {
     content: "general-content",
     reload: () =>
       import("./handlers.js").then(({ updateGeneralSettings }) =>
         updateGeneralSettings()
       ),
   },
-  外观: {
+  appearance: {
     content: "appearance-content",
     reload: () =>
       import("./handlers.js").then(({ updateAppearanceSettings }) =>
         updateAppearanceSettings()
       ),
   },
-  快捷键: {
+  shortcuts: {
     content: "shortcuts-content",
     reload: () =>
       import("./shortcuts.js").then(({ updateShortcutInputs }) =>
         updateShortcutInputs()
       ),
   },
-  剪贴板: {
+  clipboard: {
     content: "clipboard-content",
     reload: () =>
       import("./handlers.js").then(({ updateClipboardSettings }) =>
         updateClipboardSettings()
       ),
   },
-  历史记录: {
+  history: {
     content: "history-content",
     reload: () =>
       import("./handlers.js").then(({ updateHistorySettings }) =>
         updateHistorySettings()
       ),
   },
-  高级: {
+  advanced: {
     content: "advanced-content",
     reload: () =>
       import("./handlers.js").then(({ updateAdvancedSettings }) =>
@@ -101,30 +103,47 @@ const SECTIONS = {
   },
 };
 
+// 刷新顶部分区标题：标题文案按当前语言从 i18n 取，分区标识默认取当前激活项
+export function updateSectionTitle(sectionKey) {
+  const key =
+    sectionKey ||
+    document.querySelector(".sidebar-item.active")?.dataset.section ||
+    "general";
+  const title = document.querySelector(".section-title");
+  if (title) {
+    title.textContent = t(`settings.section.${key}`);
+  }
+}
+
 // 设置侧边栏切换
 export function setupSidebar() {
   // 侧边栏切换
   document.querySelectorAll(".sidebar-item").forEach((item) => {
     item.addEventListener("click", function () {
-      const title = this.textContent;
-      const section = SECTIONS[title];
+      // 用 data-section 标识查表（原先用中文标题查表，切换语言后会失效）
+      const key = this.dataset.section;
+      const section = SECTIONS[key];
       if (!section) return;
 
       // 移除所有活动状态
       document
         .querySelectorAll(".sidebar-item")
-        .forEach((i) => i.classList.remove("active"));
+        .forEach((i) => {
+          i.classList.remove("active");
+          i.removeAttribute("aria-current");
+        });
       // 添加当前活动状态
       this.classList.add("active");
+      this.setAttribute("aria-current", "true");
 
       // 更新标题
-      document.querySelector(".section-title").textContent = title;
+      updateSectionTitle(key);
 
       // 隐藏所有内容，显示当前分区
       Object.values(SECTIONS).forEach(({ content }) => {
-        document.getElementById(content).style.display = "none";
+        document.getElementById(content).classList.remove("active");
       });
-      document.getElementById(section.content).style.display = "block";
+      document.getElementById(section.content).classList.add("active");
 
       // 刷新该分区的控件状态
       section.reload();

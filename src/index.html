@@ -3,17 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SnipJet - 剪贴板监控</title>
-    <script>
-      // 首帧渲染前同步应用界面缩放（系数由设置窗口写入 localStorage），避免加载后跳变
-      try {
-        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
-        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
-          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
-        }
-      } catch (e) {}
-    </script>
+    <title data-i18n="toolbar.pageTitle">SnipJet - 剪贴板监控</title>
+    <!-- 首帧渲染前同步应用主题/字体/缩放，避免窗口打开后跳变 -->
+    <script src="./bootstrap.js"></script>
     <link rel="stylesheet" href="./common/style.css" />
+    <link rel="stylesheet" href="./common/controls.css" />
     <link rel="stylesheet" href="./views/main/index.css" />
     <link rel="stylesheet" href="./common/icon.css" />
     <link rel="stylesheet" href="./components/clipboard-history/clipboard-item.css" />
@@ -23,30 +17,30 @@
     <!-- 合并后的工具栏 -->
     <div class="toolbar" data-tauri-drag-region>
       <div class="toolbar-group toolbar-left">
-        <button id="favorites-btn" class="toolbar-btn" title="查看收藏">
+        <button id="favorites-btn" class="toolbar-btn" title="查看收藏" aria-label="查看收藏" aria-pressed="false" data-i18n-title="toolbar.viewFavorites" data-i18n-aria-label="toolbar.viewFavorites">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
         </button>
-        <button class="toolbar-btn" title="文本扩展">
+        <button id="expander-btn" class="toolbar-btn" title="文本扩展" aria-label="文本扩展" data-i18n-title="toolbar.expander" data-i18n-aria-label="toolbar.expander">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
         </button>
       </div>
       <div class="toolbar-group toolbar-right">
         <div id="search-box" class="search-box">
-          <input type="text" id="search-input" placeholder="搜索..." />
-          <button id="search-close" class="search-close">
+          <input type="text" id="search-input" placeholder="搜索..." aria-label="搜索剪贴板历史" data-i18n-placeholder="toolbar.searchPlaceholder" data-i18n-aria-label="toolbar.searchHistoryAriaLabel" />
+          <button id="search-close" class="search-close" aria-label="关闭搜索" data-i18n-aria-label="toolbar.closeSearch">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
-        <button id="search-btn" class="toolbar-btn" title="搜索">
+        <button id="search-btn" class="toolbar-btn" title="搜索" aria-label="搜索" data-i18n-title="toolbar.search" data-i18n-aria-label="toolbar.search">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </button>
-        <button id="pin-btn" class="toolbar-btn" title="固定">
+        <button id="pin-btn" class="toolbar-btn" title="固定" aria-label="固定窗口" aria-pressed="true" data-i18n-title="toolbar.pin" data-i18n-aria-label="toolbar.pinWindowAriaLabel">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>
         </button>
-        <button id="settings-btn" class="toolbar-btn" title="设置">
+        <button id="settings-btn" class="toolbar-btn" title="设置" aria-label="设置" data-i18n-title="toolbar.settings" data-i18n-aria-label="toolbar.settings">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
-        <button id="close-btn" class="toolbar-btn" title="关闭">
+        <button id="close-btn" class="toolbar-btn" title="关闭" aria-label="关闭窗口" data-i18n-title="toolbar.close" data-i18n-aria-label="toolbar.closeWindowAriaLabel">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
@@ -54,12 +48,10 @@
 
     <div class="container ghost-scrollbar">
       <div id="clipboard-history"></div>
-      <div id="status" class="status-text" style="margin-top: 0">
-        初始化完成
-      </div>
+      <div id="status" class="status-text" role="status" aria-live="polite" data-i18n="status.initComplete"></div>
     </div>
 
-    <button id="back-to-top" class="back-to-top" title="回到顶部">
+    <button id="back-to-top" class="back-to-top" title="回到顶部" aria-label="回到顶部" data-i18n-title="toolbar.backToTop" data-i18n-aria-label="toolbar.backToTop">
       <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
     </button>
 

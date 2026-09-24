@@ -4,6 +4,7 @@ import { cursorPosition, monitorFromPoint } from '@tauri-apps/api/window';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { log, error } from "../utils/logger.js";
 import { getClipboardContent } from "./tauri-api.js";
+import { t } from "../utils/i18n.js";
 
 // 防抖动控制变量
 let isTogglingWindow = false;
@@ -29,6 +30,16 @@ function getWindowSize(label) {
   } catch (e) {
     return null;
   }
+}
+
+// 读取当前主题的页面底色，作为新窗口 WebView 的默认背景色。
+// 窗口从创建到页面首帧渲染之间，WebView 会先铺自己的默认底色（白色），
+// 深色模式下表现为「开窗瞬间闪一下浅色界面」，这里用主题底色填上这段空档。
+function getThemeBackgroundColor() {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue("--bg-body")
+    .trim();
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#ffffff";
 }
 
 function saveWindowSize(label, width, height) {
@@ -84,6 +95,8 @@ export async function createWindow(label, options) {
   const windowOptions = {
     ...options,
     alwaysOnTop: true,
+    // 首帧前的 WebView 底色跟随当前主题，避免深色模式下开窗闪白
+    backgroundColor: options.backgroundColor ?? getThemeBackgroundColor(),
     // 如果有保存的大小，直接应用到创建参数中
     // 这样窗口一出来就是对的大小，不会闪烁
     ...(savedSize ? {width: savedSize.width, height: savedSize.height} : {}),
@@ -180,7 +193,7 @@ export async function openReaderWindow(element) {
     console.log(`使用路径: ${path}`);
     await createWindow(label, {
       url: path,
-      title: "查看详情",
+      title: t("window.detailTitle"),
       width: 800, // 这是默认值，如果有缓存会覆盖它
       height: 600,
       decorations: false,
@@ -189,7 +202,7 @@ export async function openReaderWindow(element) {
     });
   } catch (error) {
     console.error("打开窗口异常:", error);
-    alert("无法打开新窗口");
+    alert(t("window.openFailed"));
   }
 }
 

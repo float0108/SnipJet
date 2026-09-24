@@ -1,6 +1,7 @@
 // 剪贴板历史记录组件
 import {parseClipboardItem} from "../../utils/content-parser.js";
 import {renderClipboardItem, loadAllImagePreviews} from "./clipboard-item.js";
+import { t } from "../../utils/i18n.js";
 
 // 样式由页面统一引入（index.html 的 <link>，构建时并入主样式表），
 // 组件内不再自行注入，避免同一份 CSS 被加载两次。
@@ -68,13 +69,14 @@ export function renderHistory(history, container, statusElement) {
  * @returns {Array} - 模拟历史记录
  */
 export function createMockHistory() {
+  const mockContent = t("item.mockContent");
   return [
     {
       id: "mock-1",
       timestamp: Date.now(),
       hash: "abc123",
-      content: "暂时没有剪贴板内容...",
-      preview: "暂时没有剪贴板内容...",
+      content: mockContent,
+      preview: mockContent,
       format: "plain",
       word_count: 8,
     },

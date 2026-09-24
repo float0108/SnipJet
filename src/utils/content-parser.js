@@ -1,5 +1,6 @@
 // 内容解析服务
 // 用于处理不同类型剪贴板内容的解析和显示逻辑
+import { t } from "./i18n.js";
 
 /**
  * 获取内容格式的显示标签
@@ -8,17 +9,10 @@
  */
 export function getFormatLabel(format) {
   // 后端返回 "text"，前端统一使用 "text"
-  const labels = {
-    text: "纯文本",      // 后端 ClipboardFormat::Plain 序列化为 "text"
-    plain: "纯文本",     // 兼容旧数据
-    html: "HTML",
-    markdown: "MD",      // Markdown 富文本
-    rtf: "富文本",
-    image: "图片",
-    files: "文件",
-    custom: "自定义",
-  };
-  return labels[format] || format;
+  const key = `format.${format}`;
+  const label = t(key);
+  // 未收录的格式直接回显原始值，避免界面出现 "format.xxx"
+  return label === key ? format : label;
 }
 
 /**

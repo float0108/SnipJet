@@ -2,7 +2,7 @@
 .clipboard-item {
     position: relative;
     /* 为绝对定位的操作栏做参照 */
-    padding: 8px;
+    padding: var(--space-md);
     background: var(--bg-surface);
     /* 常驻描边：无论静止、悬停还是按下，卡片轮廓都清晰可见 */
     border: 1px solid var(--border-strong);
@@ -14,6 +14,13 @@
     transition:
         background-color 0.15s ease,
         border-color 0.15s ease;
+
+    /* 预览文字字号与行高：操作条据此与首行对齐，随字号设置自动适配 */
+    --preview-font-size: var(--font-size-sm);
+    --preview-line-height: 1.5;
+    --preview-line-box: calc(var(--preview-font-size) * var(--preview-line-height));
+    /* 操作按钮尺寸：操作条高度由其推导 */
+    --card-btn-size: 24px;
 }
 
 /* 悬停：叠加主色调的浅色填充，与页面中性灰底在色相上拉开差距，
@@ -47,15 +54,6 @@
 }
 
 /* 键盘焦点样式（可访问性） */
-.clipboard-item:focus {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 1px;
-}
-
-.clipboard-item:focus:not(:focus-visible) {
-    outline: none;
-}
-
 .clipboard-item:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 1px;
@@ -70,7 +68,7 @@
     bottom: -11px;
     opacity: 0;
     color: var(--text-tertiary);
-    font-size: calc(var(--font-size-xs) - 2px);
+    font-size: var(--item-meta-font-size);
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
     pointer-events: none;
@@ -102,8 +100,8 @@
 
 .item-preview {
     /* 两级条目统一字号，行数各自设置 */
-    font-size: var(--font-size-sm);
-    line-height: 1.5;
+    font-size: var(--preview-font-size);
+    line-height: var(--preview-line-height);
     color: var(--text-primary);
     font-family: var(--font-family);
 
@@ -176,7 +174,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 12px;
+    padding: var(--space-xl);
     background: var(--bg-body);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
@@ -186,7 +184,7 @@
 
 .image-placeholder .placeholder-icon {
     font-size: 24px;
-    margin-bottom: 4px;
+    margin-bottom: var(--space-xs);
 }
 
 .image-placeholder .placeholder-info {
@@ -194,37 +192,46 @@
 }
 
 /* --- 悬浮操作栏 (绝对定位) --- */
-/* 顶到右上角：单行卡片里按钮组的高度与行高接近；
-   卡片更高（多行预览）时自然停在右上角，不做垂直居中。 */
+/* 顶到右上角：与首行文字垂直居中；卡片更高（多行预览）时自然停在右上角。 */
 .item-actions-overlay {
     position: absolute;
-    top: 2px;
-    right: 6px;
+    /* 操作条高度 = 按钮高度 + 上下描边（纵向无内边距） */
+    --actions-height: calc(var(--card-btn-size) + 2px);
+    /* 与首行文字垂直居中：卡片上内边距 + (行盒 - 操作条高度) / 2 */
+    top: calc(var(--space-md) + (var(--preview-line-box) - var(--actions-height)) / 2);
+    right: 3px;
     display: flex;
-    gap: 4px;
+    gap: var(--space-xs);
     z-index: 2;
 
-    /* 默认隐藏 */
+    /* 默认隐藏：opacity 只负责淡入，pointer-events 负责不可点击；
+       按钮仍保留在 Tab 序列中，卡片获得焦点时整条操作栏可见，
+       键盘用户不会停在看不见的按钮上 */
     opacity: 0;
+    pointer-events: none;
     transform: scale(0.95);
     transition: opacity 0.15s ease, transform 0.15s ease;
 
     /* 增加背景模糊或渐变，防止文字干扰 */
     background: var(--bg-surface);
-    padding: 2px;
+    /* 纵向不留内边距：操作条高度由按钮尺寸决定，仅保留左右留白 */
+    padding: 0 var(--space-2xs);
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow-sm);
 }
 
-.clipboard-item:hover .item-actions-overlay {
+/* :focus-within 同时覆盖"卡片自身被聚焦"与"焦点进入卡片内按钮"两种情况 */
+.clipboard-item:hover .item-actions-overlay,
+.clipboard-item:focus-within .item-actions-overlay {
     opacity: 1;
+    pointer-events: auto;
     transform: scale(1);
 }
 
 .card-btn {
-    width: 24px;
-    height: 24px;
+    width: var(--card-btn-size);
+    height: var(--card-btn-size);
     border-radius: var(--radius-xs);
     display: flex;
     align-items: center;
@@ -235,14 +242,24 @@
     cursor: pointer;
 }
 
+.card-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
 .card-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
 }
 
+.card-btn:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+}
+
 .card-btn.btn-delete:hover {
     background: rgba(var(--danger-color-rgb), 0.1);
-    color: var(--danger-color);
+    color: var(--danger-text);
 }
 
 /* 收藏按钮样式 */
@@ -253,28 +270,13 @@
 
 .card-btn.btn-favorite:hover {
     background: rgba(var(--favorite-color-rgb), 0.1);
-    color: var(--favorite-color);
+    color: var(--favorite-text);
 }
 
 .card-btn.btn-favorite.active {
-    color: var(--favorite-color);
+    color: var(--favorite-text);
 }
 
 .card-btn.btn-favorite.active:hover {
     background: rgba(var(--favorite-color-rgb), 0.2);
-}
-
-/* 尊重系统的减少动效设置 */
-@media (prefers-reduced-motion: reduce) {
-    .clipboard-item,
-    .item-time,
-    .item-meta,
-    .item-actions-overlay,
-    .card-btn.btn-favorite {
-        transition: none;
-    }
-
-    .preview-image.loading {
-        animation: none;
-    }
 }

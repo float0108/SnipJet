@@ -3,7 +3,7 @@ import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
-import { setLocale } from '../../utils/i18n.js';
+import { t, setLocale, applyI18n } from '../../utils/i18n.js';
 
 export let settings = {};
 // 原始设置备份（用于取消时恢复）
@@ -26,9 +26,10 @@ function getDefaultSettings() {
     },
     interface: {
       theme: "light",
-      language: "cn",
+      language: "en",
       zoom_level: 1,
       font_family: "",
+      font_family_secondary: "",
       font_size: 14,
       auto_hide: true,
       latest_preview_lines: 5,
@@ -43,7 +44,6 @@ function getDefaultSettings() {
     copy: {
       strip_formatting: false,
       auto_copy: true,
-      copy_on_select: false,
     },
     paste: {
       use_pandoc_for_markdown: false,
@@ -110,6 +110,11 @@ export async function loadSettings() {
             settings.interface.preview_lines;
         }
         delete settings.interface.preview_lines;
+      }
+
+      // 移除已下线的"划词复制"字段（功能未实现，保留在文件里没有意义）
+      if (settings.copy) {
+        delete settings.copy.copy_on_select;
       }
 
       console.log("设置加载成功:", settings);
@@ -183,9 +188,11 @@ export async function saveSettings() {
     if (settings.interface?.theme) {
       applyTheme(settings.interface.theme);
     }
-    if (settings.interface?.font_family) {
-      applyFontFamily(settings.interface.font_family);
-    }
+    // 主要/次要字体一起应用；两者都为空时回落到默认字体
+    applyFontFamily(
+      settings.interface?.font_family,
+      settings.interface?.font_family_secondary
+    );
     if (settings.interface?.font_size) {
       applyFontSize(settings.interface.font_size);
     }
@@ -211,7 +218,7 @@ export async function saveSettings() {
 
     // 显示保存成功通知
     import("./ui.js").then(({ showNotification }) => {
-      showNotification("设置已保存");
+      showNotification(t("settings.toast.saved"));
     });
   } catch (error) {
     console.error("保存设置时出错:", error);
@@ -343,7 +350,7 @@ export function updateGeneralSettings() {
   // 更新界面语言
   const language = document.getElementById("language");
   if (language) {
-    language.value = settings.interface?.language ?? "cn";
+    language.value = settings.interface?.language ?? "en";
   }
 }
 
@@ -422,15 +429,15 @@ export async function updateAdvancedSettings() {
       const status = await invoke("get_mcp_status");
       console.log("MCP status:", status);
       if (status.is_running) {
-        mcpStatus.textContent = "运行中";
+        mcpStatus.textContent = t("settings.advanced.mcpRunning");
         mcpStatus.className = "status-badge status-running";
       } else {
-        mcpStatus.textContent = "未运行";
+        mcpStatus.textContent = t("settings.advanced.mcpStopped");
         mcpStatus.className = "status-badge status-stopped";
       }
     } catch (e) {
       console.error("获取 MCP 状态失败:", e);
-      mcpStatus.textContent = "未运行";
+      mcpStatus.textContent = t("settings.advanced.mcpStopped");
       mcpStatus.className = "status-badge status-stopped";
     }
   }
@@ -438,15 +445,10 @@ export async function updateAdvancedSettings() {
 
 // 更新剪贴板设置
 export function updateClipboardSettings() {
-  // 记录：自动监听 / 划词复制
+  // 记录：自动监听
   const autoCopy = document.getElementById("auto-copy");
   if (autoCopy) {
     autoCopy.checked = settings.copy?.auto_copy ?? true;
-  }
-
-  const copyOnSelect = document.getElementById("copy-on-select");
-  if (copyOnSelect) {
-    copyOnSelect.checked = settings.copy?.copy_on_select ?? false;
   }
 
   // 粘贴格式：去除格式 / Pandoc
@@ -494,13 +496,12 @@ export function updateAppearanceSettings() {
   }
 
   // 更新界面字体（先确保下拉框已加载系统字体）
+  // populate 是幂等的，选项已存在时这里仍需同步选中态（取消修改后回显原字体）
   populateFontFamilyOptions();
+  syncFontPickers();
 
   // 更新基础字号
-  const fontSize = document.getElementById("font-size");
-  if (fontSize) {
-    fontSize.value = settings.interface?.font_size ?? 14;
-  }
+  syncFontSize();
 
   // 更新界面缩放
   const zoomLevel = document.getElementById("zoom-level");
@@ -636,14 +637,6 @@ export function bindSettingsListeners() {
     });
   }
 
-  const copyOnSelect = document.getElementById("copy-on-select");
-  if (copyOnSelect) {
-    copyOnSelect.addEventListener("change", function () {
-      if (!settings.copy) settings.copy = {};
-      settings.copy.copy_on_select = this.checked;
-    });
-  }
-
   // 监听界面设置变化
   const theme = document.getElementById("theme");
   if (theme) {
@@ -686,26 +679,49 @@ export function bindSettingsListeners() {
       settings.interface.language = this.value;
       setLocale(this.value);
       emit("language-changed", { locale: this.value });
+
+      // 当前窗口立即切换语言：先刷新静态文案，再修正由脚本写入的动态文案
+      applyI18n();
+      // 顶部分区标题随激活分区变化，需按新语言重写
+      import("./ui.js").then(({ updateSectionTitle }) => updateSectionTitle());
+      // MCP 状态徽标文案按当前状态类名重写（避免被 applyI18n 复位成"未运行"）
+      const mcpStatus = document.getElementById("mcp-status");
+      if (mcpStatus) {
+        mcpStatus.textContent = mcpStatus.classList.contains("status-running")
+          ? t("settings.advanced.mcpRunning")
+          : t("settings.advanced.mcpStopped");
+      }
+      // 字体下拉的「系统默认 / 已不存在」等文案由脚本生成，需同步刷新其文案
+      refreshFontPickerTexts();
     });
   }
 
-  const fontFamily = document.getElementById("font-family");
-  if (fontFamily) {
-    fontFamily.addEventListener("change", function () {
-      if (!settings.interface) settings.interface = {};
-      settings.interface.font_family = this.value;
-      applyFontFamily(this.value);
-    });
-  }
+  // 界面字体（主要 / 次要）：自定义下拉，每个选项按自身字体预览
+  setupFontPickers();
 
   // 触发下拉框选项填充
   populateFontFamilyOptions();
 
   const fontSize = document.getElementById("font-size");
   if (fontSize) {
+    // 实时预览：修改后立即应用（保存时再由事件广播到其它窗口）
     fontSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.font_size = parseInt(this.value);
+      const value = normalizeFontSize(this.value);
+      settings.interface.font_size = value;
+      applyFontSize(value);
+      syncFontSize();
+    });
+  }
+
+  // 基础字号重置键：恢复默认字号
+  const fontSizeReset = document.getElementById("font-size-reset");
+  if (fontSizeReset) {
+    fontSizeReset.addEventListener("click", () => {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.font_size = DEFAULT_FONT_SIZE;
+      applyFontSize(DEFAULT_FONT_SIZE);
+      syncFontSize();
     });
   }
 
@@ -798,8 +814,13 @@ export async function restoreOriginalSettings() {
   // 更新UI
   updateGeneralSettings();
   updateAppearanceSettings();
-  // 恢复界面缩放（可能在实时预览时已被改动）
+  // 恢复缩放/字体/字号（都可能在实时预览时已被改动）
   applyZoomLevel(settings.interface?.zoom_level);
+  applyFontFamily(
+    settings.interface?.font_family,
+    settings.interface?.font_family_secondary
+  );
+  applyFontSize(settings.interface?.font_size);
   updateClipboardSettings();
   updateHistorySettings();
   await updateAdvancedSettings();
@@ -808,52 +829,301 @@ export async function restoreOriginalSettings() {
   updateShortcutInputs();
 }
 
-// 填充界面字体下拉框：使用后端枚举的系统字体
+// --- 基础字号 ---
+// 取值范围与步长：最小 10、最大 20、可精确到 0.5（与 HTML 的 min/max/step 一致）
+const MIN_FONT_SIZE = 10;
+const MAX_FONT_SIZE = 20;
+// 重置键的目标值（与 getDefaultSettings 保持一致）
+const DEFAULT_FONT_SIZE = 14;
+
+// 归一化字号：空值/非法输入回落默认值，超范围截断，并对齐到 0.5 步长
+function normalizeFontSize(value) {
+  // 输入框被清空时 Number("") 会得到 0，这里显式按默认值处理
+  if (value === "" || value == null) return DEFAULT_FONT_SIZE;
+  const size = Number(value);
+  if (!Number.isFinite(size)) return DEFAULT_FONT_SIZE;
+  const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size));
+  return Math.round(clamped * 2) / 2;
+}
+
+// 回显基础字号：写入输入框，并在已是默认值时置灰重置键
+function syncFontSize() {
+  const input = document.getElementById("font-size");
+  if (!input) return;
+  const value = normalizeFontSize(settings.interface?.font_size);
+  input.value = value;
+  const reset = document.getElementById("font-size-reset");
+  if (reset) reset.disabled = value === DEFAULT_FONT_SIZE;
+}
+
+// --- 界面字体选择器（自定义下拉）---
+// 原生 <select> 的弹层由系统绘制、不应用 CSS 字体，无法让每个选项按自身
+// 字体预览；这里改用自定义列表，每个选项用对应字体渲染。
+// 主要字体优先，主要字体缺字形时由次要字体兜底（次要字体为空表示不启用）。
+// 两个选择器的 DOM id 由 prefix 推导（见 getFontPickerEls）。
+const FONT_PICKERS = [
+  {
+    key: "font_family",
+    prefix: "font-family",
+    // 主要字体为空 = 系统默认
+    emptyLabelKey: "settings.options.font.systemDefault",
+    // 列表中是否提供空值项（次要字体用重置键清除，故不提供）
+    allowEmpty: true,
+  },
+  {
+    key: "font_family_secondary",
+    prefix: "font-family-secondary",
+    // 次要字体为空 = 未启用
+    emptyLabelKey: "settings.options.font.none",
+    allowEmpty: false,
+  },
+];
+
+// 下拉构建是一次性的（避免重复枚举系统字体与重建 DOM 导致界面抖动）
+let fontPickersPopulated = false;
+// 键盘导航高亮的选项下标与当前打开的实例（-1 / null 表示无）
+let fontPickerActiveIndex = -1;
+let openFontPickerInstance = null;
+
+function getFontPickerEls(picker) {
+  const { prefix } = picker;
+  return {
+    root: document.getElementById(`${prefix}-picker`),
+    trigger: document.getElementById(`${prefix}-trigger`),
+    label: document.getElementById(`${prefix}-label`),
+    menu: document.getElementById(`${prefix}-menu`),
+    reset: document.getElementById(`${prefix}-reset`),
+  };
+}
+
+function getFontPickerValue(picker) {
+  return settings.interface?.[picker.key] ?? "";
+}
+
+// 主要/次要字体组合后立即生效
+function applyInterfaceFont() {
+  applyFontFamily(
+    settings.interface?.font_family,
+    settings.interface?.font_family_secondary
+  );
+}
+
+// 同步选中态与触发按钮文案：触发按钮显示选中字体名并按其字体渲染
+function syncFontPicker(picker) {
+  const { label, menu, reset } = getFontPickerEls(picker);
+  if (!label || !menu) return;
+
+  const value = getFontPickerValue(picker);
+  label.textContent = value || t(picker.emptyLabelKey);
+  // 触发按钮跟随选中字体，未选时用回界面字体
+  label.style.fontFamily = value ? `"${value}"` : "";
+  // 重置键只在有选中值时可点
+  if (reset) reset.disabled = !value;
+
+  fontPickerActiveIndex = -1;
+  Array.from(menu.children).forEach((option, index) => {
+    const selected = option.dataset.value === value;
+    option.classList.toggle("selected", selected);
+    option.setAttribute("aria-selected", selected ? "true" : "false");
+    if (selected) fontPickerActiveIndex = index;
+  });
+}
+
+function syncFontPickers() {
+  FONT_PICKERS.forEach(syncFontPicker);
+}
+
+// 移动键盘高亮项（供方向键使用）
+function setFontPickerActive(picker, index) {
+  const { menu } = getFontPickerEls(picker);
+  if (!menu || menu.children.length === 0) return;
+  fontPickerActiveIndex = Math.max(0, Math.min(menu.children.length - 1, index));
+  Array.from(menu.children).forEach((option, i) =>
+    option.classList.toggle("active", i === fontPickerActiveIndex)
+  );
+  menu.children[fontPickerActiveIndex].scrollIntoView({ block: "nearest" });
+}
+
+function openFontPicker(picker) {
+  const { root, trigger, menu } = getFontPickerEls(picker);
+  if (!root || !trigger || !menu || menu.children.length === 0) return;
+  syncFontPicker(picker);
+  openFontPickerInstance = picker;
+  root.classList.add("open");
+  trigger.setAttribute("aria-expanded", "true");
+  setFontPickerActive(picker, fontPickerActiveIndex >= 0 ? fontPickerActiveIndex : 0);
+}
+
+function closeFontPicker() {
+  if (!openFontPickerInstance) return;
+  const { root, trigger, menu } = getFontPickerEls(openFontPickerInstance);
+  openFontPickerInstance = null;
+  fontPickerActiveIndex = -1;
+  if (!root || !trigger) return;
+  root.classList.remove("open");
+  trigger.setAttribute("aria-expanded", "false");
+  if (menu) {
+    Array.from(menu.children).forEach((o) => o.classList.remove("active"));
+  }
+}
+
+// 选中字体：写入设置、立即生效并同步显示
+function selectFontFamily(picker, value) {
+  if (!settings.interface) settings.interface = {};
+  settings.interface[picker.key] = value;
+  applyInterfaceFont();
+  syncFontPickers();
+}
+
+function setupFontPicker(picker) {
+  const { root, trigger, menu, reset } = getFontPickerEls(picker);
+  if (!root || !trigger || !menu || root.dataset.bound === "true") return;
+  root.dataset.bound = "true";
+
+  trigger.addEventListener("click", () => {
+    const isOpen = root.classList.contains("open");
+    closeFontPicker();
+    if (!isOpen) openFontPicker(picker);
+  });
+
+  // 选项用事件委托，列表重建后无需重新绑定
+  menu.addEventListener("click", (event) => {
+    const option = event.target.closest(".font-picker-option");
+    if (!option) return;
+    selectFontFamily(picker, option.dataset.value ?? "");
+    closeFontPicker();
+    trigger.focus();
+  });
+
+  // 重置键：清除该选择器的字体（次要字体清空后即不启用）
+  if (reset) {
+    reset.addEventListener("click", () => {
+      selectFontFamily(picker, "");
+      closeFontPicker();
+    });
+  }
+
+  // 键盘行为对齐原生下拉：上下移动、回车/空格选中、Esc 关闭
+  trigger.addEventListener("keydown", (event) => {
+    const isOpen = root.classList.contains("open");
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowUp":
+        event.preventDefault();
+        if (!isOpen) {
+          openFontPicker(picker);
+        } else {
+          setFontPickerActive(
+            picker,
+            fontPickerActiveIndex + (event.key === "ArrowDown" ? 1 : -1)
+          );
+        }
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        if (!isOpen) {
+          openFontPicker(picker);
+        } else {
+          const option = menu.children[fontPickerActiveIndex];
+          if (option) selectFontFamily(picker, option.dataset.value ?? "");
+          closeFontPicker();
+        }
+        break;
+      case "Escape":
+        if (isOpen) {
+          event.preventDefault();
+          closeFontPicker();
+        }
+        break;
+      case "Tab":
+        closeFontPicker();
+        break;
+    }
+  });
+}
+
+function setupFontPickers() {
+  FONT_PICKERS.forEach(setupFontPicker);
+
+  // 点击任一选择器之外关闭当前展开的列表
+  document.addEventListener("click", (event) => {
+    if (!openFontPickerInstance) return;
+    const { root } = getFontPickerEls(openFontPickerInstance);
+    if (root && !root.contains(event.target)) closeFontPicker();
+  });
+}
+
+// 语言切换后刷新由脚本生成的文案（空值项与「（已不存在）」）
+function refreshFontPickerTexts() {
+  FONT_PICKERS.forEach((picker) => {
+    const { menu } = getFontPickerEls(picker);
+    if (!menu) return;
+    const emptyOption = menu.querySelector('.font-picker-option[data-value=""]');
+    if (emptyOption) emptyOption.textContent = t(picker.emptyLabelKey);
+    const missingOption = menu.querySelector('.font-picker-option[data-missing="true"]');
+    if (missingOption) {
+      missingOption.textContent = t("settings.options.font.missing").replace(
+        "{name}",
+        missingOption.dataset.value
+      );
+    }
+  });
+  syncFontPickers();
+}
+
+// 填充字体下拉：两个选择器共用同一份系统字体，每个选项按自身字体渲染
 // 幂等：已填充过则跳过（避免重复触发后端枚举与 DOM 重建导致界面抖动）
-let fontFamilyPopulated = false;
 async function populateFontFamilyOptions() {
-  const select = document.getElementById("font-family");
-  if (!select || fontFamilyPopulated) return;
-  fontFamilyPopulated = true;
+  if (fontPickersPopulated) return;
+  if (!FONT_PICKERS.some((picker) => getFontPickerEls(picker).menu)) return;
+  fontPickersPopulated = true;
 
   // 异步加载系统字体（若尚未加载，并发调用共享同一个 Promise）
   let fonts = getSystemFonts();
   if (!fonts || fonts.length === 0) {
     fonts = await loadSystemFonts();
     if (!fonts || fonts.length === 0) {
-      fontFamilyPopulated = false;
+      fontPickersPopulated = false;
       return;
     }
   }
 
-  // 重建选项：默认（系统）+ 已安装字体
-  const currentValue = settings.interface?.font_family ?? "";
-  select.innerHTML = "";
+  FONT_PICKERS.forEach((picker) => {
+    const { menu } = getFontPickerEls(picker);
+    if (!menu) return;
 
-  const defaultOpt = document.createElement("option");
-  defaultOpt.value = "";
-  defaultOpt.textContent = "系统默认";
-  select.appendChild(defaultOpt);
+    const currentValue = getFontPickerValue(picker);
+    // 当前值已不在系统字体列表中时也保留一项，避免被静默重置
+    const names = picker.allowEmpty ? [""] : [];
+    for (const name of fonts) {
+      if (name) names.push(name);
+    }
+    if (currentValue && !fonts.includes(currentValue)) names.push(currentValue);
 
-  const fragment = document.createDocumentFragment();
-  for (const name of fonts) {
-    if (!name) continue;
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    opt.style.fontFamily = `"${name}"`;
-    fragment.appendChild(opt);
-  }
-  select.appendChild(fragment);
+    const fragment = document.createDocumentFragment();
+    for (const name of names) {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.setAttribute("role", "option");
+      option.className = "font-picker-option";
+      option.dataset.value = name;
+      if (!name) {
+        option.textContent = t(picker.emptyLabelKey);
+      } else if (!fonts.includes(name)) {
+        option.textContent = t("settings.options.font.missing").replace("{name}", name);
+        option.dataset.missing = "true";
+        option.style.fontFamily = `"${name}"`;
+      } else {
+        option.textContent = name;
+        option.style.fontFamily = `"${name}"`;
+      }
+      fragment.appendChild(option);
+    }
 
-  // 恢复当前选中值（不在列表中则追加）
-  if (currentValue && !Array.from(select.options).some((o) => o.value === currentValue)) {
-    const opt = document.createElement("option");
-    opt.value = currentValue;
-    opt.textContent = `${currentValue}（已不存在）`;
-    opt.style.fontFamily = `"${currentValue}"`;
-    select.appendChild(opt);
-  }
+    menu.innerHTML = "";
+    menu.appendChild(fragment);
+  });
 
-  select.value = currentValue;
+  syncFontPickers();
 }

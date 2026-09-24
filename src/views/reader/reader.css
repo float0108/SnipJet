@@ -19,7 +19,7 @@
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border-color);
   /* 左侧缩进 16px（与卡片内边距等宽），右侧与卡片外边界对齐（关闭按钮） */
-  padding: 0 var(--content-margin) 0 16px;
+  padding: 0 var(--content-margin) 0 var(--space-3xl);
   height: var(--header-height);
   display: flex;
   flex-direction: column;
@@ -37,51 +37,36 @@
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-xl);
   flex-shrink: 0;
-}
-
-.window-close-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-secondary);
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.window-close-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
 }
 
 /* --- 视图切换开关 (Toggle) --- */
 .view-toggle {
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  /* 整体高度 30px，与左侧类型胶囊、底栏按钮分量对等 */
+  gap: var(--space-2xs);
+  padding: var(--space-2xs);
+  /* 整体高度 30px（内含 24px 按钮 + 内边距与描边），与底栏按钮分量对等 */
   border-radius: var(--radius-pill);
   background-color: var(--bg-body);
   border: 1px solid var(--border-color);
 }
 
+/* 纯文本/图片格式下隐藏但保留占位（visibility），避免切换时 header 高度变化导致内容抖动 */
+.view-toggle.is-hidden {
+  visibility: hidden;
+}
+
 .toggle-btn {
   height: 24px;
-  padding: 0 14px;
+  padding: 0 var(--space-2xl);
   background: transparent;
   border: none;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, color 0.2s;
   font-weight: 500;
 }
 
@@ -100,7 +85,7 @@
 .meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-lg);
   min-width: 0;
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
@@ -111,8 +96,8 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  height: 30px;
-  padding: 0 14px;
+  height: 28px;
+  padding: 0 var(--space-2xl);
   border-radius: var(--radius-pill);
   background: rgba(var(--primary-color-rgb), 0.1);
   color: var(--primary-color);
@@ -169,11 +154,17 @@
   /* 隐藏外部滚动条，使用内部元素的滚动条 */
 }
 
-/* 2. HTML iframe 渲染 */
-.content-frame {
-  width: 100%;
-  height: 100%;
-  border: none;
+/* iframe（.content-frame）样式见 components/frames/preview-frame.css */
+
+/* --- 视图显隐：由 .content-container 上的模式类决定（原先由 JS 写内联 style） --- */
+.content-container > .content-frame,
+.content-container > .text-frame {
+  display: none;
+}
+
+.content-container.mode-render > .content-frame,
+.content-container.mode-text > #text-fallback,
+.content-container.mode-source > #source-view {
   display: block;
 }
 
@@ -182,39 +173,46 @@
 .bottom-buttons {
   flex-shrink: 0;
   /* 垂直 16px、左右与内容卡片的外边界对齐 */
-  padding: 16px var(--content-margin);
+  padding: var(--space-3xl) var(--content-margin);
   background-color: var(--bg-surface);
   border-top: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-xl);
 }
 
 .button-group {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--space-xl);
 }
 
 .navigation-buttons {
   display: flex;
   justify-content: flex-start;
-  gap: 12px;
+  gap: var(--space-xl);
 }
 
 .action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 16px;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-3xl);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s,
+    opacity 0.2s;
   border: 1px solid transparent;
+}
+
+.action-btn:focus-visible,
+.nav-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* 编辑按钮 */
@@ -233,8 +231,8 @@
 /* 复制按钮 (主要按钮) */
 .copy-btn {
   background-color: var(--primary-color);
-  color: #ffffff;
-  /* 按钮文字始终白色 */
+  /* 前景色由主色亮度推导，用户自定义浅色主题色时仍可读 */
+  color: var(--on-primary);
 }
 
 .copy-btn:hover {
@@ -250,7 +248,7 @@
 .favorite-btn {
   background-color: var(--primary-color);
   border: 1px solid var(--primary-color);
-  color: white;
+  color: var(--on-primary);
 }
 
 .favorite-btn:hover {
@@ -279,13 +277,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 16px;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-3xl);
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
   border: 1px solid var(--border-color);
   background-color: transparent;
   color: var(--text-primary);
@@ -325,7 +323,7 @@
   align-items: center;
   justify-content: center;
   overflow: auto;
-  padding: 16px;
+  padding: var(--space-3xl);
 }
 
 .full-image {
@@ -338,11 +336,18 @@
 
 .image-info {
   flex-shrink: 0;
-  padding: 12px 16px;
+  padding: var(--space-xl) var(--space-3xl);
   background: var(--bg-body);
   border-top: 1px solid var(--border-color);
   display: flex;
-  gap: 16px;
-  font-size: 12px;
+  gap: var(--space-3xl);
+  font-size: var(--font-size-sm);
   color: var(--text-tertiary);
+}
+
+/* --- 提示气泡 --- */
+/* 本窗口顶部栏比主界面工具栏高，提示下移到标题栏下方避免重叠
+   （其余外观见 common/controls.css） */
+.toast {
+  --toast-top: calc(var(--header-height) + 8px);
 }

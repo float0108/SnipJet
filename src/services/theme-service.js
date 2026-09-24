@@ -20,21 +20,25 @@ function getSystemTheme() {
 }
 
 // 应用主题到页面
+// 三种模式最终都会落到明确的 data-theme 上（system 解析为当前系统偏好），
+// 这样 CSS 里只有 :root（浅色）与 [data-theme="dark"] 两份取值
 export function applyTheme(mode) {
   const root = document.documentElement;
   currentThemeMode = mode || 'light';
 
-  // 移除所有主题属性
-  root.removeAttribute('data-theme');
+  const resolved =
+    currentThemeMode === 'system' ? getSystemTheme() : currentThemeMode;
+  root.setAttribute('data-theme', resolved);
 
-  if (currentThemeMode === 'dark') {
-    root.setAttribute('data-theme', 'dark');
-  } else if (currentThemeMode === 'light') {
-    root.setAttribute('data-theme', 'light');
-  }
-  // system 模式不设置 data-theme，让 CSS 媒体查询自动处理
+  // 主题换了，表面色随之改变，派生色要按新背景重新推导
+  refreshDerivedColors();
 
-  console.log('主题已应用:', currentThemeMode);
+  // 缓存模式供各窗口首帧同步应用（common/bootstrap.js）
+  try {
+    localStorage.setItem('snipjet.theme', currentThemeMode);
+  } catch (e) {}
+
+  console.log('主题已应用:', currentThemeMode, '->', resolved);
 }
 
 // 应用字号设置
@@ -49,14 +53,17 @@ export function applyFontSize(fontSize) {
 }
 
 // 应用界面字体设置
-// 接受 undefined / 空串时还原回默认字体
-export function applyFontFamily(fontFamily) {
+// 按「主要字体 → 次要字体 → 系统默认栈」的顺序回退：浏览器逐字查找字形，
+// 前面字体缺字形时自动使用后面的字体（次要字体为空表示不启用）。
+// 两者都为空时还原回默认字体。
+export function applyFontFamily(primary, secondary) {
   const root = document.documentElement;
-  const family = fontFamily && fontFamily.length > 0 ? fontFamily : DEFAULT_FONT;
-  // 加引号避免带空格的字体名解析错误
-  const cssValue = family.includes(',') || family.includes('"') || family.includes("'")
-    ? family
-    : `"${family}", ${DEFAULT_FONT}`;
+  const families = [primary, secondary].filter((name) => name && name.length > 0);
+  // 字体名加引号避免带空格的名称解析错误，末尾始终保留默认栈兜底
+  const cssValue =
+    families.length === 0
+      ? DEFAULT_FONT
+      : `${families.map((name) => `"${name}"`).join(', ')}, ${DEFAULT_FONT}`;
   root.style.setProperty('--font-family', cssValue);
   // 同时设置 document.body 的字体，使字体立即生效
   document.body.style.fontFamily = cssValue;
@@ -112,11 +119,86 @@ export function applyFavoriteColor(color) {
   const b = parseInt(hex.slice(5, 7), 16);
   root.style.setProperty('--favorite-color', hex);
   root.style.setProperty('--favorite-color-rgb', `${r}, ${g}, ${b}`);
+  // 文字/图标用的派生色要按新色相重新推导
+  refreshDerivedColors();
   console.log('收藏主题色已应用:', hex);
 }
 
+// 主色实心块上的前景色候选：深色用与深色主题背景一致的墨蓝
+const ON_COLOR_LIGHT = "#ffffff";
+const ON_COLOR_DARK = "#0f172a";
+
+// WCAG 相对亮度
+function relativeLuminance(hex) {
+  const channel = (v) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const r = channel(parseInt(hex.slice(1, 3), 16));
+  const g = channel(parseInt(hex.slice(3, 5), 16));
+  const b = channel(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// 对比度
+function contrastRatio(l1, l2) {
+  const light = Math.max(l1, l2);
+  const dark = Math.min(l1, l2);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+// 由主色亮度推导前景色：取白与深色中对比度更高的一个，
+// 保证用户把主题色调成浅色（如黄、青）时按钮文字依然可读
+function pickOnPrimaryColor(hex) {
+  const bg = relativeLuminance(hex);
+  const white = contrastRatio(1, bg);
+  const dark = contrastRatio(relativeLuminance(ON_COLOR_DARK), bg);
+  return white >= dark ? ON_COLOR_LIGHT : ON_COLOR_DARK;
+}
+
+// 把两个 hex 按比例线性混合（t=0 取 hexA，t=1 取 hexB）
+function mixHex(hexA, hexB, t) {
+  const channel = (i, from, to) => {
+    const v = parseInt(from.slice(i, i + 2), 16);
+    const w = parseInt(to.slice(i, i + 2), 16);
+    return Math.round(v + (w - v) * t)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${channel(1, hexA, hexB)}${channel(3, hexA, hexB)}${channel(5, hexA, hexB)}`;
+}
+
+// 推导「小尺寸文字/图标」用色：品牌色多偏亮，直接用作文字或图标时对比度不足
+// （如 #eab308 白底仅 1.91:1），这里朝背景的反方向逐档混入黑/白，
+// 取第一个达标的变体；最差也会混到纯黑/纯白，因此一定能收敛。
+function pickReadableColor(hex, bgHex, minRatio = 4.5) {
+  const isHex = (v) => /^#[0-9a-fA-F]{6}$/.test(v);
+  if (!isHex(hex) || !isHex(bgHex)) return hex;
+
+  const bg = relativeLuminance(bgHex);
+  if (contrastRatio(relativeLuminance(hex), bg) >= minRatio) return hex;
+
+  const towards = bg > 0.5 ? '#000000' : '#ffffff';
+  for (let step = 1; step <= 20; step++) {
+    const mixed = mixHex(hex, towards, step / 20);
+    if (contrastRatio(relativeLuminance(mixed), bg) >= minRatio) return mixed;
+  }
+  return towards;
+}
+
+// 重新推导所有「品牌色 → 文字/图标色」的派生 token。
+// 结果取决于当前主题的表面色（浅底要压暗、深底要提亮），
+// 因此主题切换、以及用户改收藏色之后都要重新执行一次。
+export function refreshDerivedColors() {
+  const root = document.documentElement;
+  const styles = getComputedStyle(root);
+  const surface = styles.getPropertyValue('--bg-surface').trim();
+  const favorite = styles.getPropertyValue('--favorite-color').trim();
+  root.style.setProperty('--favorite-text', pickReadableColor(favorite, surface));
+}
+
 // 应用界面主题色（主色）
-// 有效 hex 时覆盖 --primary-color 与 rgb 分量；
+// 有效 hex 时覆盖 --primary-color、rgb 分量与推导出的前景色；
 // 空值/非法值时移除覆盖，回落到各主题在 CSS 中定义的默认主色
 export function applyPrimaryColor(color) {
   const root = document.documentElement;
@@ -127,9 +209,11 @@ export function applyPrimaryColor(color) {
     const b = parseInt(hex.slice(5, 7), 16);
     root.style.setProperty('--primary-color', hex);
     root.style.setProperty('--primary-color-rgb', `${r}, ${g}, ${b}`);
+    root.style.setProperty('--on-primary', pickOnPrimaryColor(hex));
   } else {
     root.style.removeProperty('--primary-color');
     root.style.removeProperty('--primary-color-rgb');
+    root.style.removeProperty('--on-primary');
   }
   console.log('界面主题色已应用:', hex || '跟随主题默认');
 }
@@ -140,7 +224,7 @@ export function getEffectivePrimaryColor() {
   const value = getComputedStyle(document.documentElement)
     .getPropertyValue('--primary-color')
     .trim();
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#3b82f6';
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#2563eb';
 }
 
 // 应用预览行数设置：最新条目与历史条目分开控制
@@ -188,8 +272,11 @@ export function applyInterfaceSettings(interfaceSettings) {
   }
   // 缩放字段始终应用，确保字段缺失/清空时能回落到 1（不缩放）
   applyZoomLevel(interfaceSettings.zoom_level);
-  // 字体字段始终应用，确保切回默认（空串）时能正确还原
-  applyFontFamily(interfaceSettings.font_family);
+  // 字体字段始终应用，确保清空（主要字体回落系统默认、次要字体不启用）后能正确还原
+  applyFontFamily(
+    interfaceSettings.font_family,
+    interfaceSettings.font_family_secondary
+  );
   if (interfaceSettings.font_size) {
     applyFontSize(interfaceSettings.font_size);
   }
@@ -235,10 +322,10 @@ export async function initTheme() {
 
   // 监听系统主题变化（仅在 system 模式下生效）
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  mediaQuery.addEventListener('change', (e) => {
+  mediaQuery.addEventListener('change', () => {
     if (currentThemeMode === 'system') {
-      // system 模式下，移除 data-theme 让媒体查询自动处理
-      document.documentElement.removeAttribute('data-theme');
+      // system 模式下把系统偏好解析成明确的 data-theme（顺带刷新派生色）
+      applyTheme(currentThemeMode);
     }
   });
 

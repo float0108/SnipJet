@@ -1,6 +1,8 @@
 // 导航功能
 import { emit } from '@tauri-apps/api/event';
 import { getClipboardContent } from "../../services/tauri-api.js";
+// 导航提示会由查看器窗口以 toast 形式展示，属于用户可见文案
+import { t } from "../../utils/i18n.js";
 
 /**
  * 处理导航事件
@@ -46,7 +48,7 @@ async function handleNavigation(payload, container) {
       const targetId = targetItem.id.replace("item-", "");
       const targetData = await getClipboardContent(targetId);
       if (!targetData) {
-        await emit("refresh-reader", { error: "未找到该剪贴板项的完整内容" });
+        await emit("refresh-reader", { error: t("navigation.notFound") });
         return;
       }
       const content = targetData.content || "";
@@ -88,7 +90,7 @@ async function handleNavigation(payload, container) {
 
       // 发送事件给当前reader窗口，通知其没有更多项目
       await emit("refresh-reader", {
-        error: "没有更多项目可以导航",
+        error: t("navigation.noMoreItems"),
       });
       console.log("发送没有更多项目的事件");
     }
@@ -98,7 +100,7 @@ async function handleNavigation(payload, container) {
     // 发送事件给当前reader窗口，通知其导航失败
     try {
       await emit("refresh-reader", {
-        error: "导航失败，请重试",
+        error: t("navigation.failed"),
       });
       console.log("发送导航失败的事件");
     } catch (e) {

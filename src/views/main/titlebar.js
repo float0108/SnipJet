@@ -65,6 +65,8 @@ export const filterState = {
 import { createWindow, setWindowFocusable } from "../../services/window-service.js";
 // 导入日志工具
 import { log, error } from "../../utils/logger.js";
+// 导入国际化
+import { t } from "../../utils/i18n.js";
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -90,6 +92,18 @@ async function syncPinState(pinned) {
 }
 
 /**
+ * 按当前视图状态刷新收藏按钮的文案（查看收藏 / 显示全部）
+ * 语言切换后也需要重写，因此单独抽出
+ */
+export function syncFavoritesButtonLabel() {
+  const favoritesBtn = document.getElementById("favorites-btn");
+  if (!favoritesBtn) return;
+  const label = filterState.showFavoritesOnly ? t("toolbar.showAll") : t("toolbar.viewFavorites");
+  favoritesBtn.title = label;
+  favoritesBtn.setAttribute("aria-label", label);
+}
+
+/**
  * 初始化标题栏按钮
  */
 export async function initTitlebarButtons() {
@@ -102,19 +116,22 @@ export async function initTitlebarButtons() {
   const searchBox = document.getElementById("search-box");
   const searchInput = document.getElementById("search-input");
   const searchClose = document.getElementById("search-close");
-  const expanderBtn = document.querySelector("button[title='文本扩展']");
+  // 文本扩展按钮用 id 定位：其 title 会被 i18n 改写，不能再依赖中文 title 选择器
+  const expanderBtn = document.getElementById("expander-btn");
 
   // 1. 固定按钮逻辑：pin 状态只控制"点击窗口外部是否自动关闭窗口"，
   //    **不**影响窗口置顶。窗口永远置顶（tauri.conf.json: alwaysOnTop: true）。
   if (pinBtn) {
     console.log("[titlebar] 绑定固定按钮事件");
     pinBtn.classList.toggle("pinned", pinState.isPinned); // 同步初始 UI
+    pinBtn.setAttribute("aria-pressed", String(pinState.isPinned));
     await syncPinState(pinState.isPinned);
 
     pinBtn.addEventListener("click", async () => {
       console.log("[titlebar] 固定按钮被点击, 当前状态:", pinState.isPinned);
       pinState.isPinned = !pinState.isPinned;
       pinBtn.classList.toggle("pinned", pinState.isPinned);
+      pinBtn.setAttribute("aria-pressed", String(pinState.isPinned));
       await syncPinState(pinState.isPinned);
     });
   } else {
@@ -183,13 +200,15 @@ export async function initTitlebarButtons() {
   // 4. 收藏按钮
   if (favoritesBtn) {
     console.log("[titlebar] 绑定收藏按钮事件");
+    favoritesBtn.setAttribute("aria-pressed", String(filterState.showFavoritesOnly));
     favoritesBtn.addEventListener("click", () => {
       console.log("[titlebar] 收藏按钮被点击, 当前状态:", filterState.showFavoritesOnly);
       const newState = !filterState.showFavoritesOnly;
       console.log("[titlebar] 切换到新状态:", newState);
       filterState.setShowFavoritesOnly(newState);
       favoritesBtn.classList.toggle("favorites-active", newState);
-      favoritesBtn.title = newState ? "显示全部" : "查看收藏";
+      favoritesBtn.setAttribute("aria-pressed", String(newState));
+      syncFavoritesButtonLabel();
     });
   } else {
     console.warn("[titlebar] 未找到收藏按钮 #favorites-btn");
@@ -380,7 +399,7 @@ export async function openSettingsWindow() {
       console.log("[titlebar] 开始创建设置窗口...");
       await createWindow("settings-window", {
         url: "./settings.html",
-        title: "SnipJet 设置",
+        title: t("window.settingsTitle"),
         width: 600,
         height: 500,
         center: true,
@@ -407,7 +426,7 @@ export async function openExpanderWindow() {
       console.log("[titlebar] 开始创建文本扩展窗口...");
       await createWindow("expander-window", {
         url: "./expander.html",
-        title: "SnipJet 文本扩展",
+        title: t("window.expanderTitle"),
         width: 700,
         height: 500,
         center: true,

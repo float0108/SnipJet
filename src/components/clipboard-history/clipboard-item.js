@@ -92,7 +92,8 @@ export function renderClipboardItem(item, options = {}) {
     preview: escapeHtml((item.preview || "").trim()),
     // 图片格式统一显示 IMG
     label: escapeHtml(item.format === "image" ? "IMG" : item.formatLabel),
-    wordCount: item.wordCount ? `${item.wordCount}字` : "", // 有字数才显示
+    // 有字数才显示
+    wordCount: item.wordCount ? t('item.charCount').replace("{n}", item.wordCount) : "",
     itemTime: escapeHtml(formatItemTime(item.timestamp)),
     isFavorite: item.isFavorite || false,
   };
@@ -106,7 +107,7 @@ export function renderClipboardItem(item, options = {}) {
       // 无预览：只显示元信息占位
       const sizeInfo = item.imageWidth && item.imageHeight
         ? `${item.imageWidth} × ${item.imageHeight}`
-        : '未知尺寸';
+        : t('item.unknownSize');
       previewHtml = `<div class="image-placeholder">
         <span class="placeholder-icon">📷</span>
         <span class="placeholder-info">${sizeInfo}</span>
@@ -115,7 +116,7 @@ export function renderClipboardItem(item, options = {}) {
       // 图片预览：使用占位符，异步加载，根据设置添加尺寸类
       previewHtml = `<img src=""
                            data-image-path="${item.content}"
-                           alt="剪贴板图片"
+                           alt="${t('item.imageAlt')}"
                            class="preview-image loading size-${imagePreviewSize}"
                            loading="lazy" />`;
     }
@@ -130,6 +131,8 @@ export function renderClipboardItem(item, options = {}) {
     (latest ? "" : " is-row") +
     (safeData.isFavorite ? " is-favorite" : "");
 
+  // 点击行为由 clipboard-history 容器上的事件委托处理（见 main.js），
+  // 这里只标注动作类名，便于将来启用 CSP 时不再依赖内联事件
   const itemAttrs = `
       class="${classNames}"
       id="${elementId}"
@@ -141,22 +144,20 @@ export function renderClipboardItem(item, options = {}) {
       data-image-size="${item.imageSize || ''}"
       data-image-format="${item.imageFormat || ''}"
       role="button"
-      tabindex="0"
-      onclick="window.pasteToCurrentWindow(this)"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.pasteToCurrentWindow(this);}"`;
+      tabindex="0"`;
 
   const actionsHtml = `
       <div class="item-actions-overlay">
-        <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? t('action.unfavorite') : t('action.favorite')}" aria-label="${safeData.isFavorite ? t('action.unfavorite') : t('action.favorite')}" onclick="window.toggleFavorite('${uniqueId}'); event.stopPropagation();">
+        <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? t('action.unfavorite') : t('action.favorite')}" aria-label="${safeData.isFavorite ? t('action.unfavorite') : t('action.favorite')}">
           ${safeData.isFavorite ? ICONS.favoriteFilled : ICONS.favorite}
         </button>
-        <button class="card-btn" title="${t('action.edit')}" aria-label="${t('action.edit')}" onclick="window.openReaderWindow(this.closest('.clipboard-item')); event.stopPropagation();">
+        <button class="card-btn btn-edit" title="${t('action.edit')}" aria-label="${t('action.edit')}">
           ${ICONS.edit}
         </button>
-        ${safeData.format !== "image" ? `<button class="card-btn" title="${t('action.pasteAsPlainText')}" aria-label="${t('action.pasteAsPlainText')}" onclick="window.pasteAsPlainText(this.closest('.clipboard-item')); event.stopPropagation();">
+        ${safeData.format !== "image" ? `<button class="card-btn btn-plain" title="${t('action.pasteAsPlainText')}" aria-label="${t('action.pasteAsPlainText')}">
           ${ICONS.copy}
         </button>` : ""}
-        <button class="card-btn btn-delete" title="${t('action.delete')}" aria-label="${t('action.delete')}" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
+        <button class="card-btn btn-delete" title="${t('action.delete')}" aria-label="${t('action.delete')}">
           ${ICONS.delete}
         </button>
       </div>`;
@@ -212,7 +213,7 @@ export async function loadItemImage(imgElement) {
   } catch (e) {
     console.error('Failed to load image:', e);
     // 显示占位符文本
-    imgElement.replaceWith(document.createTextNode('[图片加载失败]'));
+    imgElement.replaceWith(document.createTextNode(t('item.imageLoadFailed')));
   }
 }
 

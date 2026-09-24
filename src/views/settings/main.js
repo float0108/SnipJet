@@ -1,4 +1,11 @@
 // 主入口文件
+import { loadLocaleFromSettings, applyI18n } from "../../utils/i18n.js";
+
+// 静态文案尽早按缓存语言替换。本页 init 挂在 window.load 上（要等所有资源加载完），
+// 等到那时才替换会让页面被 i18n-pending 遮住更久；模块脚本在 </body> 前执行，
+// DOM 已解析，可以安全地在这里先替换一次，等 loadSettings() 读完文件后再校正。
+loadLocaleFromSettings();
+applyI18n();
 
 // 初始化页面
 async function init() {
@@ -12,6 +19,10 @@ async function init() {
     // 加载设置
     const {loadSettings} = await import("./handlers.js");
     await loadSettings();
+
+    // 尽早应用语言（同步读取 localStorage），确保后续控件状态与静态文案为当前语言
+    loadLocaleFromSettings();
+    applyI18n();
 
     console.log("设置加载完成，开始更新UI");
 
@@ -64,10 +75,3 @@ async function init() {
 
 // 页面加载完成后初始化
 window.addEventListener("load", init);
-
-// 暴露全局函数（为了兼容现有的HTML中的onclick调用）
-window.clearShortcut = function (inputId) {
-  import("./shortcuts.js").then(({clearShortcut}) => {
-    clearShortcut(inputId);
-  });
-};

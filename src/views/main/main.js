@@ -9,12 +9,12 @@ import {
   listenToClipboardUpdate,
 } from "../../services/clipboard-service.js";
 import {html2text} from "../../utils/formatter.js";
-import {initTitlebarButtons, pinState, filterState} from "./titlebar.js";
+import {initTitlebarButtons, pinState, filterState, syncFavoritesButtonLabel} from "./titlebar.js";
 import {handleNavigation} from "./navigation.js";
 import { renderEmptyState } from "../../components/empty-state/empty-state.js";
 import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
 import {log, debug, error, event} from "../../utils/logger.js";
-import { t, loadLocaleFromSettings, setLocale } from "../../utils/i18n.js";
+import { t, loadLocaleFromSettings, setLocale, applyI18n } from "../../utils/i18n.js";
 
 // 确保函数被暴露到全局作用域
 if (typeof window !== "undefined") {
@@ -350,6 +350,43 @@ window.pasteToCurrentWindow = async function (element) {
   };
 }
 
+// 卡片内的点击/键盘行为统一用事件委托处理
+// （原先写在 clipboard-item.js 生成的内联 onclick / onkeydown 里）
+function bindClipboardItemActions(container) {
+  if (!container) return;
+
+  container.addEventListener("click", async (event) => {
+    const item = event.target.closest(".clipboard-item");
+    if (!item) return;
+
+    const actionBtn = event.target.closest(".card-btn");
+    // 未点中操作按钮时，整张卡片即"粘贴到当前窗口"
+    if (!actionBtn) {
+      await window.pasteToCurrentWindow(item);
+      return;
+    }
+
+    if (actionBtn.classList.contains("btn-favorite")) {
+      await window.toggleFavorite(item.dataset.id);
+    } else if (actionBtn.classList.contains("btn-delete")) {
+      await window.deleteClipboardItem(item.dataset.id);
+    } else if (actionBtn.classList.contains("btn-edit")) {
+      await window.openReaderWindow(item);
+    } else if (actionBtn.classList.contains("btn-plain")) {
+      await window.pasteAsPlainText(item);
+    }
+  });
+
+  // 键盘可达：卡片本身获得焦点时，回车/空格等同点击
+  container.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const item = event.target.closest(".clipboard-item");
+    if (!item || event.target !== item) return;
+    event.preventDefault();
+    await window.pasteToCurrentWindow(item);
+  });
+}
+
 // 全局状态引用
 window.filterState = filterState;
 
@@ -499,8 +536,15 @@ if (window.location.hostname !== "localhost") {
  * 初始化应用
  */
 async function init() {
+  // 尽早应用语言（同步读取 localStorage），让工具栏等静态文案首帧即为正确语言
+  loadLocaleFromSettings();
+  applyI18n();
+
   const container = document.getElementById("clipboard-history");
   const statusElement = document.getElementById("status");
+
+  // 绑定卡片交互（事件委托）
+  bindClipboardItemActions(container);
 
   console.log("获取DOM元素:", {
     container: !!container,
@@ -522,8 +566,9 @@ async function init() {
     const settings = await invoke("load_settings_command");
     if (settings) {
       localStorage.setItem('snipjet-settings', JSON.stringify(settings));
-      // 加载语言设置
+      // 设置里的语言可能比首帧读到的 localStorage 更新，需重新应用静态文案
       loadLocaleFromSettings();
+      applyI18n();
     }
   } catch (e) {
     // 设置加载失败静默处理
@@ -531,7 +576,7 @@ async function init() {
 
   // 初始不显示加载状态，直接显示空状态
   container.innerHTML = renderEmptyState();
-  updateStatus(statusElement, "初始化中...");
+  updateStatus(statusElement, t("status.initializing"));
 
   // 初始化筛选监听器
   initFilterListener(container, statusElement);
@@ -682,7 +727,11 @@ async function init() {
   // 监听语言变化事件
   try {
     await listen("language-changed", async (event) => {
-      setLocale(event.payload?.locale || "cn");
+      setLocale(event.payload?.locale || "en");
+      // 刷新工具栏等静态文案
+      applyI18n();
+      // 收藏按钮的文案随视图状态变化，需按当前状态重写
+      syncFavoritesButtonLabel();
       applyFilters(container, statusElement);
       console.log("[language-changed] 语言已切换:", event.payload?.locale);
     });

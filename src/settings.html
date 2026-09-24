@@ -3,50 +3,78 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <title>SnipJet 设置</title>
+    <title data-i18n="settings.pageTitle">SnipJet 设置</title>
     <script>
       // 标记首帧渲染阶段：禁用所有过渡/动画，
       // 避免设置异步应用时 toggle 等控件播放状态切换动画（初始化完成后由 main.js 移除）
       document.documentElement.classList.add('preload');
-      // 首帧渲染前同步应用界面字体/字号（主窗口 applyFontFamily 时已写入 localStorage），
-      // 避免设置异步加载完成后整页字体切换导致的抖动
-      try {
-        var f = localStorage.getItem('snipjet.font_family');
-        if (f) document.documentElement.style.setProperty('--font-family', f);
-        var s = localStorage.getItem('snipjet.font_size');
-        if (s) document.documentElement.style.setProperty('--font-size-base', s + 'px');
-      } catch (e) {}
     </script>
-    <script>
-      // 首帧渲染前同步应用界面缩放：读取 localStorage 中的缩放系数，
-      // 避免设置异步加载完成后整页缩放跳变
-      try {
-        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
-        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
-          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
-        }
-      } catch (e) {}
-    </script>
+    <!-- 首帧渲染前同步应用主题/字体/缩放，避免窗口打开后跳变 -->
+    <script src="./bootstrap.js"></script>
     <link rel="stylesheet" href="./common/style.css" />
+    <link rel="stylesheet" href="./common/controls.css" />
     <link rel="stylesheet" href="./views/settings/settings.css" />
     <link rel="stylesheet" href="./common/icon.css" />
   </head>
   <body>
     <div class="settings-container">
-      <div class="sidebar">
-        <div class="sidebar-item active">常规</div>
-        <div class="sidebar-item">外观</div>
-        <div class="sidebar-item">快捷键</div>
-        <div class="sidebar-item">剪贴板</div>
-        <div class="sidebar-item">历史记录</div>
-        <div class="sidebar-item">高级</div>
-      </div>
+      <!-- data-section 为语言无关的分区标识，与 ui.js 的 SECTIONS 键一一对应 -->
+      <nav
+        class="sidebar"
+        aria-label="设置分区"
+        data-i18n-aria-label="settings.sidebar.ariaLabel"
+      >
+        <button
+          type="button"
+          class="sidebar-item active"
+          aria-current="true"
+          data-section="general"
+          data-i18n="settings.section.general"
+        ></button>
+        <button
+          type="button"
+          class="sidebar-item"
+          data-section="appearance"
+          data-i18n="settings.section.appearance"
+        ></button>
+        <button
+          type="button"
+          class="sidebar-item"
+          data-section="shortcuts"
+          data-i18n="settings.section.shortcuts"
+        ></button>
+        <button
+          type="button"
+          class="sidebar-item"
+          data-section="clipboard"
+          data-i18n="settings.section.clipboard"
+        ></button>
+        <button
+          type="button"
+          class="sidebar-item"
+          data-section="history"
+          data-i18n="settings.section.history"
+        ></button>
+        <button
+          type="button"
+          class="sidebar-item"
+          data-section="advanced"
+          data-i18n="settings.section.advanced"
+        ></button>
+      </nav>
 
       <div class="content">
         <div class="header-top" data-tauri-drag-region>
-          <h1 class="section-title">常规</h1>
+          <!-- 标题随激活分区变化（含语言切换），由 ui.js 的 updateSectionTitle 写入；
+               data-i18n 仅作为默认分区（常规）的静态兜底 -->
+          <h1 class="section-title" data-i18n="settings.section.general"></h1>
           <div class="header-actions" data-tauri-drag-region="false">
-            <button class="window-close-btn" id="close-button">
+            <button
+              class="window-close-btn"
+              id="close-button"
+              aria-label="关闭窗口"
+              data-i18n-aria-label="settings.close.ariaLabel"
+            >
               <svg
                 viewBox="0 0 24 24"
                 width="14"
@@ -63,11 +91,11 @@
         </div>
 
         <!-- 常规 -->
-        <div id="general-content">
+        <div id="general-content" class="settings-section active">
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">开机启动</div>
-              <div class="setting-description">启动电脑时自动运行 SnipJet</div>
+              <div class="setting-label" data-i18n="settings.general.startupLaunch"></div>
+              <div class="setting-description" data-i18n="settings.general.startupLaunchDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -79,7 +107,7 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">自动检查更新</div>
+              <div class="setting-label" data-i18n="settings.general.checkUpdates"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -91,9 +119,10 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">界面语言</div>
+              <div class="setting-label" data-i18n="settings.general.language"></div>
             </div>
             <div class="setting-control">
+              <!-- 语言选项使用语言自称，不随界面语言翻译 -->
               <select class="select-input" id="language">
                 <option value="cn">简体中文</option>
                 <option value="en">English</option>
@@ -103,35 +132,35 @@
         </div>
 
         <!-- 外观 -->
-        <div id="appearance-content" style="display: none">
-          <div class="setting-section-title">主题</div>
+        <div id="appearance-content" class="settings-section">
+          <div class="setting-section-title" data-i18n="settings.blocks.theme"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">主题模式</div>
+              <div class="setting-label" data-i18n="settings.appearance.themeMode"></div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="theme">
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-                <option value="system">跟随系统</option>
+                <option value="light" data-i18n="settings.options.theme.light"></option>
+                <option value="dark" data-i18n="settings.options.theme.dark"></option>
+                <option value="system" data-i18n="settings.options.theme.system"></option>
               </select>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">界面主题色</div>
-              <div class="setting-description">按钮、选中项等界面强调色</div>
+              <div class="setting-label" data-i18n="settings.appearance.primaryColor"></div>
+              <div class="setting-description" data-i18n="settings.appearance.primaryColorDesc"></div>
             </div>
             <div class="setting-control">
-              <input type="color" class="color-input" id="primary-color" value="#3b82f6" />
+              <input type="color" class="color-input" id="primary-color" value="#2563eb" />
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">收藏主题色</div>
-              <div class="setting-description">收藏视图背景与收藏卡片的强调色</div>
+              <div class="setting-label" data-i18n="settings.appearance.favoriteColor"></div>
+              <div class="setting-description" data-i18n="settings.appearance.favoriteColorDesc"></div>
             </div>
             <div class="setting-control">
               <input type="color" class="color-input" id="favorite-color" value="#eab308" />
@@ -140,41 +169,165 @@
 
           <div class="setting-divider"></div>
 
-          <div class="setting-section-title">文字</div>
+          <div class="setting-section-title" data-i18n="settings.blocks.text"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">界面字体</div>
-              <div class="setting-description">从系统已安装的字体中选择（启动时自动枚举）</div>
+              <div class="setting-label" data-i18n="settings.appearance.fontFamily"></div>
+              <div class="setting-description" data-i18n="settings.appearance.fontFamilyDesc"></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="font-family" style="width: 200px;">
-                <option value="">系统默认</option>
-              </select>
+              <!-- 自定义下拉：原生 select 的弹层由系统绘制、不应用 CSS 字体，
+                   无法让每个选项按自身字体预览 -->
+              <div class="font-picker" id="font-family-picker">
+                <button
+                  type="button"
+                  class="select-input font-picker-trigger"
+                  id="font-family-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-label="主要字体"
+                  data-i18n-aria-label="settings.appearance.fontFamily"
+                >
+                  <span
+                    class="font-picker-label"
+                    id="font-family-label"
+                    data-i18n="settings.options.font.systemDefault"
+                    ></span
+                  >
+                  <svg
+                    class="font-picker-arrow"
+                    viewBox="0 0 24 24"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="font-picker-menu" id="font-family-menu" role="listbox"></div>
+              </div>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">基础字号</div>
-              <div class="setting-description">界面文字的基础大小</div>
+              <div class="setting-label" data-i18n="settings.appearance.fontFamilySecondary"></div>
+              <div class="setting-description" data-i18n="settings.appearance.fontFamilySecondaryDesc"></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="font-size">
-                <option value="12">12px (小)</option>
-                <option value="14">14px (中)</option>
-                <option value="16">16px (大)</option>
-                <option value="18">18px (特大)</option>
-              </select>
+              <!-- 重置键：清除次要字体（未设置时置灰） -->
+              <button
+                type="button"
+                class="reset-btn"
+                id="font-family-secondary-reset"
+                title="重置"
+                aria-label="重置"
+                data-i18n-title="settings.appearance.reset"
+                data-i18n-aria-label="settings.appearance.reset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
+              <!-- 主要字体缺少字形时用次要字体兜底 -->
+              <div class="font-picker" id="font-family-secondary-picker">
+                <button
+                  type="button"
+                  class="select-input font-picker-trigger"
+                  id="font-family-secondary-trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-label="次要字体"
+                  data-i18n-aria-label="settings.appearance.fontFamilySecondary"
+                >
+                  <span
+                    class="font-picker-label"
+                    id="font-family-secondary-label"
+                    data-i18n="settings.options.font.none"
+                    ></span
+                  >
+                  <svg
+                    class="font-picker-arrow"
+                    viewBox="0 0 24 24"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="font-picker-menu" id="font-family-secondary-menu" role="listbox"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label" data-i18n="settings.appearance.fontSize"></div>
+              <div class="setting-description" data-i18n="settings.appearance.fontSizeDesc"></div>
+            </div>
+            <div class="setting-control">
+              <!-- 重置键：恢复默认字号（已是默认值时置灰） -->
+              <button
+                type="button"
+                class="reset-btn"
+                id="font-size-reset"
+                title="重置"
+                aria-label="重置"
+                data-i18n-title="settings.appearance.reset"
+                data-i18n-aria-label="settings.appearance.reset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
+              <input
+                type="number"
+                class="number-input"
+                id="font-size"
+                min="10"
+                max="20"
+                step="0.5"
+                value="14"
+              />
             </div>
           </div>
 
           <div class="setting-divider"></div>
 
-          <div class="setting-section-title">列表与窗口</div>
+          <div class="setting-section-title" data-i18n="settings.blocks.listWindow"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">界面缩放</div>
-              <div class="setting-description">对所有窗口界面等比缩放，1 表示原始大小（可精确到小数点后两位）</div>
+              <div class="setting-label" data-i18n="settings.appearance.zoomLevel"></div>
+              <div class="setting-description" data-i18n="settings.appearance.zoomLevelDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -185,75 +338,80 @@
                 max="2"
                 step="0.01"
                 value="1"
-                style="width: 80px;"
               />
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">最新条目预览行数</div>
-              <div class="setting-description">列表顶部最新一条显示的文字行数</div>
+              <div class="setting-label" data-i18n="settings.appearance.latestPreviewLines"></div>
+              <div
+                class="setting-description"
+                data-i18n="settings.appearance.latestPreviewLinesDesc"
+              ></div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="latest-preview-lines">
-                <option value="2">2 行</option>
-                <option value="3">3 行</option>
-                <option value="5">5 行</option>
-                <option value="8">8 行</option>
+                <option value="2" data-i18n="settings.options.lines.n2"></option>
+                <option value="3" data-i18n="settings.options.lines.n3"></option>
+                <option value="5" data-i18n="settings.options.lines.n5"></option>
+                <option value="8" data-i18n="settings.options.lines.n8"></option>
               </select>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">历史条目预览行数</div>
-              <div class="setting-description">其余历史条目显示的文字行数</div>
+              <div class="setting-label" data-i18n="settings.appearance.historyPreviewLines"></div>
+              <div
+                class="setting-description"
+                data-i18n="settings.appearance.historyPreviewLinesDesc"
+              ></div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="history-preview-lines">
-                <option value="1">1 行</option>
-                <option value="2">2 行</option>
-                <option value="3">3 行</option>
-                <option value="5">5 行</option>
+                <option value="1" data-i18n="settings.options.lines.n1"></option>
+                <option value="2" data-i18n="settings.options.lines.n2"></option>
+                <option value="3" data-i18n="settings.options.lines.n3"></option>
+                <option value="5" data-i18n="settings.options.lines.n5"></option>
               </select>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">预览字符上限</div>
-              <div class="setting-description">单条预览最多保留的字符数，越大越能铺满上面设置的行数</div>
+              <div class="setting-label" data-i18n="settings.appearance.previewMaxChars"></div>
+              <div class="setting-description" data-i18n="settings.appearance.previewMaxCharsDesc"></div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="preview-max-chars">
-                <option value="200">200 字符</option>
-                <option value="400">400 字符</option>
-                <option value="600">600 字符</option>
-                <option value="1000">1000 字符</option>
-                <option value="2000">2000 字符</option>
+                <option value="200" data-i18n="settings.options.chars.n200"></option>
+                <option value="400" data-i18n="settings.options.chars.n400"></option>
+                <option value="600" data-i18n="settings.options.chars.n600"></option>
+                <option value="1000" data-i18n="settings.options.chars.n1000"></option>
+                <option value="2000" data-i18n="settings.options.chars.n2000"></option>
               </select>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">图片预览大小</div>
-              <div class="setting-description">列表中图片缩略图的显示大小</div>
+              <div class="setting-label" data-i18n="settings.appearance.imagePreviewSize"></div>
+              <div class="setting-description" data-i18n="settings.appearance.imagePreviewSizeDesc"></div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="image-preview-size">
-                <option value="large">大 (100%)</option>
-                <option value="medium">中 (60%)</option>
-                <option value="small">小 (30%)</option>
-                <option value="none">无 (仅显示元信息)</option>
+                <option value="large" data-i18n="settings.options.imageSize.large"></option>
+                <option value="medium" data-i18n="settings.options.imageSize.medium"></option>
+                <option value="small" data-i18n="settings.options.imageSize.small"></option>
+                <option value="none" data-i18n="settings.options.imageSize.none"></option>
               </select>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">失去焦点隐藏</div>
+              <div class="setting-label" data-i18n="settings.appearance.autoHide"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -265,10 +423,10 @@
         </div>
 
         <!-- 快捷键 -->
-        <div id="shortcuts-content" style="display: none">
+        <div id="shortcuts-content" class="settings-section">
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">显示/隐藏界面</div>
+              <div class="setting-label" data-i18n="settings.shortcuts.toggleInterface"></div>
             </div>
             <div class="setting-control">
               <input
@@ -276,20 +434,20 @@
                 class="shortcut-input"
                 id="toggle-interface"
                 placeholder="未设置"
+                data-i18n-placeholder="settings.shortcuts.notSet"
                 readonly
               />
               <button
                 class="clear-btn"
-                onclick="clearShortcut('toggle-interface')"
-              >
-                清空
-              </button>
+                data-clear-for="toggle-interface"
+                data-i18n="settings.shortcuts.clear"
+              ></button>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">功能粘贴</div>
+              <div class="setting-label" data-i18n="settings.shortcuts.functionPaste"></div>
             </div>
             <div class="setting-control">
               <input
@@ -297,35 +455,35 @@
                 class="shortcut-input"
                 id="function-paste"
                 placeholder="未设置"
+                data-i18n-placeholder="settings.shortcuts.notSet"
                 readonly
               />
               <button
                 class="clear-btn"
-                onclick="clearShortcut('function-paste')"
-              >
-                清空
-              </button>
+                data-clear-for="function-paste"
+                data-i18n="settings.shortcuts.clear"
+              ></button>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">快捷粘贴修饰键</div>
-              <div class="setting-description">配合数字键 1~9 使用，触发对应序数的历史项粘贴（不改变历史排序）。选择"无"可禁用该功能。</div>
+              <div class="setting-label" data-i18n="settings.shortcuts.quickPasteMode"></div>
+              <div class="setting-description" data-i18n="settings.shortcuts.quickPasteModeDesc"></div>
             </div>
             <div class="setting-control">
               <select class="select-input" id="quick-paste-mode">
                 <option value="ctrl">Ctrl</option>
                 <option value="num">NumPad</option>
-                <option value="none">无</option>
+                <option value="none" data-i18n="settings.options.quickPaste.none"></option>
               </select>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">候选粘贴快捷键</div>
-              <div class="setting-description">按下后从第 1 项开始，依次轮转粘贴下一项（不改变历史排序）。留空可禁用该功能。</div>
+              <div class="setting-label" data-i18n="settings.shortcuts.rotatingPaste"></div>
+              <div class="setting-description" data-i18n="settings.shortcuts.rotatingPasteDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -333,25 +491,25 @@
                 class="shortcut-input"
                 id="rotating-paste"
                 placeholder="未设置"
+                data-i18n-placeholder="settings.shortcuts.notSet"
                 readonly
               />
               <button
                 class="clear-btn"
-                onclick="clearShortcut('rotating-paste')"
-              >
-                清空
-              </button>
+                data-clear-for="rotating-paste"
+                data-i18n="settings.shortcuts.clear"
+              ></button>
             </div>
           </div>
         </div>
 
         <!-- 剪贴板 -->
-        <div id="clipboard-content" style="display: none">
-          <div class="setting-section-title">记录</div>
+        <div id="clipboard-content" class="settings-section">
+          <div class="setting-section-title" data-i18n="settings.blocks.record"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">自动监听</div>
-              <div class="setting-description">剪贴板变化时自动记录</div>
+              <div class="setting-label" data-i18n="settings.clipboard.autoCopy"></div>
+              <div class="setting-description" data-i18n="settings.clipboard.autoCopyDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -361,26 +519,13 @@
             </div>
           </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label">划词复制</div>
-              <div class="setting-description">选中文本后自动复制</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="copy-on-select" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
           <div class="setting-divider"></div>
 
-          <div class="setting-section-title">粘贴格式</div>
+          <div class="setting-section-title" data-i18n="settings.blocks.pasteFormat"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">去除格式</div>
-              <div class="setting-description">粘贴时仅保留纯文本</div>
+              <div class="setting-label" data-i18n="settings.clipboard.stripFormatting"></div>
+              <div class="setting-description" data-i18n="settings.clipboard.stripFormattingDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -392,8 +537,8 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">使用 Pandoc 粘贴 Markdown</div>
-              <div class="setting-description">启用后将 Markdown 转换为 Docx 格式粘贴，禁用则转换为 HTML 格式</div>
+              <div class="setting-label" data-i18n="settings.clipboard.usePandoc"></div>
+              <div class="setting-description" data-i18n="settings.clipboard.usePandocDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -405,28 +550,31 @@
 
           <div class="setting-item" id="pandoc-template-item">
             <div class="setting-info">
-              <div class="setting-label">Pandoc 模板路径</div>
-              <div class="setting-description">自定义 Docx 模板文件路径（留空使用默认模板）</div>
+              <div class="setting-label" data-i18n="settings.clipboard.pandocTemplatePath"></div>
+              <div
+                class="setting-description"
+                data-i18n="settings.clipboard.pandocTemplatePathDesc"
+              ></div>
             </div>
             <div class="setting-control">
+              <!-- 示例路径保留原样，不随界面语言翻译 -->
               <input
                 type="text"
                 class="text-input"
                 id="pandoc-template-path"
                 placeholder="C:\\path\\to\\template.docx"
-                style="width: 250px;"
               />
             </div>
           </div>
         </div>
 
         <!-- 历史记录 -->
-        <div id="history-content" style="display: none">
-          <div class="setting-section-title">存储上限</div>
+        <div id="history-content" class="settings-section">
+          <div class="setting-section-title" data-i18n="settings.blocks.storageLimit"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">最大历史条目数</div>
-              <div class="setting-description">留空表示不限制，超出时自动清理旧条目</div>
+              <div class="setting-label" data-i18n="settings.history.maxItems"></div>
+              <div class="setting-description" data-i18n="settings.history.maxItemsDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -437,22 +585,20 @@
                 max="10000"
                 step="10"
                 placeholder="无限制"
-                style="width: 100px;"
+                data-i18n-placeholder="settings.history.maxItemsPlaceholder"
               />
             </div>
           </div>
 
           <div class="setting-divider"></div>
 
-          <div class="setting-section-title">自动清理</div>
-          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
-            应用启动时自动清理历史记录（收藏的条目不会被清理）。
-          </div>
+          <div class="setting-section-title" data-i18n="settings.blocks.autoCleanup"></div>
+          <div class="setting-description block" data-i18n="settings.history.cleanupIntro"></div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">按条数清理</div>
-              <div class="setting-description">历史条数超过设定值时，删除最旧的非收藏条目</div>
+              <div class="setting-label" data-i18n="settings.history.cleanupByCount"></div>
+              <div class="setting-description" data-i18n="settings.history.cleanupByCountDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -464,8 +610,8 @@
 
           <div class="setting-item" id="cleanup-count-item">
             <div class="setting-info">
-              <div class="setting-label">保留条数</div>
-              <div class="setting-description">历史记录最多保留多少条</div>
+              <div class="setting-label" data-i18n="settings.history.keepCount"></div>
+              <div class="setting-description" data-i18n="settings.history.keepCountDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -476,15 +622,15 @@
                 max="100000"
                 step="10"
                 placeholder="例如 500"
-                style="width: 100px;"
+                data-i18n-placeholder="settings.history.keepCountPlaceholder"
               />
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">按时间清理</div>
-              <div class="setting-description">删除指定天数之前的历史条目</div>
+              <div class="setting-label" data-i18n="settings.history.cleanupByAge"></div>
+              <div class="setting-description" data-i18n="settings.history.cleanupByAgeDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -496,8 +642,8 @@
 
           <div class="setting-item" id="cleanup-age-item">
             <div class="setting-info">
-              <div class="setting-label">保留天数</div>
-              <div class="setting-description">保留最近多少天的历史记录</div>
+              <div class="setting-label" data-i18n="settings.history.keepDays"></div>
+              <div class="setting-description" data-i18n="settings.history.keepDaysDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -508,23 +654,21 @@
                 max="3650"
                 step="1"
                 placeholder="例如 30"
-                style="width: 100px;"
+                data-i18n-placeholder="settings.history.keepDaysPlaceholder"
               />
             </div>
           </div>
         </div>
 
         <!-- 高级 -->
-        <div id="advanced-content" style="display: none">
-          <div class="setting-section-title">MCP 服务</div>
-          <div class="setting-description" style="margin-bottom: 12px; color: var(--text-secondary);">
-            Model Context Protocol 服务允许 AI 助手（如 Claude）访问和管理您的剪贴板历史。
-          </div>
+        <div id="advanced-content" class="settings-section">
+          <div class="setting-section-title" data-i18n="settings.blocks.mcp"></div>
+          <div class="setting-description block" data-i18n="settings.advanced.mcpIntro"></div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">启用 MCP 服务</div>
-              <div class="setting-description">开启后 AI 助手可以访问剪贴板历史</div>
+              <div class="setting-label" data-i18n="settings.advanced.mcpEnabled"></div>
+              <div class="setting-description" data-i18n="settings.advanced.mcpEnabledDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -536,8 +680,8 @@
 
           <div class="setting-item" id="mcp-port-item">
             <div class="setting-info">
-              <div class="setting-label">服务端口</div>
-              <div class="setting-description">MCP 服务的监听端口</div>
+              <div class="setting-label" data-i18n="settings.advanced.mcpPort"></div>
+              <div class="setting-description" data-i18n="settings.advanced.mcpPortDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -547,27 +691,31 @@
                 min="1024"
                 max="65535"
                 step="1"
-                style="width: 100px;"
               />
             </div>
           </div>
 
           <div class="setting-item" id="mcp-status-item">
             <div class="setting-info">
-              <div class="setting-label">服务状态</div>
+              <div class="setting-label" data-i18n="settings.advanced.mcpStatus"></div>
             </div>
             <div class="setting-control">
-              <span id="mcp-status" class="status-badge status-stopped">未运行</span>
+              <span
+                id="mcp-status"
+                class="status-badge status-stopped"
+                data-i18n="settings.advanced.mcpStopped"
+                ></span
+              >
             </div>
           </div>
 
           <div class="setting-divider"></div>
 
-          <div class="setting-section-title">性能</div>
+          <div class="setting-section-title" data-i18n="settings.blocks.performance"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">搜索扫描上限 (KB)</div>
-              <div class="setting-description">单条内容参与搜索检索的最大长度，超出部分不检索；留空使用默认 1024 KB</div>
+              <div class="setting-label" data-i18n="settings.advanced.searchScanLimit"></div>
+              <div class="setting-description" data-i18n="settings.advanced.searchScanLimitDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -578,15 +726,15 @@
                 max="102400"
                 step="1024"
                 placeholder="1024"
-                style="width: 100px;"
+                data-i18n-placeholder="settings.advanced.searchScanLimitPlaceholder"
               />
             </div>
           </div>
         </div>
 
         <div class="button-footer">
-          <button class="btn btn-cancel" id="cancel-btn">取消</button>
-          <button class="btn btn-confirm" id="confirm-btn">确定</button>
+          <button class="btn btn-cancel" id="cancel-btn" data-i18n="settings.cancel"></button>
+          <button class="btn btn-confirm" id="confirm-btn" data-i18n="settings.confirm"></button>
         </div>
       </div>
     </div>

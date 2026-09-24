@@ -1,3 +1,6 @@
+/* 工具栏 / 搜索框 / 底部按钮 / 提示气泡的通用样式见 common/controls.css，
+   这里只保留本窗口的差异 */
+
 /* 文本扩展窗口样式 */
 .expander-body {
   margin: 0;
@@ -9,38 +12,24 @@
   --footer-height: 67px;
 }
 
-/* --- 固定工具栏 --- */
+/* --- 固定工具栏（比主界面工具栏高，与设置界面顶栏等高） --- */
 .toolbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
   height: var(--header-height);
-  background-color: var(--bg-surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   /* 左右内边距与内容区一致（12px），使分组筛选框左边距与下方卡片对齐 */
-  padding: 4px 12px;
-  z-index: 100;
-  box-shadow: var(--shadow-sm);
-}
-
-.toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  padding: var(--space-xs) var(--space-xl);
 }
 
 .toolbar-left {
-  gap: 6px;
+  gap: var(--space-sm);
 }
 
 .toolbar-right {
-  gap: 6px;
+  gap: var(--space-sm);
+}
+
+/* 本窗口搜索框比主界面略宽 */
+.search-box input {
+  width: 140px;
 }
 
 /* 帮助下拉框 */
@@ -52,17 +41,17 @@
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 4px;
+  margin-top: var(--space-xs);
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  padding: 8px 12px;
+  padding: var(--space-md) var(--space-xl);
   min-width: 220px;
   opacity: 0;
   visibility: hidden;
   transform: translateY(-4px);
-  transition: all 0.15s;
+  transition: opacity 0.15s, visibility 0.15s, transform 0.15s;
   z-index: 200;
 }
 
@@ -73,38 +62,14 @@
 }
 
 .help-item {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  padding: 4px 0;
+  padding: var(--space-xs) 0;
   line-height: 1.5;
 }
 
 .help-item strong {
   color: var(--text-primary);
-}
-
-/* 工具栏按钮 */
-.toolbar-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.toolbar-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.toolbar-btn svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* 筛选下拉框 */
@@ -116,16 +81,16 @@
 .filter-select {
   /* 高度、上下内边距、字号对齐工具栏的搜索框 */
   height: 28px;
-  padding: 2px 10px;
+  padding: var(--space-2xs) var(--space-lg);
   padding-right: 26px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   background: var(--bg-body);
   color: var(--text-primary);
   cursor: pointer;
   outline: none;
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
@@ -143,89 +108,26 @@
   box-shadow: var(--focus-ring);
 }
 
-/* 搜索框样式 */
-.search-box {
-  display: none;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-hover);
-  border-radius: var(--radius-md);
-  padding: 2px 8px;
-  height: 28px;
-  animation: search-slide-in 0.2s ease;
-}
-
-.search-box.active {
-  display: flex;
-}
-
-@keyframes search-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.search-box input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-primary);
-  font-size: 13px;
-  width: 140px;
-  padding: 0 4px;
-}
-
-.search-box input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.search-close {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.search-close:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.search-close svg {
-  width: 14px;
-  height: 14px;
-}
-
 /* --- 主内容区域 --- */
 .expander-content {
   height: calc(100vh - var(--header-height) - var(--footer-height));
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--space-xl);
 }
 
 /* --- 规则列表 --- */
 .rules-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-xl);
 }
 
 /* 规则卡片（参考编辑界面的内容卡片：radius-lg 圆角 + border-strong 描边 + shadow-sm） */
 .rule-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--space-lg);
+  padding: var(--space-xl) var(--space-2xl);
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -249,7 +151,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, color 0.2s, opacity 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -263,7 +165,7 @@
 
 .delete-btn:hover {
   background: rgba(var(--danger-color-rgb), 0.1);
-  color: var(--danger-color);
+  color: var(--danger-text);
   opacity: 1;
 }
 
@@ -282,7 +184,7 @@
   background: transparent;
   color: var(--primary-color);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -302,24 +204,24 @@
 .rule-trigger {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-xs);
   flex-shrink: 0;
 }
 
 .rule-trigger-input {
   width: 90px;
   height: 28px;
-  padding: 4px 8px;
+  padding: var(--space-xs) var(--space-md);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
-  /* 触发词保留等宽字体，便于辨识按键 */
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  /* 不内置等宽字体，跟随用户选择的界面字体 */
+  font-family: var(--font-family);
   font-weight: 600;
   /* 触发词用主题色强调，作为整行的视觉锚点 */
   color: var(--primary-color);
   background: rgba(var(--primary-color-rgb), 0.08);
-  transition: all 0.2s;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
 }
 
 .rule-trigger-input:hover {
@@ -344,7 +246,7 @@
 /* 箭头分隔符 */
 .rule-arrow {
   color: var(--text-tertiary);
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   flex-shrink: 0;
   opacity: 0.5;
 }
@@ -358,13 +260,13 @@
 .rule-content-input {
   width: 100%;
   height: 28px;
-  padding: 4px 8px;
+  padding: var(--space-xs) var(--space-md);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
   background: var(--bg-body);
   color: var(--text-primary);
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .rule-content-input:focus {
@@ -386,8 +288,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--warning-color);
-  margin-right: 4px;
+  color: var(--warning-text);
+  margin-right: var(--space-xs);
   cursor: help;
 }
 
@@ -401,14 +303,14 @@
   height: 28px;
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: var(--space-xs) var(--space-lg);
   border-radius: var(--radius-pill);
   font-size: var(--font-size-sm);
   font-weight: 500;
   background: rgba(var(--primary-color-rgb), 0.1);
   color: var(--primary-color);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
   max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -424,7 +326,7 @@
 /* 标签输入态 */
 .group-tag-input {
   height: 28px;
-  padding: 4px 10px;
+  padding: var(--space-xs) var(--space-lg);
   border-radius: var(--radius-pill);
   font-size: var(--font-size-sm);
   font-weight: 500;
@@ -434,7 +336,7 @@
   outline: none;
   width: 100px;
   min-width: 60px;
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .group-tag-input:focus {
@@ -462,15 +364,15 @@
 }
 
 .group-suggestion-item {
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-md);
 }
 
 .group-suggestion-item:hover {
@@ -493,125 +395,24 @@
   opacity: 0.6;
 }
 
-/* --- 空状态 --- */
-.empty-state {
-  text-align: center;
-  padding: 60px 24px;
-  color: var(--text-tertiary);
-}
-
-.empty-state .empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.3;
-}
-
-.empty-state .empty-text {
-  font-size: 14px;
-  margin-bottom: 6px;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.empty-state .empty-hint {
-  font-size: 13px;
-  color: var(--text-tertiary);
-}
+/* 空状态样式见 components/empty-state/empty-state.css（与主界面共用） */
 
 /* --- 底部按钮区域 --- */
+/* 视觉部分见 common/controls.css，这里只补充本窗口的定位方式 */
 .button-footer {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
   /* 垂直 16px；水平与内容区的 12px 内边距对齐（参考设置界面底部按钮区） */
-  padding: 16px 12px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-surface);
+  padding: var(--space-3xl) var(--space-xl);
   z-index: 100;
 }
 
-.btn {
-  padding: 8px 24px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.btn-cancel {
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-cancel:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--text-tertiary);
-}
-
-.btn-confirm {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.btn-confirm:hover {
-  opacity: 0.9;
-  box-shadow: 0 2px 8px rgba(var(--primary-color-rgb), 0.3);
-}
-
 /* --- 提示气泡 --- */
+/* 其余外观见 common/controls.css */
 .toast {
-  position: fixed;
-  top: 50px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 10px 16px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: var(--shadow-md);
-  z-index: 9999;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.toast.show {
-  opacity: 1;
-}
-
-.toast.success {
-  background-color: var(--success-color);
-  color: white;
-}
-
-.toast.error {
-  background-color: var(--danger-color);
-  color: white;
-}
-
-.toast.warning {
-  background-color: var(--warning-color);
-  color: white;
-}
-
-.toast.info {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.toast svg {
-  width: 16px;
-  height: 16px;
+  --toast-top: 50px;
 }
 
 /* --- 确认对话框 --- */
@@ -628,7 +429,7 @@
   z-index: 10000;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.2s;
+  transition: opacity 0.2s, visibility 0.2s;
 }
 
 .dialog-overlay.show {
@@ -641,7 +442,7 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
-  padding: 20px;
+  padding: var(--space-4xl);
   min-width: 280px;
   max-width: 400px;
   transform: scale(0.95);
@@ -653,32 +454,32 @@
 }
 
 .dialog-title {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-md);
 }
 
 .dialog-message {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.5;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4xl);
 }
 
 .dialog-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-md);
 }
 
 .dialog-btn {
-  padding: 8px 16px;
+  padding: var(--space-md) var(--space-3xl);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, opacity 0.2s;
   border: none;
 }
 
@@ -695,7 +496,7 @@
 
 .dialog-btn-confirm {
   background: var(--danger-color);
-  color: white;
+  color: var(--on-danger);
 }
 
 .dialog-btn-confirm:hover {

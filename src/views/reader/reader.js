@@ -9,6 +9,8 @@ import { html2text } from "../../utils/formatter.js";
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+// 导入国际化工具（t / 语言加载 / 静态文案应用）
+import { t, loadLocaleFromSettings, applyI18n } from "../../utils/i18n.js";
 
 // Toast 提示函数
 function showToast(message, type = "info") {
@@ -46,37 +48,93 @@ function getUrlParams() {
   return params;
 }
 
+// 最近一次渲染进 iframe 的内容：主题切换时需要用新主题色重建 srcdoc
+let lastRenderedHtml = "";
+// 上次渲染是否使用用户选择的字体（Markdown 预览），主题切换重建时需沿用同一选项
+let lastFrameUsesUserFont = false;
+
+// 渲染视图的兜底字体栈（HTML 内容自带字体样式，仅在缺省时生效）
+const FRAME_FALLBACK_FONT =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
+// 生成 iframe 的 srcdoc。
+// iframe 自身的背景取自父窗口的 --bg-surface，所以内部的文字、链接、代码块
+// 颜色必须按当前主题取值，否则深色主题下会出现「深字压深底」和白色代码块。
+// useUserFont：正文跟随用户在设置里选择的界面字体（Markdown 转换出的 HTML
+// 不带字体样式，需要用用户字体兜底）。
+function buildFrameHtml(content, useUserFont = false) {
+  const styles = getComputedStyle(document.documentElement);
+  const read = (name, fallback) =>
+    styles.getPropertyValue(name).trim() || fallback;
+  const bodyFont = useUserFont
+    ? read("--font-family", FRAME_FALLBACK_FONT)
+    : FRAME_FALLBACK_FONT;
+  // 代码块/行内代码默认用等宽字体，跟随用户字体时需一并覆盖
+  const codeFontRule = useUserFont
+    ? "code, kbd, pre, samp { font-family: inherit; }"
+    : "";
+  return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            * { box-sizing: border-box; }
+            html, body { height: 100%; margin: 0; padding: 0; }
+            body {
+              font-family: ${bodyFont};
+              padding: 16px;
+              word-break: break-word;
+              color: ${read("--text-primary", "#1e293b")};
+              line-height: 1.5;
+              overflow-y: auto !important;
+              scrollbar-width: thin !important;
+              scrollbar-color: transparent transparent !important;
+            }
+            body::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
+            body::-webkit-scrollbar-track { background: transparent !important; }
+            body::-webkit-scrollbar-thumb { background-color: transparent !important; border-radius: 3px !important; }
+            body:hover { scrollbar-color: rgba(148, 163, 184, 0.5) transparent !important; }
+            body:hover::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.5) !important; }
+            body:hover::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, 0.8) !important; }
+            a { color: ${read("--primary-color", "#2563eb")}; }
+            img { max-width: 100%; height: auto; }
+            pre { background: ${read("--bg-hover", "#eef1f6")}; padding: 10px; border-radius: 4px; overflow-x: auto; }
+            ${codeFontRule}
+          </style>
+        </head>
+        <body>${content}</body>
+        </html>
+      `;
+}
+
+// 主题切换（含 system 模式跟随系统变化）后按新主题色重建 iframe 内容
+function watchThemeChange() {
+  new MutationObserver(() => {
+    const htmlFrame = document.getElementById("html-frame");
+    if (!htmlFrame || !lastRenderedHtml) return;
+    htmlFrame.srcdoc = buildFrameHtml(lastRenderedHtml, lastFrameUsesUserFont);
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+}
+
 // 切换视图模式
 function switchMode(mode) {
   currentMode = mode;
-  const htmlFrame = document.getElementById("html-frame");
-  const sourceView = document.getElementById("source-view");
-  const textFallback = document.getElementById("text-fallback");
+  const container = document.getElementById("content-container");
   const btns = document.querySelectorAll(".toggle-btn");
 
   // 更新按钮状态
   btns.forEach((btn) => {
-    if (btn.dataset.mode === mode) {
-      btn.classList.add("active");
-    } else {
-      btn.classList.remove("active");
-    }
+    const isActive = btn.dataset.mode === mode;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-pressed", String(isActive));
   });
 
-  // 切换显示
-  if (mode === "render") {
-    htmlFrame.style.display = "block";
-    sourceView.style.display = "none";
-    textFallback.style.display = "none";
-  } else if (mode === "text") {
-    htmlFrame.style.display = "none";
-    sourceView.style.display = "none";
-    textFallback.style.display = "block";
-  } else {
-    htmlFrame.style.display = "none";
-    sourceView.style.display = "block";
-    textFallback.style.display = "none";
-  }
+  // 视图显隐交给 CSS：容器上的 mode-* 类决定显示哪一个
+  container.classList.remove("mode-render", "mode-text", "mode-source");
+  container.classList.add(`mode-${mode}`);
 
   // 不同视图统计的文字范围不同，切换后重新统计总字数
   refreshTotalCharCount();
@@ -98,7 +156,7 @@ function getActiveViewText() {
   if (imageView && imageView.style.display !== "none") return null;
 
   // 渲染模式：以 iframe 内实际渲染的文字为准
-  if (htmlFrame && htmlFrame.style.display !== "none") {
+  if (currentMode === "render" && htmlFrame) {
     try {
       const rendered = htmlFrame.contentDocument?.body?.innerText;
       if (rendered) return rendered;
@@ -108,7 +166,7 @@ function getActiveViewText() {
     // iframe 尚未加载完成时退回纯文本视图，避免总字数先显示为 0
   }
 
-  if (sourceView && sourceView.style.display !== "none") {
+  if (currentMode === "source" && sourceView) {
     return sourceView.textContent || "";
   }
 
@@ -120,7 +178,7 @@ function getSelectedContentText() {
   const htmlFrame = document.getElementById("html-frame");
 
   // 渲染模式的选区在 iframe 内
-  if (htmlFrame && htmlFrame.style.display !== "none") {
+  if (currentMode === "render" && htmlFrame) {
     try {
       const sel = htmlFrame.contentWindow?.getSelection();
       return sel ? sel.toString() : "";
@@ -154,8 +212,8 @@ function updateCharCount() {
 
   const selectedText = getSelectedContentText();
   countEl.textContent = selectedText
-    ? `已选 ${selectedText.length} 字`
-    : `共 ${totalCharCount} 字`;
+    ? t("reader.charCount.selected").replace("{n}", selectedText.length)
+    : t("reader.charCount.total").replace("{n}", totalCharCount);
   divider.hidden = false;
   countEl.hidden = false;
 }
@@ -190,7 +248,7 @@ function bindCharCountListeners() {
 
 // 格式化文件大小
 function formatSize(bytes) {
-  if (!bytes) return "未知";
+  if (!bytes) return t("reader.unknown");
   const size = parseInt(bytes);
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
@@ -247,11 +305,8 @@ async function init() {
 
     // --- 图片处理逻辑 ---
     if (params.format === "image") {
-      // 隐藏其他视图
-      viewToggle.style.visibility = "hidden";
-      htmlFrame.style.display = "none";
-      sourceView.style.display = "none";
-      textFallback.style.display = "none";
+      // 图片视图由下方动态创建；三个文本类视图保持 CSS 默认的隐藏状态
+      viewToggle.classList.add("is-hidden");
 
       // 相对路径 (content 存储的是相对路径)
       const relativePath = decodedContent;
@@ -268,11 +323,6 @@ async function init() {
         const contentContainer = document.getElementById("content-container");
         let imageView = document.getElementById("image-view");
 
-        // 隐藏其他子元素
-        htmlFrame.style.display = "none";
-        textFallback.style.display = "none";
-        sourceView.style.display = "none";
-
         if (!imageView) {
           // 创建图片视图
           imageView = document.createElement("div");
@@ -283,23 +333,22 @@ async function init() {
 
         imageView.innerHTML = `
           <div class="image-wrapper">
-            <img src="data:image/png;base64,${base64}" alt="剪贴板图片" class="full-image" />
+            <img src="data:image/png;base64,${base64}" alt="${t("reader.image.alt")}" class="full-image" />
           </div>
           <div class="image-info">
-            <span>尺寸: ${params.imageWidth || '-'} × ${params.imageHeight || '-'}</span>
-            <span>大小: ${params.imageSize ? formatSize(params.imageSize) : '未知'}</span>
+            <span>${t("reader.image.dimensions").replace("{w}", params.imageWidth || '-').replace("{h}", params.imageHeight || '-')}</span>
+            <span>${t("reader.image.size").replace("{s}", params.imageSize ? formatSize(params.imageSize) : t("reader.unknown"))}</span>
           </div>
         `;
         imageView.style.display = "flex";
-        contentContainer.style.display = "block";
       } catch (e) {
         console.error("[Reader] 加载图片失败:", e);
         // 显示错误信息
-        textFallback.style.display = "block";
         const textContent = textFallback.querySelector(".text-content");
         if (textContent) {
-          textContent.textContent = `[图片加载失败: ${e}]`;
+          textContent.textContent = t("reader.image.loadFailed").replace("{error}", e);
         }
+        switchMode("text");
       }
     } else if (params.format === "html" || params.format === "markdown") {
       // --- HTML/Markdown 处理逻辑 ---
@@ -309,7 +358,7 @@ async function init() {
       if (imageView) imageView.style.display = "none";
 
       // A. 显示切换开关
-      viewToggle.style.visibility = "visible";
+      viewToggle.classList.remove("is-hidden");
 
       // 对于 markdown，需要转换为 HTML 再渲染
       let contentToRender = decodedContent;
@@ -325,37 +374,10 @@ async function init() {
       }
 
       // B. 填充渲染视图 (iframe)
-      const styledHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            * { box-sizing: border-box; }
-            html, body { height: 100%; margin: 0; padding: 0; }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              padding: 16px;
-              word-break: break-word;
-              color: #333;
-              line-height: 1.5;
-              overflow-y: overlay !important;
-              scrollbar-width: thin !important;
-              scrollbar-color: transparent transparent !important;
-            }
-            body::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
-            body::-webkit-scrollbar-track { background: transparent !important; }
-            body::-webkit-scrollbar-thumb { background-color: transparent !important; border-radius: 3px !important; }
-            body:hover { scrollbar-color: rgba(148, 163, 184, 0.5) transparent !important; }
-            body:hover::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.5) !important; }
-            body:hover::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, 0.8) !important; }
-            img { max-width: 100%; height: auto; }
-            pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
-          </style>
-        </head>
-        <body>${contentToRender}</body>
-        </html>
-      `;
-      htmlFrame.srcdoc = styledHtml;
+      // Markdown 转换出的 HTML 不带字体样式，正文跟随用户选择的字体
+      lastRenderedHtml = contentToRender;
+      lastFrameUsesUserFont = params.format === "markdown";
+      htmlFrame.srcdoc = buildFrameHtml(contentToRender, lastFrameUsesUserFont);
 
       // C. 填充纯文本视图
       // markdown 直接显示原始文本，html 需要转换为纯文本
@@ -377,25 +399,23 @@ async function init() {
     } else {
       // --- 纯文本/其他 处理逻辑 ---
 
-      // 隐藏切换开关
-      viewToggle.style.visibility = "hidden";
-      htmlFrame.style.display = "none";
-      sourceView.style.display = "none";
+      // 纯文本没有可切换的视图
+      viewToggle.classList.add("is-hidden");
 
       // 隐藏图片视图
       const imageView = document.getElementById("image-view");
       if (imageView) imageView.style.display = "none";
 
       // 显示文本 Fallback
-      textFallback.style.display = "block";
       const textContent = textFallback.querySelector(".text-content");
       textContent.textContent = decodedContent;
+      switchMode("text");
     }
   } else {
     const textFallback = document.getElementById("text-fallback");
     const textContent = textFallback.querySelector(".text-content");
-    textContent.textContent = "无法读取内容或内容已过期。";
-    textFallback.style.display = "block";
+    textContent.textContent = t("reader.contentUnavailable");
+    switchMode("text");
   }
 
   // 内容渲染完成后刷新字数统计（图片等无文字内容会自动隐藏）
@@ -411,7 +431,7 @@ function saveTextContent(element) {
     const btn = document.querySelector(".edit-btn");
     if (btn) {
       const originalText = btn.innerHTML;
-      btn.innerHTML = "已保存!";
+      btn.innerHTML = t("reader.saved");
       setTimeout(() => (btn.innerHTML = originalText), 2000);
     }
   }
@@ -423,7 +443,7 @@ function saveTextContent(element) {
 // 编辑内容
 function editContent() {
   // 简单的编辑功能，打开一个prompt让用户编辑内容
-  const editedContent = prompt("编辑内容:", currentContent);
+  const editedContent = prompt(t("reader.editPrompt"), currentContent);
   if (editedContent !== null && editedContent !== currentContent) {
     currentContent = editedContent;
     // 更新显示
@@ -431,7 +451,7 @@ function editContent() {
     // 显示编辑成功提示
     const btn = document.querySelector(".edit-btn");
     const originalText = btn.innerHTML;
-    btn.innerHTML = "已保存!";
+    btn.innerHTML = t("reader.saved");
     setTimeout(() => (btn.innerHTML = originalText), 2000);
   }
 }
@@ -444,10 +464,10 @@ async function copyContent() {
     // 简单的视觉反馈
     const btn = document.querySelector(".copy-btn");
     const originalText = btn.innerHTML;
-    btn.innerHTML = "已复制!";
+    btn.innerHTML = t("reader.copied");
     setTimeout(() => (btn.innerHTML = originalText), 2000);
   } catch (err) {
-    alert("复制失败: " + err);
+    alert(t("reader.copyFailed").replace("{error}", err));
   }
 }
 
@@ -466,7 +486,7 @@ function updateFavoriteButton(isFavorite) {
     }
     const text = btn.querySelector(".btn-text");
     if (text) {
-      text.textContent = isFavorite ? "取消收藏" : "添加到收藏";
+      text.textContent = isFavorite ? t("reader.favorite.remove") : t("reader.favorite.add");
     }
   }
 }
@@ -477,14 +497,14 @@ async function addToFavorites() {
   const id = params.get("id");
 
   if (!id) {
-    showToast("无法获取条目ID", "error");
+    showToast(t("reader.toast.noItemId"), "error");
     return;
   }
 
   try {
     const newState = await invoke("toggle_favorite", { id });
     updateFavoriteButton(newState);
-    showToast(newState ? "已添加到收藏" : "已取消收藏", "success");
+    showToast(newState ? t("toast.addedToFavorites") : t("toast.removedFromFavorites"), "success");
 
     // 保存数据到文件
     try {
@@ -494,7 +514,7 @@ async function addToFavorites() {
     }
   } catch (error) {
     console.error("切换收藏状态失败:", error);
-    showToast("操作失败，请重试", "error");
+    showToast(t("reader.toast.operationFailed"), "error");
   }
 }
 
@@ -612,7 +632,7 @@ async function navigateToPrevious() {
     console.log("发送导航到上一个剪贴板项的事件");
   } catch (error) {
     console.error("导航失败:", error);
-    showToast("导航失败，请重试", "error");
+    showToast(t("reader.toast.navigateFailed"), "error");
   }
 }
 
@@ -630,7 +650,7 @@ async function navigateToNext() {
     console.log("发送导航到下一个剪贴板项的事件");
   } catch (error) {
     console.error("导航失败:", error);
-    showToast("导航失败，请重试", "error");
+    showToast(t("reader.toast.navigateFailed"), "error");
   }
 }
 
@@ -775,19 +795,29 @@ async function initialize() {
   console.log("🚀 Reader 窗口开始初始化...");
 
   try {
-    // 1. 初始化内容渲染
+    // 先加载语言设置并应用静态文案，确保用户看到的第一帧即为目标语言
+    loadLocaleFromSettings();
+    applyI18n();
+
+    // 1. 绑定界面按钮事件
+    bindInterfaceEvents();
+
+    // 2. 初始化内容渲染
     init();
 
-    // 2. 绑定字数统计的选区监听（含 iframe 内选区）
+    // 3. 主题切换后按新主题色重建 iframe
+    watchThemeChange();
+
+    // 4. 绑定字数统计的选区监听（含 iframe 内选区）
     bindCharCountListeners();
 
-    // 3. 初始化事件监听 (刷新等)
+    // 5. 初始化事件监听 (刷新等)
     await initEventListeners();
 
-    // 4. 初始化拖拽 (自定义标题栏)
+    // 6. 初始化拖拽 (自定义标题栏)
     await initDragWindow();
 
-    // 5. 初始化窗口尺寸监听 (关键)
+    // 7. 初始化窗口尺寸监听 (关键)
     console.log("调用 setupWindowResizeHandler...");
     await setupWindowResizeHandler();
     console.log("✅ setupWindowResizeHandler 调用完成");
@@ -803,15 +833,30 @@ window.addEventListener("keydown", function (event) {
   }
 });
 
-// 将函数暴露到全局作用域
-window.switchMode = switchMode;
-window.saveTextContent = saveTextContent;
-window.editContent = editContent;
-window.copyContent = copyContent;
-window.addToFavorites = addToFavorites;
-window.closeWindow = closeWindow;
-window.navigateToPrevious = navigateToPrevious;
-window.navigateToNext = navigateToNext;
+// 绑定界面按钮（原先写在 HTML 的 on* 属性里）
+function bindInterfaceEvents() {
+  document.querySelectorAll(".toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", () => switchMode(btn.dataset.mode));
+  });
+
+  document
+    .querySelector(".window-close-btn")
+    ?.addEventListener("click", closeWindow);
+  document
+    .querySelector(".nav-btn.prev-btn")
+    ?.addEventListener("click", navigateToPrevious);
+  document
+    .querySelector(".nav-btn.next-btn")
+    ?.addEventListener("click", navigateToNext);
+  document
+    .querySelector(".favorite-btn")
+    ?.addEventListener("click", addToFavorites);
+
+  // 纯文本视图编辑后保存内容
+  document
+    .querySelector("#text-fallback .text-content")
+    ?.addEventListener("blur", (event) => saveTextContent(event.currentTarget));
+}
 
 // 确保页面加载完成后执行
 if (document.readyState === "loading") {

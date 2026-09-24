@@ -1,5 +1,5 @@
 :root {
-  /* --- 浅色主题变量 --- */
+  /* --- 浅色主题变量（唯一默认主题） --- */
   /* 让原生控件（select、取色器、滚动条等）跟随主题 */
   color-scheme: light;
   /* 背景层级：页面 -> 卡片 -> 交互态，逐级拉开明度差，
@@ -13,33 +13,47 @@
   /* 边框：分隔线用 --border-color，卡片/控件描边用 --border-strong */
   --border-color: #e5e9f0;
   --border-strong: #cbd4e0;
-  --primary-color: #3b82f6;
-  /* 蓝色主色调 */
+  --primary-color: #2563eb;
+  /* 蓝色主色调（blue-600：保证浅色底上的文字/白字按钮都达到 AA 对比度） */
+  --on-primary: #ffffff;
+  /* 主色实心块上的前景色（由主色亮度推导，见 theme-service.applyPrimaryColor） */
   --text-primary: #1e293b;
   /* 深色正文 */
-  --text-secondary: #64748b;
+  --text-secondary: #475569;
   /* 次要信息 */
-  --text-tertiary: #94a3b8;
-  /* 更淡的时间/状态信息 */
+  --text-tertiary: #5b6b80;
+  /* 更淡的时间/状态/描述信息（仍满足 4.5:1） */
 
   /* 语义颜色 */
   --danger-color: #ef4444;
   --success-color: #10b981;
   --warning-color: #f59e0b;
   --favorite-color: #eab308;
+  /* 语义实心块上的前景色：这几个色相的亮度都偏高，只有深色前景能达标，
+     两种主题下取值一致，故只在 :root 定义一次 */
+  --on-danger: #0f172a;
+  --on-success: #0f172a;
+  --on-warning: #0f172a;
+  /* 品牌/语义色的「文字与图标」专用变体：上面几个原色亮度偏高，
+     作小尺寸文字或图标时对比度不足（#eab308 白底 1.91:1、#10b981 仅 2.54:1），
+     故另取一档达标的深色变体；原色仍用于实心填充、描边与浅色底纹。
+     收藏色可由用户自定义，其文字变体由 JS（theme-service.refreshDerivedColors）重新推导 */
+  --danger-text: #dc2626;
+  /* 白底 4.83:1 */
+  --success-text: #047857;
+  /* 白底 5.48:1 */
+  --warning-text: #b45309;
+  /* 白底 5.02:1 */
+  --favorite-text: #8c6b05;
+  /* 白底 4.98:1，与 JS 对默认收藏色的推导结果一致，避免首帧后再跳色 */
   /* 收藏色的 R,G,B 分量，供 rgb() 透明度混合使用（JS 会按用户设置覆盖） */
   --favorite-color-rgb: 234, 179, 8;
 
   /* 语义色的 R,G,B 分量，供 rgba() 透明度混合使用 */
-  --primary-color-rgb: 59, 130, 246;
+  --primary-color-rgb: 37, 99, 235;
   --danger-color-rgb: 239, 68, 68;
   --success-color-rgb: 16, 185, 129;
   --warning-color-rgb: 245, 158, 11;
-
-  /* 内容类型标签色 */
-  --type-html-color: #0284c7;
-  --type-markdown-color: #059669;
-  --type-image-color: #9333ea;
 
   /* 遮罩与滚动条 */
   --overlay-color: rgba(15, 23, 42, 0.35);
@@ -53,6 +67,8 @@
   --font-size-md: var(--font-size-base);
   --font-size-lg: calc(var(--font-size-base) + 2px);
   --font-size-xl: calc(var(--font-size-base) + 4px);
+  /* 卡片外侧元信息（时间 / 字数+类型）字号：卡片间距以此为准推导 */
+  --item-meta-font-size: calc(var(--font-size-xs) - 2px);
 
   /* --- 预览行数 --- */
   --latest-preview-lines: 5;
@@ -74,6 +90,19 @@
   --radius-lg: 12px;
   --radius-pill: 9999px;
 
+  /* 间距比例：与现有取值一一对应（不改变任何实际尺寸），
+     用于内边距、外边距与 flex 间隙；2xs 起为微调档 */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 6px;
+  --space-md: 8px;
+  --space-lg: 10px;
+  --space-xl: 12px;
+  --space-2xl: 14px;
+  --space-3xl: 16px;
+  --space-4xl: 20px;
+  --space-5xl: 24px;
+
   /* 主界面工具栏高度 */
   --toolbar-height: 40px;
   /* 设置/编辑/扩展三个窗口的顶部栏高度（以设置界面标题栏为准） */
@@ -84,46 +113,11 @@
   --sidebar-width: 140px;
 
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --text-content-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    /* --- 深色主题变量（系统自动） --- */
-    color-scheme: dark;
-    --bg-body: #0f172a;
-    --bg-surface: #1e293b;
-    --bg-hover: #2c3b52;
-    --border-color: #2e3b4e;
-    --border-strong: #3e4d63;
-    --primary-color: #60a5fa;
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-tertiary: #64748b;
-    --danger-color: #f87171;
-    --success-color: #34d399;
-    --warning-color: #fbbf24;
-    --favorite-color: #fbbf24;
-    --favorite-color-rgb: 251, 191, 36;
-    --primary-color-rgb: 96, 165, 250;
-    --danger-color-rgb: 248, 113, 113;
-    --success-color-rgb: 52, 211, 153;
-    --warning-color-rgb: 251, 191, 36;
-    --type-html-color: #38bdf8;
-    --type-markdown-color: #34d399;
-    --type-image-color: #c084fc;
-    --overlay-color: rgba(0, 0, 0, 0.55);
-    --scrollbar-thumb: rgba(148, 163, 184, 0.35);
-    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
-    --shadow-md:
-      0 4px 10px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.35);
-  }
-}
-
-/* 手动设置深色主题 */
+/* 深色主题：由 JS（common/bootstrap.js 首帧 + theme-service）写 data-theme，
+   这里只维护唯一一份深色取值，避免同一套调色散落多处 */
 [data-theme="dark"] {
-  /* --- 深色主题变量 --- */
   color-scheme: dark;
   --bg-body: #0f172a;
   --bg-surface: #1e293b;
@@ -131,21 +125,25 @@
   --border-color: #2e3b4e;
   --border-strong: #3e4d63;
   --primary-color: #60a5fa;
+  /* 浅蓝底上白字不达标，改用深色前景（对比度 7:1） */
+  --on-primary: #0f172a;
   --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
+  --text-secondary: #aab6c6;
+  --text-tertiary: #94a3b8;
   --danger-color: #f87171;
   --success-color: #34d399;
   --warning-color: #fbbf24;
   --favorite-color: #fbbf24;
+  /* 深色底上这几个原色作文字已达标（≥4.5:1），文字变体与原色同值 */
+  --danger-text: #f87171;
+  --success-text: #34d399;
+  --warning-text: #fbbf24;
+  --favorite-text: #fbbf24;
   --favorite-color-rgb: 251, 191, 36;
   --primary-color-rgb: 96, 165, 250;
   --danger-color-rgb: 248, 113, 113;
   --success-color-rgb: 52, 211, 153;
   --warning-color-rgb: 251, 191, 36;
-  --type-html-color: #38bdf8;
-  --type-markdown-color: #34d399;
-  --type-image-color: #c084fc;
   --overlay-color: rgba(0, 0, 0, 0.55);
   --scrollbar-thumb: rgba(148, 163, 184, 0.35);
   --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
@@ -154,41 +152,18 @@
     0 4px 10px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.35);
 }
 
-/* 手动设置浅色主题 */
-[data-theme="light"] {
-  /* --- 浅色主题变量 --- */
-  color-scheme: light;
-  --bg-body: #f4f5f7;
-  --bg-surface: #ffffff;
-  --bg-hover: #eef1f6;
-  --border-color: #e5e9f0;
-  --border-strong: #cbd4e0;
-  --primary-color: #3b82f6;
-  --text-primary: #1e293b;
-  --text-secondary: #64748b;
-  --text-tertiary: #94a3b8;
-  --danger-color: #ef4444;
-  --success-color: #10b981;
-  --warning-color: #f59e0b;
-  --favorite-color: #eab308;
-  --favorite-color-rgb: 234, 179, 8;
-  --primary-color-rgb: 59, 130, 246;
-  --danger-color-rgb: 239, 68, 68;
-  --success-color-rgb: 16, 185, 129;
-  --warning-color-rgb: 245, 158, 11;
-  --type-html-color: #0284c7;
-  --type-markdown-color: #059669;
-  --type-image-color: #9333ea;
-  --overlay-color: rgba(15, 23, 42, 0.35);
-  --scrollbar-thumb: rgba(148, 163, 184, 0.5);
-  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.8);
-  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
-  --shadow-md:
-    0 4px 10px -2px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.06);
-}
-
 * {
   box-sizing: border-box;
+}
+
+/* 原生表单控件默认使用系统 UI 字体，不会继承 body/容器的字体，
+   会导致下拉框、输入框与界面其它文字字体不一致；
+   统一改为继承，跟随用户选择的界面字体 */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 body {
@@ -226,44 +201,6 @@ body {
   padding-top: 0;
 }
 
-/* --- Toast 提示样式 --- */
-.toast {
-  position: fixed;
-  top: var(--titlebar-height, 36px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  font-weight: 500;
-  box-shadow: var(--shadow-md);
-  z-index: 9999;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.toast.show {
-  opacity: 1;
-}
-
-.toast.success {
-  background-color: var(--success-color);
-  color: white;
-}
-
-.toast.error {
-  background-color: var(--danger-color);
-  color: white;
-}
-
-.toast.info {
-  background-color: var(--primary-color);
-  color: white;
-}
-
 /* --- 幽灵滚动条样式 --- */
 /* 适用于主页面的滚动区域 */
 .ghost-scrollbar {
@@ -288,4 +225,17 @@ body {
 .ghost-scrollbar::-webkit-scrollbar-thumb {
   background-color: transparent;
   border-radius: 3px;
+}
+
+/* 尊重系统的减少动效设置：全局统一关闭动画与过渡
+   （个别组件无需再单独声明） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

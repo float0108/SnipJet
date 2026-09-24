@@ -41,15 +41,23 @@ body {
   background-color: var(--bg-body);
   /* 稍微深一点的背景区分 */
   border-right: 1px solid var(--border-color);
-  padding: 10px 0;
+  padding: var(--space-lg) 0;
   flex-shrink: 0;
 }
 
+/* 分区切换用原生 button：键盘可达、可聚焦 */
 .sidebar-item {
-  padding: 12px 16px;
+  display: block;
+  width: 100%;
+  padding: var(--space-xl) var(--space-3xl);
   /* 更紧凑的内边距 */
   cursor: pointer;
+  border: none;
   border-left: 3px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -65,13 +73,48 @@ body {
   color: var(--primary-color);
 }
 
+.sidebar-item:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
 /* --- 内容区域 --- */
 .content {
   flex: 1;
-  padding: 0 24px;
+  padding: 0 var(--space-5xl);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* 分区显隐：由 .active 决定显示哪一个（原先写在 HTML 的内联 style 里） */
+.settings-section {
+  display: none;
+}
+
+.settings-section.active {
+  display: block;
+}
+
+/* 少数控件的宽度差异（原先写在 HTML 的内联 style 里） */
+#zoom-level {
+  width: 80px;
+}
+
+#font-size {
+  width: 76px;
+}
+
+#max-history-items,
+#cleanup-count-threshold,
+#cleanup-age-days,
+#mcp-port,
+#search-scan-limit {
+  width: 100px;
+}
+
+#pandoc-template-path {
+  width: 250px;
 }
 
 /* 顶部标题栏 */
@@ -82,9 +125,9 @@ body {
   position: sticky;
   top: 0;
   background: var(--bg-surface);
-  padding: 16px 0 12px 0;
+  padding: var(--space-3xl) 0 var(--space-xl) 0;
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-3xl);
   z-index: 10;
 }
 
@@ -94,20 +137,7 @@ body {
   font-weight: 600;
 }
 
-.window-close-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
-  display: flex;
-}
-
-.window-close-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
+/* 关闭按钮样式见 common/controls.css */
 
 /* --- 设置项 (核心紧凑化) --- */
 .setting-item {
@@ -115,7 +145,7 @@ body {
   /* 左右布局 */
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: var(--space-lg) 0;
   /* 减少垂直间距 */
   border-bottom: 1px solid var(--border-color);
   /* 极淡的分割线 */
@@ -128,13 +158,13 @@ body {
 /* 左侧：标签和描述 */
 .setting-info {
   flex: 1;
-  padding-right: 20px;
+  padding-right: var(--space-4xl);
 }
 
 .setting-label {
   display: block;
   font-weight: 500;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-2xs);
 }
 
 .setting-description {
@@ -144,11 +174,17 @@ body {
   line-height: 1.2;
 }
 
+/* 区块级说明（不在 setting-item 内）：比行内描述醒目一档，并与下方内容拉开间距 */
+.setting-description.block {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xl);
+}
+
 /* 右侧：输入控件区域 */
 .setting-control {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-md);
 }
 
 /* 输入框通用样式 */
@@ -156,7 +192,7 @@ body {
 .select-input,
 .number-input,
 .text-input {
-  padding: 4px 8px;
+  padding: var(--space-xs) var(--space-md);
   /* 极小的内边距 */
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -165,7 +201,7 @@ body {
   color: var(--text-primary);
   height: 28px;
   /* 固定高度 */
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
 }
 
 .shortcut-input {
@@ -185,12 +221,12 @@ body {
 .color-input {
   width: 40px;
   height: 28px;
-  padding: 2px;
+  padding: var(--space-2xs);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--bg-body);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .color-input:hover {
@@ -229,12 +265,93 @@ body {
   box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.2);
 }
 
+/* --- 界面字体选择器（自定义下拉） ---
+   每个选项按自身字体渲染，方便直接预览字体效果 */
+.font-picker {
+  position: relative;
+  width: 200px;
+}
+
+/* 触发按钮复用 .select-input 的视觉，仅调布局（需写在其后以覆盖 width） */
+.font-picker-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.font-picker-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-picker-arrow {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+}
+
+.font-picker.open .font-picker-arrow {
+  transform: rotate(180deg);
+}
+
+.font-picker-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 240px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--space-2xs);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+}
+
+.font-picker.open .font-picker-menu {
+  display: block;
+}
+
+.font-picker-option {
+  display: block;
+  width: 100%;
+  padding: var(--space-xs) var(--space-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.font-picker-option:hover,
+.font-picker-option.active {
+  background: var(--bg-hover);
+}
+
+.font-picker-option.selected {
+  color: var(--primary-color);
+  background: rgba(var(--primary-color-rgb), 0.08);
+}
+
 /* 按钮 */
 .clear-btn {
-  padding: 4px 10px;
+  padding: var(--space-xs) var(--space-lg);
   height: 28px;
   background-color: transparent;
-  color: var(--danger-color);
+  color: var(--danger-text);
   border: 1px solid rgba(var(--danger-color-rgb), 0.3);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -244,6 +361,39 @@ body {
 .clear-btn:hover {
   background-color: rgba(var(--danger-color-rgb), 0.1);
   border-color: var(--danger-color);
+}
+
+/* 图标重置键（次要字体 / 基础字号）：位于控件左侧，无内容可重置时置灰 */
+.reset-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.reset-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.reset-btn:focus-visible {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: var(--focus-ring);
+}
+
+.reset-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* --- 开关 (Toggle) 紧凑版 --- */
@@ -299,56 +449,20 @@ input:checked+.toggle-slider:before {
 /* 调整位移 */
 
 /* --- 底部按钮区域 --- */
+/* 视觉部分见 common/controls.css，这里只补充本窗口的定位方式：
+   吸附在滚动容器底部，内容过高时按钮常驻可见 */
 .button-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 0;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-surface);
+  padding: var(--space-3xl) 0;
   margin-top: auto;
-  flex-shrink: 0;
-  /* 吸附在滚动容器底部：内容过高时按钮常驻可见，各分页通用 */
   position: sticky;
   bottom: 0;
-  z-index: 10;
-}
-
-.btn {
-  padding: 8px 24px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.btn-cancel {
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-cancel:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.btn-confirm {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.btn-confirm:hover {
-  opacity: 0.9;
 }
 
 /* --- 设置分隔线 --- */
 .setting-divider {
   height: 1px;
   background-color: var(--border-color);
-  margin: 16px 0;
+  margin: var(--space-3xl) 0;
 }
 
 /* --- 设置区块标题 --- */
@@ -356,13 +470,13 @@ input:checked+.toggle-slider:before {
   font-weight: 600;
   font-size: var(--font-size-base);
   color: var(--text-primary);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-md);
 }
 
 /* --- 状态标签 --- */
 .status-badge {
   display: inline-block;
-  padding: 4px 12px;
+  padding: var(--space-xs) var(--space-xl);
   border-radius: var(--radius-pill);
   font-size: var(--font-size-xs);
   font-weight: 500;
@@ -370,7 +484,7 @@ input:checked+.toggle-slider:before {
 
 .status-running {
   background-color: rgba(var(--success-color-rgb), 0.1);
-  color: var(--success-color);
+  color: var(--success-text);
 }
 
 .status-stopped {

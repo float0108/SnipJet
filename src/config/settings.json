@@ -6,9 +6,10 @@
   },
   "interface": {
     "theme": "light",
-    "language": "cn",
+    "language": "en",
     "zoom_level": 1,
     "font_family": "",
+    "font_family_secondary": "",
     "favorite_color": "#eab308",
     "primary_color": "",
     "auto_hide": true,
@@ -18,8 +19,7 @@
   },
   "copy": {
     "strip_formatting": false,
-    "auto_copy": true,
-    "copy_on_select": false
+    "auto_copy": true
   },
   "software": {
     "startup_launch": true,

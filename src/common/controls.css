@@ -1,0 +1,273 @@
+/* =========================================
+   共享控件层 (Shared Controls)
+   主界面 / 设置 / 阅读器 / 文本扩展四个窗口共用。
+   各窗口如需差异（高度、内边距等），在窗口自己的 CSS 里做最小覆盖，
+   不再整段复制。
+   ========================================= */
+
+/* --- 顶部固定工具栏 --- */
+.toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--toolbar-height);
+  background-color: var(--bg-surface);
+  /* 毛玻璃效果 (需要浏览器支持 backdrop-filter) */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-md);
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* 工具栏图标按钮 */
+.toolbar-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.toolbar-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toolbar-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+.toolbar-btn svg,
+.toolbar-btn .icon-svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* 置顶状态按钮 */
+.toolbar-btn.pinned {
+  color: var(--primary-color);
+  background-color: rgba(var(--primary-color-rgb), 0.1);
+}
+
+.toolbar-btn.pinned:hover {
+  background-color: rgba(var(--primary-color-rgb), 0.2);
+}
+
+/* 收藏按钮激活状态：与 pin 保持一致的背景填充 */
+.toolbar-btn.favorites-active {
+  color: var(--favorite-text);
+  background-color: rgba(var(--favorite-color-rgb), 0.1);
+}
+
+.toolbar-btn.favorites-active:hover {
+  background-color: rgba(var(--favorite-color-rgb), 0.2);
+}
+
+/* --- 工具栏内的搜索框 --- */
+.search-box {
+  display: none;
+  align-items: center;
+  gap: var(--space-xs);
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  padding: var(--space-2xs) var(--space-md);
+  height: 28px;
+  animation: search-slide-in 0.2s ease;
+}
+
+.search-box.active {
+  display: flex;
+}
+
+@keyframes search-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  width: 120px;
+  padding: 0 var(--space-xs);
+}
+
+.search-box input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.search-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-2xs);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-close:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.search-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* --- 窗口关闭按钮（自定义标题栏内） --- */
+.window-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.window-close-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.window-close-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+/* --- 底部按钮区（各窗口的定位方式不同，只共享视觉部分） --- */
+.button-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-xl);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+/* --- 按钮 --- */
+.btn {
+  padding: var(--space-md) var(--space-5xl);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, opacity 0.2s;
+  border: none;
+}
+
+.btn-cancel {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-cancel:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-confirm {
+  background-color: var(--primary-color);
+  color: var(--on-primary);
+}
+
+.btn-confirm:hover {
+  opacity: 0.9;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* --- 轻提示 --- */
+/* .toast 由主界面/阅读器/扩展窗口使用；.save-notification 是设置窗口的等价提示 */
+.toast,
+.save-notification {
+  position: fixed;
+  top: var(--toast-top, var(--titlebar-height));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-lg) var(--space-xl);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.toast {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.toast.show {
+  opacity: 1;
+}
+
+.toast.success {
+  background-color: var(--success-color);
+  color: var(--on-success);
+}
+
+.toast.error {
+  background-color: var(--danger-color);
+  color: var(--on-danger);
+}
+
+.toast.warning {
+  background-color: var(--warning-color);
+  color: var(--on-warning);
+}
+
+.toast.info,
+.save-notification {
+  background-color: var(--primary-color);
+  color: var(--on-primary);
+}
+
+.toast svg {
+  width: 16px;
+  height: 16px;
+}

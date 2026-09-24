@@ -3,18 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SnipJet - 文本扩展</title>
-    <script>
-      // 首帧渲染前同步应用界面缩放（系数由设置窗口写入 localStorage），避免加载后跳变
-      try {
-        var z = parseFloat(localStorage.getItem('snipjet.zoom_level'));
-        if (z && z !== 1 && window.__TAURI__ && window.__TAURI__.webview) {
-          window.__TAURI__.webview.getCurrentWebview().setZoom(z).catch(function () {});
-        }
-      } catch (e) {}
-    </script>
+    <title data-i18n="expander.pageTitle">SnipJet - 文本扩展</title>
+    <!-- 首帧渲染前同步应用主题/字体/缩放，避免窗口打开后跳变 -->
+    <script src="./bootstrap.js"></script>
     <link rel="stylesheet" href="./common/style.css" />
+    <link rel="stylesheet" href="./common/controls.css" />
     <link rel="stylesheet" href="./views/expander/expander.css" />
+    <link rel="stylesheet" href="./components/empty-state/empty-state.css" />
     <link rel="stylesheet" href="./common/icon.css" />
   </head>
   <body class="expander-body">
@@ -22,34 +17,34 @@
     <div class="toolbar" data-tauri-drag-region>
       <div class="toolbar-group toolbar-left">
         <div class="filter-group">
-          <select id="group-filter" class="filter-select" title="按分组筛选">
-            <option value="">全部分组</option>
+          <select id="group-filter" class="filter-select" title="按分组筛选" aria-label="按分组筛选" data-i18n-title="expander.filter.title" data-i18n-aria-label="expander.filter.ariaLabel">
+            <option value="" data-i18n="expander.filter.all"></option>
           </select>
         </div>
       </div>
       <div class="toolbar-group toolbar-right">
         <div id="search-box" class="search-box">
-          <input type="text" id="search-input" placeholder="搜索触发词..." />
-          <button id="search-close" class="search-close">
+          <input type="text" id="search-input" placeholder="搜索触发词..." aria-label="搜索触发词" data-i18n-placeholder="expander.search.placeholder" data-i18n-aria-label="expander.search.inputAriaLabel" />
+          <button id="search-close" class="search-close" aria-label="关闭搜索" data-i18n-aria-label="expander.search.closeAriaLabel">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
-        <button id="search-btn" class="toolbar-btn" title="搜索 (Ctrl+F)">
+        <button id="search-btn" class="toolbar-btn" title="搜索 (Ctrl+F)" aria-label="搜索" data-i18n-title="expander.search.buttonTitle" data-i18n-aria-label="expander.search.buttonAriaLabel">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         </button>
         <div class="help-wrapper">
-          <button id="help-btn" class="toolbar-btn" title="使用说明">
+          <button id="help-btn" class="toolbar-btn" title="使用说明" aria-label="使用说明" data-i18n-title="expander.help.title" data-i18n-aria-label="expander.help.ariaLabel">
             <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
           </button>
           <div class="help-dropdown" id="help-dropdown">
-            <div class="help-item"><strong>触发词</strong> - 输入关键词自动触发扩展</div>
-            <div class="help-item"><strong>分组</strong> - 点击标签编辑，用于归类管理</div>
-            <div class="help-item"><strong>确认</strong> - 点击底部确认按钮或 Ctrl+S</div>
-            <div class="help-item"><strong>搜索</strong> - Ctrl+F 打开搜索框</div>
-            <div class="help-item"><strong>Esc</strong> - 取消更改并关闭窗口</div>
+            <div class="help-item"><strong data-i18n="expander.help.triggerWord"></strong><span data-i18n="expander.help.triggerWordDesc"></span></div>
+            <div class="help-item"><strong data-i18n="expander.help.group"></strong><span data-i18n="expander.help.groupDesc"></span></div>
+            <div class="help-item"><strong data-i18n="expander.help.confirm"></strong><span data-i18n="expander.help.confirmDesc"></span></div>
+            <div class="help-item"><strong data-i18n="expander.help.search"></strong><span data-i18n="expander.help.searchDesc"></span></div>
+            <div class="help-item"><strong data-i18n="expander.help.esc"></strong><span data-i18n="expander.help.escDesc"></span></div>
           </div>
         </div>
-        <button id="close-btn" class="toolbar-btn" title="关闭">
+        <button id="close-btn" class="toolbar-btn" title="关闭" aria-label="关闭窗口" data-i18n-title="expander.close.title" data-i18n-aria-label="expander.close.ariaLabel">
           <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
@@ -64,8 +59,8 @@
 
     <!-- 底部按钮区域 -->
     <div class="button-footer">
-      <button class="btn btn-cancel" id="cancel-btn">取消</button>
-      <button class="btn btn-confirm" id="save-rules-btn">确认</button>
+      <button class="btn btn-cancel" id="cancel-btn" data-i18n="expander.cancel"></button>
+      <button class="btn btn-confirm" id="save-rules-btn" data-i18n="expander.confirm"></button>
     </div>
 
     <!-- 提示气泡容器 -->

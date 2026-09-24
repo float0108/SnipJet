@@ -4,6 +4,7 @@ import {getClipboardHistory, testTauriConnection, listen} from "./tauri-api.js";
 import {parseClipboardItem} from "../utils/content-parser.js";
 import {renderClipboardItem} from "../components/clipboard-history/clipboard-item.js";
 import {renderHistory, createMockHistory, prependClipboardItem, removeClipboardItem} from "../components/clipboard-history/clipboard-history.js";
+import {t} from "../utils/i18n.js";
 
 /**
  * 更新状态显示
@@ -25,7 +26,7 @@ function updateStatus(element, message) {
 async function loadRealData(container, statusElement, onDataLoaded) {
   console.log("[loadRealData] 开始加载剪贴板历史记录");
   try {
-    updateStatus(statusElement, "加载中...");
+    updateStatus(statusElement, t("status.loading"));
 
     // 测试Tauri连接
     console.log("[loadRealData] 测试 Tauri 连接...");
@@ -55,7 +56,7 @@ async function loadRealData(container, statusElement, onDataLoaded) {
       } else {
         renderHistory(mockHistory, container, statusElement);
       }
-      updateStatus(statusElement, "使用模拟数据（Tauri未连接）");
+      updateStatus(statusElement, t("status.mockNoTauri"));
     }
   } catch (error) {
     console.error("加载数据失败:", error);
@@ -66,7 +67,7 @@ async function loadRealData(container, statusElement, onDataLoaded) {
     } else {
       renderHistory(mockHistory, container, statusElement);
     }
-    updateStatus(statusElement, "使用模拟数据（加载失败）");
+    updateStatus(statusElement, t("status.mockLoadFailed"));
   }
 }
 

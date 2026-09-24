@@ -1,156 +1,24 @@
-/* --- 顶部固定工具栏 --- */
-.toolbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--toolbar-height);
-  background-color: var(--bg-surface);
-  /* 毛玻璃效果 (需要浏览器支持 backdrop-filter) */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 8px;
-  z-index: 100;
-  box-shadow: var(--shadow-sm);
-}
-
-.toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* 工具栏按钮样式 */
-.toolbar-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.toolbar-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.toolbar-btn svg,
-.toolbar-btn .icon-svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* 置顶状态按钮 */
-.toolbar-btn.pinned {
-  color: var(--primary-color);
-  background-color: rgba(var(--primary-color-rgb), 0.1);
-}
-
-.toolbar-btn.pinned:hover {
-  background-color: rgba(var(--primary-color-rgb), 0.2);
-}
-
-/* 收藏按钮激活状态：与 pin 保持一致的背景填充 */
-.toolbar-btn.favorites-active {
-  color: var(--favorite-color);
-  background-color: rgba(var(--favorite-color-rgb), 0.1);
-}
-
-.toolbar-btn.favorites-active:hover {
-  background-color: rgba(var(--favorite-color-rgb), 0.2);
-}
-
-/* 搜索框样式 */
-.search-box {
-  display: none;
-  align-items: center;
-  gap: 4px;
-  background: var(--bg-hover);
-  border-radius: var(--radius-md);
-  padding: 2px 8px;
-  height: 28px;
-  animation: search-slide-in 0.2s ease;
-}
-
-.search-box.active {
-  display: flex;
-}
-
-@keyframes search-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.search-box input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text-primary);
-  font-size: 13px;
-  width: 120px;
-  padding: 0 4px;
-}
-
-.search-box input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.search-close {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.search-close:hover {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.search-close svg {
-  width: 14px;
-  height: 14px;
-}
+/* 主界面：工具栏 / 搜索框样式见 common/controls.css（四窗口共享） */
 
 /* --- 主内容容器 --- */
 
 .container {
   max-width: 800px;
   margin: 0 auto;
-  padding: 12px;
+  padding: var(--space-xl);
   max-height: calc(100vh - var(--toolbar-height));
   /* 计算最大高度，减去工具栏高度 */
-  overflow-y: overlay;
-  /* 滚动条覆盖在内容上，不占内容空间 */
+  overflow-y: auto;
 }
 
 /* 列表：每条自带底色，条目之间的间隙同时用于容纳卡片外侧的元信息 */
 #clipboard-history {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  /* 卡片间距以元信息字号（--item-meta-font-size）为基准，至少留出 3px 余量 */
+  gap: calc(var(--item-meta-font-size) + 3px);
   /* 底部留出空间，避免末条卡片外侧的文字被容器裁掉 */
-  padding-bottom: 8px;
+  padding-bottom: var(--space-md);
 }
 
 /* --- 回到顶部悬浮按钮 --- */
@@ -165,10 +33,10 @@
   justify-content: center;
   padding: 0;
   border-radius: 50%;
-  /* 半透明主题色填充 + 同色描边：轻盈但依然醒目 */
-  background-color: rgba(var(--primary-color-rgb), 0.15);
-  border: 1px solid rgba(var(--primary-color-rgb), 0.3);
-  color: var(--primary-color);
+  /* 主题色实心填充 + 同色描边：醒目且不透明 */
+  background-color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  color: var(--on-primary);
   cursor: pointer;
   box-shadow: var(--shadow-md);
   opacity: 0;
@@ -188,14 +56,19 @@
   transform: translateY(0);
 }
 
-/* 悬停时加深一档 */
+/* 悬停时轻微变淡 */
 .back-to-top:hover {
-  background-color: rgba(var(--primary-color-rgb), 0.28);
+  opacity: 0.9;
 }
 
-/* 按下时再加深一档 */
+/* 按下时更淡一档 */
 .back-to-top:active {
-  background-color: rgba(var(--primary-color-rgb), 0.4);
+  opacity: 0.8;
+}
+
+.back-to-top:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .back-to-top .icon-svg {
@@ -207,8 +80,8 @@
 .status-text {
   text-align: center;
   color: var(--text-tertiary);
-  font-size: 13px;
-  padding: 10px 0;
+  font-size: var(--font-size-sm);
+  padding: var(--space-lg) 0;
   min-height: 0;
 }
 

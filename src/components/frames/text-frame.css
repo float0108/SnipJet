@@ -14,48 +14,49 @@
 .text-content {
   width: 100%;
   height: 100%;
-  padding: 16px;
+  padding: var(--space-3xl);
   white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.6;
   color: var(--text-primary);
   font-family: var(--font-family);
-  font-size: 14px;
+  /* 跟随"基础字号"设置 */
+  font-size: var(--font-size-base);
   background-color: transparent;
   border: none;
   outline: none;
-  overflow-y: overlay !important;
+  overflow-y: auto;
   /* 滚动条覆盖 */
-  scrollbar-width: thin !important;
-  scrollbar-color: transparent transparent !important;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
 /* 滚动条样式 */
 .text-content::-webkit-scrollbar {
-  width: 6px !important;
-  height: 6px !important;
+  width: 6px;
+  height: 6px;
 }
 
 .text-content::-webkit-scrollbar-track {
-  background: transparent !important;
+  background: transparent;
 }
 
 .text-content::-webkit-scrollbar-thumb {
-  background-color: transparent !important;
-  border-radius: 3px !important;
+  background-color: transparent;
+  border-radius: 3px;
 }
 
 /* 悬停显示滚动条 */
 .text-content:hover {
-  scrollbar-color: var(--scrollbar-thumb) transparent !important;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .text-content:hover::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb) !important;
+  background-color: var(--scrollbar-thumb);
 }
 
 .text-content:hover::-webkit-scrollbar-thumb:hover {
-  background-color: var(--scrollbar-thumb-hover) !important;
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 /* --- 2. 编辑状态控制 --- */
@@ -73,39 +74,6 @@
 /* 不可编辑 */
 .text-frame[data-editable="false"] .text-content {
   cursor: default;
-}
-
-/* 确保ghost-scrollbar类也能正确应用 */
-.ghost-scrollbar .text-content {
-  overflow-y: overlay !important;
-  scrollbar-width: thin !important;
-  scrollbar-color: transparent transparent !important;
-}
-
-.ghost-scrollbar .text-content::-webkit-scrollbar {
-  width: 6px !important;
-  height: 6px !important;
-}
-
-.ghost-scrollbar .text-content::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-
-.ghost-scrollbar .text-content::-webkit-scrollbar-thumb {
-  background-color: transparent !important;
-  border-radius: 3px !important;
-}
-
-.ghost-scrollbar .text-content:hover {
-  scrollbar-color: var(--scrollbar-thumb) transparent !important;
-}
-
-.ghost-scrollbar .text-content:hover::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb) !important;
-}
-
-.ghost-scrollbar .text-content:hover::-webkit-scrollbar-thumb:hover {
-  background-color: var(--scrollbar-thumb-hover) !important;
 }
 
 /* =========================================
@@ -131,7 +99,8 @@
   /* 默认隐藏，悬停显示 */
   opacity: 0;
   transform: scale(0.95);
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s,
+    color 0.2s, border-color 0.2s;
 }
 
 .tf-icon-btn svg {
@@ -148,8 +117,8 @@
 /* 按钮悬停态 */
 .tf-icon-btn:hover {
   background: var(--bg-hover, #f3f4f6);
-  color: var(--primary-color, #3b82f6);
-  border-color: var(--primary-color, #3b82f6);
+  color: var(--primary-color, #2563eb);
+  border-color: var(--primary-color, #2563eb);
 }
 
 /* 按钮位置 */
@@ -197,7 +166,7 @@
 .tf-modal-content {
   width: 260px;
   background: var(--bg-surface);
-  padding: 16px;
+  padding: var(--space-3xl);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-strong, #d5dbe5);
   box-shadow: var(--shadow-md);
@@ -212,46 +181,46 @@
 
 /* 模态框内部元素 */
 .tf-modal-title {
-  font-size: 14px;
+  font-size: var(--font-size-base);
   font-weight: 600;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-xl);
   color: var(--text-primary);
 }
 
 .tf-checkbox-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-md);
+  margin-bottom: var(--space-3xl);
 }
 
 .tf-checkbox-label {
   display: flex;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary, #4b5563);
   cursor: pointer;
   user-select: none;
 }
 
 .tf-checkbox-label input {
-  margin-right: 8px;
-  accent-color: var(--primary-color, #3b82f6);
+  margin-right: var(--space-md);
+  accent-color: var(--primary-color, #2563eb);
 }
 
 .tf-modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-md);
 }
 
 .tf-btn {
-  padding: 4px 12px;
+  padding: var(--space-xs) var(--space-xl);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   border: none;
-  transition: background 0.2s;
+  transition: background-color 0.2s, filter 0.2s;
 }
 
 .tf-btn-cancel {
@@ -266,8 +235,8 @@
 }
 
 .tf-btn-confirm {
-  background: var(--primary-color, #3b82f6);
-  color: white;
+  background: var(--primary-color, #2563eb);
+  color: var(--on-primary, #ffffff);
 }
 
 .tf-btn-confirm:hover {
@@ -282,17 +251,17 @@
   right: 12px;
   background: var(--bg-surface);
   color: var(--text-primary);
-  padding: 4px 8px;
+  padding: var(--space-xs) var(--space-md);
   border: 1px solid var(--border-strong, #d5dbe5);
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   pointer-events: none;
   z-index: 30;
   box-shadow: var(--shadow-md);
 
   opacity: 0;
   transform: translateY(5px);
-  transition: all 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .copy-toast.show {
