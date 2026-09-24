@@ -542,6 +542,21 @@ async function init() {
   // 初始化筛选监听器
   initFilterListener(container, statusElement);
 
+  // 回到顶部悬浮按钮：向下滚动一定距离后出现。
+  // 注意：上面 init() 里的 container 变量指向 #clipboard-history（只负责渲染），
+  // 真正产生滚动的是外层 .container 外壳，必须监听它。
+  const backToTopBtn = document.getElementById("back-to-top");
+  const scroller = document.querySelector(".container");
+  if (backToTopBtn && scroller) {
+    const SCROLL_THRESHOLD = 300;
+    backToTopBtn.addEventListener("click", () => {
+      scroller.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    scroller.addEventListener("scroll", () => {
+      backToTopBtn.classList.toggle("visible", scroller.scrollTop > SCROLL_THRESHOLD);
+    });
+  }
+
   // 初始加载历史记录
   await loadRealData(container, statusElement, (history) => {
     updateAllItems(history);

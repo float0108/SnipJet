@@ -175,6 +175,56 @@ body.favorites-view {
   margin-bottom: 0;
 }
 
+/* --- 回到顶部悬浮按钮 --- */
+.back-to-top {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  /* 半透明主题色填充 + 同色描边：轻盈但依然醒目 */
+  background-color: rgba(var(--primary-color-rgb), 0.15);
+  border: 1px solid rgba(var(--primary-color-rgb), 0.3);
+  color: var(--primary-color);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0.2s,
+    background-color 0.2s;
+  z-index: 90;
+}
+
+.back-to-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* 悬停时加深一档 */
+.back-to-top:hover {
+  background-color: rgba(var(--primary-color-rgb), 0.28);
+}
+
+/* 按下时再加深一档 */
+.back-to-top:active {
+  background-color: rgba(var(--primary-color-rgb), 0.4);
+}
+
+.back-to-top .icon-svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* 状态提示 */
 .status-text {
   text-align: center;
