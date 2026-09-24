@@ -1,8 +1,11 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 // 引入 nanohtml2text
 use nanohtml2text::html2text;
+
+use crate::common::globals::PREVIEW_MAX_CHARS;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum ClipboardFormat {
@@ -254,34 +257,44 @@ impl ClipboardItem {
         item
     }
 
+    /// 按格式与内容重算预览。
+    /// 图片/文件的预览不是由 content 生成的（content 分别是路径与路径列表），返回 None 表示跳过。
+    pub fn preview_for(format: &ClipboardFormat, content: &str) -> Option<String> {
+        match format {
+            ClipboardFormat::Html => Some(Self::make_text_preview(&html2text(
+                &Self::fix_unclosed_html_tags(content),
+            ))),
+            ClipboardFormat::Plain | ClipboardFormat::Markdown | ClipboardFormat::Rtf => {
+                Some(Self::make_text_preview(content))
+            }
+            _ => None,
+        }
+    }
+
     /// 生成文本预览
     /// 修改：现在假设传入的 text 已经是纯文本（HTML 已被转换）
     /// 只负责去除多余空白和截断
     fn make_text_preview(text: &str) -> String {
-        const MAX_PREVIEW_CHARS: usize = 50;
-
-        // 处理空白符 (将换行、制表符都视为空格)
-        let words: Vec<&str> = text.split_whitespace().collect();
-
-        if words.is_empty() {
-            return "[空白]".to_string();
-        }
+        // 上限可通过设置调整（全局原子变量），视觉上的截断交给前端的 line-clamp 处理
+        let max_preview_chars = PREVIEW_MAX_CHARS.load(Ordering::Relaxed);
 
         let mut preview = String::new();
         let mut current_len = 0;
 
-        for word in words {
+        // 按需迭代并在达到上限时立即退出：不预先收集全部词，
+        // 这样重算预览（用于上限变更后刷新存量）也不会被超长内容拖慢。
+        for word in text.split_whitespace() {
             let word_len = word.chars().count();
 
             // 如果单个单词直接超长 (非常罕见，但需处理)
-            if current_len == 0 && word_len > MAX_PREVIEW_CHARS {
-                let truncated: String = word.chars().take(MAX_PREVIEW_CHARS).collect();
+            if current_len == 0 && word_len > max_preview_chars {
+                let truncated: String = word.chars().take(max_preview_chars).collect();
                 preview.push_str(&truncated);
                 preview.push_str("...");
                 break;
             }
 
-            if current_len + word_len > MAX_PREVIEW_CHARS {
+            if current_len + word_len > max_preview_chars {
                 // 空间不够了，截断并退出
                 // 这里可以做的更细致：截断当前单词，或者直接省略
                 preview.push_str("...");

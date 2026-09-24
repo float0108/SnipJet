@@ -30,7 +30,9 @@ function getDefaultSettings() {
       font_family: "",
       font_size: 14,
       auto_hide: true,
-      preview_lines: 5,
+      latest_preview_lines: 5,
+      history_preview_lines: 1,
+      preview_max_chars: 600,
       image_preview_size: "medium",
       favorite_color: "#eab308",
       max_history_items: 100,
@@ -97,6 +99,15 @@ export async function loadSettings() {
           settings.shortcuts.rotating_paste = settings.shortcuts.rotating_paste_shortcut;
         }
         delete settings.shortcuts.rotating_paste_shortcut;
+      }
+
+      // 兼容旧版单一"预览行数"：迁移为最新条目的预览行数
+      if (settings.interface?.preview_lines) {
+        if (!settings.interface.latest_preview_lines) {
+          settings.interface.latest_preview_lines =
+            settings.interface.preview_lines;
+        }
+        delete settings.interface.preview_lines;
       }
 
       console.log("设置加载成功:", settings);
@@ -176,9 +187,13 @@ export async function saveSettings() {
     if (settings.interface?.font_size) {
       applyFontSize(settings.interface.font_size);
     }
-    if (settings.interface?.preview_lines) {
-      applyPreviewLines(settings.interface.preview_lines);
-    }
+    // 预览行数：最新条目与历史条目分开应用
+    applyPreviewLines({
+      latest:
+        settings.interface?.latest_preview_lines ??
+        settings.interface?.preview_lines,
+      history: settings.interface?.history_preview_lines,
+    });
     applyFavoriteColor(settings.interface?.favorite_color);
 
     // 更新原始设置备份（保存成功后）
@@ -475,10 +490,24 @@ export function updateAppearanceSettings() {
     fontSize.value = settings.interface?.font_size ?? 14;
   }
 
-  // 更新预览行数
-  const previewLines = document.getElementById("preview-lines");
-  if (previewLines) {
-    previewLines.value = settings.interface?.preview_lines ?? 5;
+  // 更新预览行数（最新条目 / 历史条目）
+  const latestPreviewLines = document.getElementById("latest-preview-lines");
+  if (latestPreviewLines) {
+    latestPreviewLines.value =
+      settings.interface?.latest_preview_lines ??
+      settings.interface?.preview_lines ??
+      5;
+  }
+
+  const historyPreviewLines = document.getElementById("history-preview-lines");
+  if (historyPreviewLines) {
+    historyPreviewLines.value = settings.interface?.history_preview_lines ?? 1;
+  }
+
+  // 更新预览字符上限
+  const previewMaxChars = document.getElementById("preview-max-chars");
+  if (previewMaxChars) {
+    previewMaxChars.value = settings.interface?.preview_max_chars ?? 600;
   }
 
   // 更新图片预览大小
@@ -662,11 +691,27 @@ export function bindSettingsListeners() {
     });
   }
 
-  const previewLines = document.getElementById("preview-lines");
-  if (previewLines) {
-    previewLines.addEventListener("change", function () {
+  const latestPreviewLines = document.getElementById("latest-preview-lines");
+  if (latestPreviewLines) {
+    latestPreviewLines.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.preview_lines = parseInt(this.value);
+      settings.interface.latest_preview_lines = parseInt(this.value);
+    });
+  }
+
+  const historyPreviewLines = document.getElementById("history-preview-lines");
+  if (historyPreviewLines) {
+    historyPreviewLines.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.history_preview_lines = parseInt(this.value);
+    });
+  }
+
+  const previewMaxChars = document.getElementById("preview-max-chars");
+  if (previewMaxChars) {
+    previewMaxChars.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.preview_max_chars = parseInt(this.value);
     });
   }
 

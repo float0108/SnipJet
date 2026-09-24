@@ -47,15 +47,19 @@ export function clearImagePreviewSizeCache() {
 }
 
 /**
- * 渲染单个剪贴板项目 (适配紧凑型 UI)
+ * 渲染单个剪贴板项目
  * @param {Object} item - 解析后的剪贴板项目
+ * @param {Object} [options] - 渲染上下文
+ * @param {boolean} [options.latest] - 是否为最新一条（使用最新条目的预览行数）
  * @returns {string} - 渲染后的HTML字符串
  */
-export function renderClipboardItem(item) {
+export function renderClipboardItem(item, options = {}) {
   if (!item) {
     console.warn("[renderClipboardItem] item 为空");
     return "";
   }
+
+  const { latest = false } = options;
 
   const uniqueId =
     item.id ||
@@ -64,17 +68,19 @@ export function renderClipboardItem(item) {
       : `temp-${Math.random().toString(36).slice(2)}`);
   const elementId = `item-${uniqueId}`;
 
-  // 时间格式化逻辑
-  const formatTimestamp = (timestamp) => {
+  // 条目时间：今天只显示 HH:MM，更早的补上日期
+  const formatItemTime = (timestamp) => {
     if (!timestamp) return "";
     const date = new Date(timestamp);
     const now = new Date();
-    // 如果是今天，只显示 HH:MM
+    const time = date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     if (date.toDateString() === now.toDateString()) {
-      return date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+      return time;
     }
-    // 否则显示 MM/DD HH:MM
-    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
+    return `${date.getMonth() + 1}/${date.getDate()} ${time}`;
   };
 
   const safeData = {
@@ -86,8 +92,8 @@ export function renderClipboardItem(item) {
     preview: escapeHtml((item.preview || "").trim()),
     // 图片格式统一显示 IMG
     label: escapeHtml(item.format === "image" ? "IMG" : item.formatLabel),
-    wordCount: item.wordCount ? `${item.wordCount} 字` : "", // 有字数才显示
-    displayTime: escapeHtml(formatTimestamp(item.timestamp)),
+    wordCount: item.wordCount ? `${item.wordCount}字` : "", // 有字数才显示
+    itemTime: escapeHtml(formatItemTime(item.timestamp)),
     isFavorite: item.isFavorite || false,
   };
 
@@ -117,10 +123,15 @@ export function renderClipboardItem(item) {
     previewHtml = `<div class="item-preview">${safeData.preview}</div>`;
   }
 
-  // 构建 HTML
-  return `
-    <div
-      class="clipboard-item ${safeData.isFavorite ? 'is-favorite' : ''}"
+  // 交互属性（所有条目共用）
+  // 最新一条不加修饰类（沿用基础预览行数），其余标记为 is-row 以使用历史行数
+  const classNames =
+    "clipboard-item" +
+    (latest ? "" : " is-row") +
+    (safeData.isFavorite ? " is-favorite" : "");
+
+  const itemAttrs = `
+      class="${classNames}"
       id="${elementId}"
       data-format="${safeData.format}"
       data-timestamp="${safeData.timestamp}"
@@ -132,8 +143,9 @@ export function renderClipboardItem(item) {
       role="button"
       tabindex="0"
       onclick="window.pasteToCurrentWindow(this)"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.pasteToCurrentWindow(this);}"
-    >
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.pasteToCurrentWindow(this);}"`;
+
+  const actionsHtml = `
       <div class="item-actions-overlay">
         <button class="card-btn btn-favorite ${safeData.isFavorite ? 'active' : ''}" title="${safeData.isFavorite ? t('action.unfavorite') : t('action.favorite')}" aria-label="${safeData.isFavorite ? t('action.unfavorite') : t('action.favorite')}" onclick="window.toggleFavorite('${uniqueId}'); event.stopPropagation();">
           ${safeData.isFavorite ? ICONS.favoriteFilled : ICONS.favorite}
@@ -147,20 +159,23 @@ export function renderClipboardItem(item) {
         <button class="card-btn btn-delete" title="${t('action.delete')}" aria-label="${t('action.delete')}" onclick="window.deleteClipboardItem('${uniqueId}'); event.stopPropagation();">
           ${ICONS.delete}
         </button>
-      </div>
+      </div>`;
+
+  // 卡片外侧的元信息（均不占卡片高度）：左下角时间，右下角"字数 + 类型"
+  const outsideMetaHtml = `
+      <span class="item-time">${safeData.itemTime}</span>
+      <span class="item-meta">${[safeData.wordCount, safeData.label].filter(Boolean).join(" ")}</span>`;
+
+  return `
+    <div ${itemAttrs}
+    >
+${actionsHtml}
 
       <div class="item-body">
         ${previewHtml}
       </div>
 
-      <div class="item-meta-row">
-        <span class="badge type-${safeData.format}">${safeData.label}</span>
-
-        <div class="meta-row-info">
-          ${safeData.wordCount ? `<span class="timestamp meta-word-count">${safeData.wordCount}</span>` : ""}
-          <span class="timestamp">${safeData.displayTime}</span>
-        </div>
-      </div>
+${outsideMetaHtml}
     </div>
   `;
 }

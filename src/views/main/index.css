@@ -134,21 +134,6 @@
 
 /* --- 主内容容器 --- */
 
-/* 收藏视图：主背景融入收藏主题色，与卡片左侧色条形成整体氛围 */
-body.favorites-view {
-  background-color: color-mix(in srgb, var(--favorite-color) 10%, var(--bg-body));
-}
-
-@media (prefers-color-scheme: dark) {
-  body.favorites-view:not([data-theme="light"]) {
-    background-color: color-mix(in srgb, var(--favorite-color) 14%, var(--bg-body));
-  }
-}
-
-[data-theme="dark"] body.favorites-view {
-  background-color: color-mix(in srgb, var(--favorite-color) 14%, var(--bg-body));
-}
-
 .container {
   max-width: 800px;
   margin: 0 auto;
@@ -159,20 +144,13 @@ body.favorites-view {
   /* 滚动条覆盖在内容上，不占内容空间 */
 }
 
+/* 列表：每条自带底色，条目之间的间隙同时用于容纳卡片外侧的元信息 */
 #clipboard-history {
   display: flex;
   flex-direction: column;
-  /* 移除 gap，使用 margin 代替 */
-  padding-top: 4px;
-}
-
-/* 用 margin 代替 gap，这样首项可以单独控制 */
-#clipboard-history > .clipboard-item {
-  margin-bottom: 10px;
-}
-
-#clipboard-history > .clipboard-item:last-child {
-  margin-bottom: 0;
+  gap: 16px;
+  /* 底部留出空间，避免末条卡片外侧的文字被容器裁掉 */
+  padding-bottom: 8px;
 }
 
 /* --- 回到顶部悬浮按钮 --- */

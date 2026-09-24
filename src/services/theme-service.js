@@ -114,12 +114,12 @@ export function applyFavoriteColor(color) {
   console.log('收藏主题色已应用:', hex);
 }
 
-// 应用预览行数设置
-export function applyPreviewLines(lines) {
+// 应用预览行数设置：最新条目与历史条目分开控制
+export function applyPreviewLines({ latest, history } = {}) {
   const root = document.documentElement;
-  const previewLines = lines || 5;
-  root.style.setProperty('--preview-lines', previewLines);
-  console.log('预览行数已应用:', previewLines);
+  root.style.setProperty('--latest-preview-lines', latest || 5);
+  root.style.setProperty('--history-preview-lines', history || 1);
+  console.log('预览行数已应用:', { latest, history });
 }
 
 // 应用所有界面设置
@@ -134,9 +134,12 @@ export function applyInterfaceSettings(interfaceSettings) {
   if (interfaceSettings.font_size) {
     applyFontSize(interfaceSettings.font_size);
   }
-  if (interfaceSettings.preview_lines) {
-    applyPreviewLines(interfaceSettings.preview_lines);
-  }
+  // 预览行数：latest 兜底旧版单一 preview_lines，避免升级后设置被重置
+  applyPreviewLines({
+    latest:
+      interfaceSettings.latest_preview_lines ?? interfaceSettings.preview_lines,
+    history: interfaceSettings.history_preview_lines,
+  });
   // 收藏主题色始终应用，确保字段缺失/清空时能回落到默认色
   applyFavoriteColor(interfaceSettings.favorite_color);
 }
@@ -166,7 +169,7 @@ export async function initTheme() {
     // 应用默认值
     applyTheme('light');
     applyFontSize(14);
-    applyPreviewLines(5);
+    applyPreviewLines({ latest: 5, history: 1 });
   }
 
   // 监听系统主题变化（仅在 system 模式下生效）

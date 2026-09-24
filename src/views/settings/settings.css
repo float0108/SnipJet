@@ -146,10 +146,11 @@ body {
 /* 输入框通用样式 */
 .shortcut-input,
 .select-input,
-.number-input {
+.number-input,
+.text-input {
   padding: 4px 8px;
   /* 极小的内边距 */
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
   background: var(--bg-body);
@@ -177,7 +178,7 @@ body {
   width: 40px;
   height: 28px;
   padding: 2px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--bg-body);
   cursor: pointer;
@@ -191,7 +192,7 @@ body {
 .color-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+  box-shadow: var(--focus-ring);
 }
 
 /* 隐藏系统取色器默认的内边距（WebView2/Chromium） */
@@ -206,10 +207,11 @@ body {
 
 .shortcut-input:focus,
 .select-input:focus,
-.shortcut-input:focus {
+.number-input:focus,
+.text-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+  box-shadow: var(--focus-ring);
 }
 
 .shortcut-input.recording {
@@ -261,7 +263,7 @@ body {
   bottom: 0;
   background-color: var(--border-color);
   transition: .3s;
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
 }
 
 .toggle-slider:before {
@@ -349,7 +351,7 @@ input:checked+.toggle-slider:before {
 .status-badge {
   display: inline-block;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: var(--font-size-xs);
   font-weight: 500;
 }

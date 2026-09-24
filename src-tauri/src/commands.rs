@@ -28,12 +28,15 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{
-    APP_HANDLE, LAST_HASH, ROTATING_PASTE_LAST_INDEX, SHORTCUT_ACTION_MAP, SYSTEM_FONTS_CACHE,
-    WINDOW_PIN_STATE, set_clipboard_ignore_for,
+    APP_HANDLE, DEFAULT_PREVIEW_MAX_CHARS, LAST_HASH, PREVIEW_MAX_CHARS,
+    ROTATING_PASTE_LAST_INDEX, SHORTCUT_ACTION_MAP, SYSTEM_FONTS_CACHE, WINDOW_PIN_STATE,
+    set_clipboard_ignore_for,
 };
 use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
 use crate::AppState;
+
+use std::sync::atomic::Ordering;
 
 // 引入你的其他依赖，例如 ClipboardManager, LAST_HASH 等
 #[tauri::command]
@@ -2123,6 +2126,48 @@ pub fn update_max_history_items(
     let mut max_lock = state.max_history_items.lock().unwrap();
     *max_lock = max_items;
     info!("Max history items updated to: {:?}", max_items);
+    Ok(())
+}
+
+/// 更新预览字符上限，并按新上限刷新存量预览
+#[tauri::command]
+pub fn update_preview_max_chars(
+    state: State<'_, Arc<AppState>>,
+    max_chars: Option<usize>,
+) -> Result<(), String> {
+    let cap = max_chars
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_PREVIEW_MAX_CHARS);
+    PREVIEW_MAX_CHARS.store(cap, Ordering::Relaxed);
+    info!("Preview max chars updated to: {}", cap);
+
+    // 1. 按新上限重算数据库里的存量预览（历史表 + 收藏表）
+    match state.datastore.refresh_previews() {
+        Ok(count) => info!("Refreshed {} stored previews", count),
+        Err(e) => error!("Failed to refresh stored previews: {}", e),
+    }
+
+    // 2. 重新载入内存数据，让列表推送使用新预览
+    let items = state.datastore.load_clipboard_history()?;
+    let list_items: Vec<ClipboardItem> = items.iter().map(|it| it.to_list_item()).collect();
+    {
+        let mut history_lock = state.history.lock().unwrap();
+        *history_lock = items;
+    }
+    if let Ok(favorites) = state.datastore.load_favorites() {
+        let mut favorites_lock = state.favorites.lock().unwrap();
+        *favorites_lock = favorites;
+    }
+
+    // 3. 立即通知前端刷新列表
+    let payload = serde_json::json!({
+        "type": "state-changed",
+        "items": list_items
+    });
+    if let Err(e) = state.app_handle.emit("clipboard-update", &payload) {
+        error!("Event emit error: {:?}", e);
+    }
+
     Ok(())
 }
 

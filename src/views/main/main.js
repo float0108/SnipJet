@@ -11,10 +11,7 @@ import {
 import {html2text} from "../../utils/formatter.js";
 import {initTitlebarButtons, pinState, filterState} from "./titlebar.js";
 import {handleNavigation} from "./navigation.js";
-import {
-  renderEmptyState,
-  ensureEmptyStateStyles,
-} from "../../components/empty-state/empty-state.js";
+import { renderEmptyState } from "../../components/empty-state/empty-state.js";
 import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
 import {log, debug, error, event} from "../../utils/logger.js";
 import { t, loadLocaleFromSettings, setLocale } from "../../utils/i18n.js";
@@ -532,9 +529,6 @@ async function init() {
     // 设置加载失败静默处理
   }
 
-  // 确保加载空状态样式
-  ensureEmptyStateStyles();
-
   // 初始不显示加载状态，直接显示空状态
   container.innerHTML = renderEmptyState();
   updateStatus(statusElement, "初始化中...");
@@ -642,6 +636,15 @@ async function init() {
         console.log("[settings-changed] 最大历史条目数已更新:", maxItems);
       } catch (e) {
         console.error("[settings-changed] 更新最大历史条目数失败:", e);
+      }
+
+      // 更新后端的预览字符上限（后端会顺带刷新存量预览并推送新列表）
+      try {
+        const maxChars = event.payload?.interface?.preview_max_chars;
+        await invoke("update_preview_max_chars", { maxChars: maxChars || null });
+        console.log("[settings-changed] 预览字符上限已更新:", maxChars);
+      } catch (e) {
+        console.error("[settings-changed] 更新预览字符上限失败:", e);
       }
 
       // 更新后端的搜索扫描上限设置

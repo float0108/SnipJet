@@ -189,7 +189,6 @@ export async function initTitlebarButtons() {
       console.log("[titlebar] 切换到新状态:", newState);
       filterState.setShowFavoritesOnly(newState);
       favoritesBtn.classList.toggle("favorites-active", newState);
-      document.body.classList.toggle("favorites-view", newState);
       favoritesBtn.title = newState ? "显示全部" : "查看收藏";
     });
   } else {

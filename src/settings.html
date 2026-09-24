@@ -153,15 +153,46 @@
           <div class="setting-section-title">列表与窗口</div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">预览行数</div>
-              <div class="setting-description">列表项最多显示的文字行数</div>
+              <div class="setting-label">最新条目预览行数</div>
+              <div class="setting-description">列表顶部最新一条显示的文字行数</div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="preview-lines">
+              <select class="select-input" id="latest-preview-lines">
                 <option value="2">2 行</option>
                 <option value="3">3 行</option>
                 <option value="5">5 行</option>
                 <option value="8">8 行</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">历史条目预览行数</div>
+              <div class="setting-description">其余历史条目显示的文字行数</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="history-preview-lines">
+                <option value="1">1 行</option>
+                <option value="2">2 行</option>
+                <option value="3">3 行</option>
+                <option value="5">5 行</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">预览字符上限</div>
+              <div class="setting-description">单条预览最多保留的字符数，越大越能铺满上面设置的行数</div>
+            </div>
+            <div class="setting-control">
+              <select class="select-input" id="preview-max-chars">
+                <option value="200">200 字符</option>
+                <option value="400">400 字符</option>
+                <option value="600">600 字符</option>
+                <option value="1000">1000 字符</option>
+                <option value="2000">2000 字符</option>
               </select>
             </div>
           </div>

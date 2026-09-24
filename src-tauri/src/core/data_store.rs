@@ -257,6 +257,11 @@ impl DataStore {
         Ok(history)
     }
 
+    /// 按当前预览上限刷新存量预览（历史表 + 收藏表），返回更新的行数
+    pub fn refresh_previews(&self) -> Result<usize, String> {
+        self.db.refresh_previews()
+    }
+
     /// 切换收藏状态（在两个表之间复制/删除）
     pub fn toggle_favorite(&self, id: &str) -> Result<bool, String> {
         self.db.toggle_favorite(id)

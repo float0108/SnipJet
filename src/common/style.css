@@ -2,12 +2,17 @@
   /* --- 浅色主题变量 --- */
   /* 让原生控件（select、取色器、滚动条等）跟随主题 */
   color-scheme: light;
-  --bg-body: #f3f4f6;
+  /* 背景层级：页面 -> 卡片 -> 交互态，逐级拉开明度差，
+     避免悬停/激活时卡片与页面底色接近导致轮廓消失 */
+  --bg-body: #f4f5f7;
   /* 整体背景偏灰 */
   --bg-surface: #ffffff;
   /* 卡片和工具栏纯白 */
-  --bg-hover: #f1f5f9;
-  --border-color: #e2e8f0;
+  --bg-hover: #eef1f6;
+  /* 悬停填充 */
+  /* 边框：分隔线用 --border-color，卡片/控件描边用 --border-strong */
+  --border-color: #e5e9f0;
+  --border-strong: #cbd4e0;
   --primary-color: #3b82f6;
   /* 蓝色主色调 */
   --text-primary: #1e293b;
@@ -50,15 +55,24 @@
   --font-size-xl: calc(var(--font-size-base) + 4px);
 
   /* --- 预览行数 --- */
-  --preview-lines: 5;
+  --latest-preview-lines: 5;
+  /* 最新条目预览行数 */
+  --history-preview-lines: 1;
+  /* 历史条目预览行数 */
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
   --shadow-md:
-    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    0 4px 10px -2px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.06);
 
-  --radius-sm: 4px;
+  /* 焦点环：跟随主色，统一各控件的聚焦反馈 */
+  --focus-ring: 0 0 0 3px rgba(var(--primary-color-rgb), 0.25);
+
+  /* 统一圆角比例：xs 微件 / sm 控件 / md 卡片面板 / lg 大容器 / pill 胶囊 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-pill: 9999px;
 
   --toolbar-height: 36px;
   /* 缩小到原来一半的高度 */
@@ -76,8 +90,9 @@
     color-scheme: dark;
     --bg-body: #0f172a;
     --bg-surface: #1e293b;
-    --bg-hover: #334155;
-    --border-color: #334155;
+    --bg-hover: #2c3b52;
+    --border-color: #2e3b4e;
+    --border-strong: #3e4d63;
     --primary-color: #60a5fa;
     --text-primary: #f1f5f9;
     --text-secondary: #94a3b8;
@@ -97,8 +112,9 @@
     --overlay-color: rgba(0, 0, 0, 0.55);
     --scrollbar-thumb: rgba(148, 163, 184, 0.35);
     --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+    --shadow-md:
+      0 4px 10px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.35);
   }
 }
 
@@ -108,8 +124,9 @@
   color-scheme: dark;
   --bg-body: #0f172a;
   --bg-surface: #1e293b;
-  --bg-hover: #334155;
-  --border-color: #334155;
+  --bg-hover: #2c3b52;
+  --border-color: #2e3b4e;
+  --border-strong: #3e4d63;
   --primary-color: #60a5fa;
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
@@ -129,18 +146,20 @@
   --overlay-color: rgba(0, 0, 0, 0.55);
   --scrollbar-thumb: rgba(148, 163, 184, 0.35);
   --scrollbar-thumb-hover: rgba(148, 163, 184, 0.6);
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+  --shadow-md:
+    0 4px 10px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.35);
 }
 
 /* 手动设置浅色主题 */
 [data-theme="light"] {
   /* --- 浅色主题变量 --- */
   color-scheme: light;
-  --bg-body: #f3f4f6;
+  --bg-body: #f4f5f7;
   --bg-surface: #ffffff;
-  --bg-hover: #f1f5f9;
-  --border-color: #e2e8f0;
+  --bg-hover: #eef1f6;
+  --border-color: #e5e9f0;
+  --border-strong: #cbd4e0;
   --primary-color: #3b82f6;
   --text-primary: #1e293b;
   --text-secondary: #64748b;
@@ -160,9 +179,9 @@
   --overlay-color: rgba(15, 23, 42, 0.35);
   --scrollbar-thumb: rgba(148, 163, 184, 0.5);
   --scrollbar-thumb-hover: rgba(148, 163, 184, 0.8);
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
   --shadow-md:
-    0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    0 4px 10px -2px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.06);
 }
 
 * {

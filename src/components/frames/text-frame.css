@@ -117,12 +117,12 @@
   position: absolute;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--bg-surface);
-  border: 1px solid var(--border-color, #e5e7eb);
+  border: 1px solid var(--border-strong, #d5dbe5);
   box-shadow: var(--shadow-sm);
   color: var(--text-secondary, #6b7280);
   cursor: pointer;
@@ -198,8 +198,8 @@
   width: 260px;
   background: var(--bg-surface);
   padding: 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong, #d5dbe5);
   box-shadow: var(--shadow-md);
 
   transform: translateY(10px);
@@ -247,7 +247,7 @@
 
 .tf-btn {
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: pointer;
   border: none;
@@ -283,7 +283,8 @@
   background: var(--bg-surface);
   color: var(--text-primary);
   padding: 4px 8px;
-  border-radius: 4px;
+  border: 1px solid var(--border-strong, #d5dbe5);
+  border-radius: var(--radius-sm);
   font-size: 12px;
   pointer-events: none;
   z-index: 30;

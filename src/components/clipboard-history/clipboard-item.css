@@ -1,37 +1,55 @@
-/* --- 卡片主体 --- */
+/* --- 条目：两级条目外观完全一致，唯一区别是预览行数 --- */
 .clipboard-item {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    /* 稍微减小圆角，更干练 */
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    /* 统一内部间距 */
-    cursor: pointer;
     position: relative;
-    /* 为绝对定位做参照 */
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-    /* 移除 min-height，允许更紧凑 */
+    /* 为绝对定位的操作栏做参照 */
+    padding: 8px;
+    background: var(--bg-surface);
+    /* 常驻描边：无论静止、悬停还是按下，卡片轮廓都清晰可见 */
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    cursor: pointer;
     font-family: var(--font-family);
     font-size: var(--font-size-base);
+    color: var(--text-primary);
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease;
 }
 
+/* 悬停：叠加主色调的浅色填充，与页面中性灰底在色相上拉开差距，
+   再配合转蓝的描边，确保卡片轮廓不会融进背景 */
 .clipboard-item:hover {
-    background: var(--bg-surface);
-    /* 保持背景，或者非常淡的 hover */
-    border-color: var(--primary-color);
-    box-shadow: var(--shadow-md);
-    /* 更柔和的投影 */
-    transform: translateY(-2px);
-    z-index: 10;
+    background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-surface));
+    border-color: color-mix(in srgb, var(--primary-color) 38%, var(--border-strong));
+}
+
+/* 按下：主色填充再深一档，描边更实 */
+.clipboard-item:active {
+    background: color-mix(in srgb, var(--primary-color) 15%, var(--bg-surface));
+    border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-strong));
+}
+
+/* 收藏条目：整体改用收藏色的色系（淡色填充 + 同色系描边），不再使用左侧竖条。
+   悬停/按下时也在收藏色系内加深，避免被上面的主色规则覆盖。 */
+.clipboard-item.is-favorite {
+    background: color-mix(in srgb, var(--favorite-color) 7%, var(--bg-surface));
+    border-color: color-mix(in srgb, var(--favorite-color) 38%, var(--border-strong));
+}
+
+.clipboard-item.is-favorite:hover {
+    background: color-mix(in srgb, var(--favorite-color) 13%, var(--bg-surface));
+    border-color: color-mix(in srgb, var(--favorite-color) 52%, var(--border-strong));
+}
+
+.clipboard-item.is-favorite:active {
+    background: color-mix(in srgb, var(--favorite-color) 20%, var(--bg-surface));
+    border-color: color-mix(in srgb, var(--favorite-color) 66%, var(--border-strong));
 }
 
 /* 键盘焦点样式（可访问性） */
 .clipboard-item:focus {
     outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+    outline-offset: 1px;
 }
 
 .clipboard-item:focus:not(:focus-visible) {
@@ -40,26 +58,58 @@
 
 .clipboard-item:focus-visible {
     outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+    outline-offset: 1px;
+}
+
+/* 卡片外侧的元信息：左下角时间、右下角"字数 + 类型"。
+   绝对定位，不撑大卡片；位置落在条目之间的间隙里，激活时才淡淡出现。 */
+.item-time,
+.item-meta {
+    position: absolute;
+    /* 上边缘紧贴卡片下沿：字号 × line-height 约 11px，故偏移取 -11px */
+    bottom: -11px;
+    opacity: 0;
+    color: var(--text-tertiary);
+    font-size: calc(var(--font-size-xs) - 2px);
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.item-time {
+    left: 8px;
+}
+
+.item-meta {
+    right: 8px;
+}
+
+.clipboard-item:hover .item-time,
+.clipboard-item:hover .item-meta,
+.clipboard-item:focus-visible .item-time,
+.clipboard-item:focus-visible .item-meta {
+    opacity: 1;
 }
 
 /* --- 内容区域 (核心) --- */
 .item-body {
     flex: 1;
     width: 100%;
+    min-width: 0;
+    /* 网格布局下允许文本截断 */
 }
 
 .item-preview {
-    font-family: 'JetBrains Mono', Consolas, Menlo, monospace;
+    /* 两级条目统一字号，行数各自设置 */
     font-size: var(--font-size-sm);
-    /* 保持可读性 */
     line-height: 1.5;
     color: var(--text-primary);
     font-family: var(--font-family);
 
     /* 文本截断优化 - 使用CSS变量控制行数 */
     display: -webkit-box;
-    -webkit-line-clamp: var(--preview-lines, 5);
+    -webkit-line-clamp: var(--latest-preview-lines, 5);
 
     /* 根据需要调整行数 */
     -webkit-box-orient: vertical;
@@ -68,19 +118,16 @@
     white-space: pre-wrap;
 }
 
-/* 针对图片内容的特殊处理 (如果有) */
-.item-preview img {
-    max-height: 120px;
-    width: auto;
-    border-radius: 4px;
-    object-fit: cover;
+/* 历史条目：行数由设置控制，超出部分由 line-clamp 自动省略 */
+.clipboard-item.is-row .item-preview {
+    -webkit-line-clamp: var(--history-preview-lines, 1);
 }
 
 /* 图片预览样式 */
 .item-body .preview-image {
     max-width: 100%;
     max-height: 150px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     object-fit: contain;
     background: var(--bg-body);
     display: block;
@@ -102,7 +149,6 @@
 
 /* 图片卡片特殊样式 */
 .clipboard-item[data-format="image"] .item-body {
-    min-height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -132,7 +178,8 @@
     justify-content: center;
     padding: 12px;
     background: var(--bg-body);
-    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
 }
@@ -146,76 +193,12 @@
     color: var(--text-tertiary);
 }
 
-/* --- 底部元数据栏 (整合了原来的 Header 和 Footer) --- */
-.item-meta-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: var(--font-size-xs);
-    color: var(--text-tertiary);
-    margin-top: 2px;
-}
-
-/* 类型标签 - 胶囊样式 */
-.badge {
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: var(--font-size-xs);
-    letter-spacing: 0.3px;
-    background: var(--bg-hover);
-    /* 默认灰色背景，不抢眼 */
-    color: var(--text-secondary);
-    font-family: var(--font-family);
-
-}
-
-/* 特定类型的颜色微调，但不要太刺眼 */
-.type-html {
-    color: var(--type-html-color);
-    background: color-mix(in srgb, var(--type-html-color) 12%, transparent);
-}
-
-.type-markdown {
-    color: var(--type-markdown-color);
-    background: color-mix(in srgb, var(--type-markdown-color) 12%, transparent);
-}
-
-.type-image {
-    color: var(--type-image-color);
-    background: color-mix(in srgb, var(--type-image-color) 12%, transparent);
-}
-
-.type-text {
-    font-family: var(--font-family);
-
-    /* 保持默认或微调 */
-}
-
-/* 时间信息 */
-.timestamp {
-    opacity: 0.7;
-    font-variant-numeric: tabular-nums;
-    font-family: var(--font-family);
-
-    /* 数字等宽，对齐更整齐 */
-}
-
-/* 元数据行信息容器（替换内联样式） */
-.meta-row-info {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.meta-word-count {
-    opacity: 0.5;
-}
-
 /* --- 悬浮操作栏 (绝对定位) --- */
+/* 顶到右上角：单行卡片里按钮组的高度与行高接近；
+   卡片更高（多行预览）时自然停在右上角，不做垂直居中。 */
 .item-actions-overlay {
     position: absolute;
-    top: 6px;
+    top: 2px;
     right: 6px;
     display: flex;
     gap: 4px;
@@ -224,13 +207,13 @@
     /* 默认隐藏 */
     opacity: 0;
     transform: scale(0.95);
-    transition: all 0.2s ease;
+    transition: opacity 0.15s ease, transform 0.15s ease;
 
     /* 增加背景模糊或渐变，防止文字干扰 */
     background: var(--bg-surface);
     padding: 2px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
     box-shadow: var(--shadow-sm);
 }
 
@@ -242,7 +225,7 @@
 .card-btn {
     width: 24px;
     height: 24px;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -265,7 +248,7 @@
 /* 收藏按钮样式 */
 .card-btn.btn-favorite {
     color: var(--text-secondary);
-    transition: all 0.2s ease;
+    transition: color 0.15s ease;
 }
 
 .card-btn.btn-favorite:hover {
@@ -281,23 +264,17 @@
     background: rgba(var(--favorite-color-rgb), 0.2);
 }
 
-/* 收藏状态的卡片样式 */
-.clipboard-item.is-favorite {
-    border-color: rgba(var(--favorite-color-rgb), 0.55);
-}
+/* 尊重系统的减少动效设置 */
+@media (prefers-reduced-motion: reduce) {
+    .clipboard-item,
+    .item-time,
+    .item-meta,
+    .item-actions-overlay,
+    .card-btn.btn-favorite {
+        transition: none;
+    }
 
-.clipboard-item.is-favorite::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--favorite-color);
-    border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-
-.clipboard-item.is-favorite:hover {
-    border-color: var(--favorite-color);
-    box-shadow: 0 4px 12px rgba(var(--favorite-color-rgb), 0.15);
+    .preview-image.loading {
+        animation: none;
+    }
 }

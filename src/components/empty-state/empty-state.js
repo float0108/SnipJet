@@ -25,19 +25,3 @@ export function renderEmptyState(customText, customDescription) {
     </div>
   `;
 }
-
-/**
- * 确保加载空状态样式
- */
-export function ensureEmptyStateStyles() {
-  if (
-    !document.querySelector(
-      'link[href="./components/empty-state/empty-state.css"]',
-    )
-  ) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "./components/empty-state/empty-state.css";
-    document.head.appendChild(link);
-  }
-}

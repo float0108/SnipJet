@@ -47,6 +47,7 @@ commands.allow = [
     "save_clipboard_history",
     "load_clipboard_history_command",
     "update_max_history_items",
+    "update_preview_max_chars",
     "update_search_scan_limit_kb",
     "save_settings",
     "load_settings_command"

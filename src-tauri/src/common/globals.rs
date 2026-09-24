@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
@@ -6,6 +6,15 @@ use std::collections::HashMap;
 use tauri::AppHandle;
 
 use crate::mcp::McpServerHandle;
+
+/// 预览字符串的字符上限默认值。
+///
+/// 预览需要足够长才能在用户设置的预览行数内铺满文字（窗口最宽 800px、
+/// 最多 8 行时约需 500 字符），同时也要控制列表推送的体积。可在设置中调整。
+pub const DEFAULT_PREVIEW_MAX_CHARS: usize = 600;
+
+/// 预览字符串的字符上限，使用原子变量读取避免锁竞争
+pub static PREVIEW_MAX_CHARS: AtomicUsize = AtomicUsize::new(DEFAULT_PREVIEW_MAX_CHARS);
 
 // 全局变量，用于存储最后一次复制的内容hash，防止重复更新
 pub static LAST_HASH: LazyLock<Arc<Mutex<String>>> =

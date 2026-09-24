@@ -252,6 +252,55 @@ impl Database {
         Ok(())
     }
 
+    /// 按当前预览上限重算存量预览（历史表与收藏表，仅文本类格式）。
+    ///
+    /// 逐行重算并与库中预览比较，只有不一致才写回：因此上调、下调上限都能
+    /// 正确刷新存量，而预览已是最新的行不会产生写入。返回更新的行数。
+    pub fn refresh_previews(&self) -> Result<usize, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Failed to lock connection: {}", e))?;
+        let mut updated = 0usize;
+
+        for table in ["clipboard_items", "favorites"] {
+            let rows: Vec<(String, String, String, String)> = {
+                let mut stmt = conn
+                    .prepare(&format!(
+                        "SELECT id, format, content, preview FROM {}",
+                        table
+                    ))
+                    .map_err(|e| format!("Failed to prepare preview scan: {}", e))?;
+
+                let mapped = stmt
+                    .query_map([], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    })
+                    .map_err(|e| format!("Failed to scan previews: {}", e))?;
+
+                mapped.filter_map(|r| r.ok()).collect()
+            };
+
+            for (id, format_str, content, old_preview) in rows {
+                let format = ClipboardFormat::from_db_string(&format_str);
+                let preview = match ClipboardItem::preview_for(&format, &content) {
+                    Some(p) => p,
+                    None => continue,
+                };
+
+                if preview == old_preview {
+                    continue;
+                }
+
+                conn.execute(
+                    &format!("UPDATE {} SET preview = ?1 WHERE id = ?2", table),
+                    params![preview, id],
+                )
+                .map_err(|e| format!("Failed to update preview: {}", e))?;
+                updated += 1;
+            }
+        }
+
+        Ok(updated)
+    }
+
     /// 按条数清理：仅保留最新的 `keep_count` 条记录。
     /// 收藏表中的项目不会被删除（即使它们对应的历史项要被清理）。
     /// 返回被删除记录的 id 列表（用于上层清理对应的图片文件）。

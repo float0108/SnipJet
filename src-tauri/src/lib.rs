@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
 use std::thread;
 
 use clipboard_rs::ClipboardWatcher;
@@ -18,12 +19,14 @@ use tauri_plugin_autostart::MacosLauncher;
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, SHORTCUT_ACTION_MAP};
+use crate::common::globals::{
+    DEFAULT_PREVIEW_MAX_CHARS, MCP_SERVER_HANDLE, PREVIEW_MAX_CHARS,
+};
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::{load_all_data, save_all_data, DataStore};
 use crate::core::mouse_listener::start_global_click_listener;
 use crate::core::text_expand::TextExpander;
 use crate::mcp::start_mcp_server;
-use crate::common::globals::MCP_SERVER_HANDLE;
 use tauri::{Emitter, Listener, AppHandle};
 
 /// 搜索时单条内容的默认扫描上限（1 MB）。
@@ -139,10 +142,34 @@ where
             match load_all_data(&state_for_setup.datastore) {
                 Ok((loaded_history, loaded_settings, _text_expand_rules)) => {
                     info!("Loaded {} history items from storage", loaded_history.len());
-                    // 将加载的数据存入history
+
+                    // 预览字符上限：先按设置刷新磁盘上的存量预览，再让内存使用刷新后的数据
+                    let preview_chars = loaded_settings.get("interface")
+                        .and_then(|i| i.get("preview_max_chars"))
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as usize)
+                        .filter(|v| *v > 0)
+                        .unwrap_or(DEFAULT_PREVIEW_MAX_CHARS);
+                    PREVIEW_MAX_CHARS.store(preview_chars, Ordering::Relaxed);
+                    match state_for_setup.datastore.refresh_previews() {
+                        Ok(count) => info!(
+                            "Preview max chars set to {}, refreshed {} previews",
+                            preview_chars, count
+                        ),
+                        Err(e) => error!("Failed to refresh stored previews: {}", e),
+                    }
+
+                    // 将加载的数据存入history（使用刷新后的预览）
+                    let history_to_memory = match state_for_setup.datastore.load_clipboard_history() {
+                        Ok(items) => items,
+                        Err(e) => {
+                            error!("Failed to reload history after preview refresh: {}", e);
+                            loaded_history
+                        }
+                    };
                     {
                         let mut history_lock = state_for_setup.history.lock().unwrap();
-                        *history_lock = loaded_history;
+                        *history_lock = history_to_memory;
                     }
 
                     // 加载收藏数据
@@ -456,6 +483,7 @@ where
             commands::restart_mcp_service,
             commands::copy_markdown_as_docx,
             commands::update_max_history_items,
+            commands::update_preview_max_chars,
             commands::update_search_scan_limit_kb,
             commands::list_system_fonts,
             commands::clean_history_by_count,
