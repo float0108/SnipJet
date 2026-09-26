@@ -221,6 +221,8 @@ export function refreshDerivedColors() {
   const surface = styles.getPropertyValue('--bg-surface').trim();
   const favorite = styles.getPropertyValue('--favorite-color').trim();
   root.style.setProperty('--favorite-text', pickReadableColor(favorite, surface));
+  // 收藏色块上的前景色：随收藏色亮度变化重新选白/深
+  root.style.setProperty('--on-favorite', pickOnPrimaryColor(favorite));
 }
 
 // 应用界面主题色（主色）
@@ -289,6 +291,69 @@ export function applyZoomLevel(zoomLevel) {
   console.log('界面缩放已应用:', zoom);
 }
 
+// 动效档位：每秒内的"动作结束感"。
+// off    → 0ms（CSS animation 关闭，所有动效直接显示末态）
+// fast   → 240ms（默认，比原 480ms 缩短一半）
+// normal → 480ms（保留原节奏，给偏好"慢一点的反馈"的用户留档）
+export const ANIMATION_SPEEDS = ["off", "fast", "normal"];
+const ANIMATION_DURATIONS_MS = { off: 0, fast: 240, normal: 480 };
+export const DEFAULT_ANIMATION_SPEED = "fast";
+
+// 归一化动效档位：非法值回落默认 "fast"
+export function normalizeAnimationSpeed(value) {
+  return ANIMATION_SPEEDS.includes(value) ? value : DEFAULT_ANIMATION_SPEED;
+}
+
+// 删除动效节奏：基准时长去掉一些"padding"——按经验，比起反馈型动效更短
+// 让用户眼里删除动效"几乎发生，但能看见"；fast 档最终落到 100ms 左右
+function removeDurationMs(speed) {
+  const ms = ANIMATION_DURATIONS_MS[speed] ?? 0;
+  if (ms === 0) return 0;
+  // 240 → 100；480 → 200。比简单除以 2 略短，避免 off 之外仍显拖沓
+  return Math.round((ms * 5) / 12);
+}
+
+// 当前窗口下卡片动效的"主时长"（ms），主窗口下的所有动效节奏以它为准。
+// 各调用方在挂 is-just-* 类前调它，以决定关键帧时长 + class 移除延迟。
+export function getAnimationDurationMs() {
+  const speed = normalizeAnimationSpeed(
+    localStorage.getItem("snipjet.animation_speed")
+  );
+  return ANIMATION_DURATIONS_MS[speed];
+}
+
+// 删除路径专用的快节奏（基准时长的一半；off 仍返回 0）
+export function getRemoveAnimationDurationMs() {
+  const speed = normalizeAnimationSpeed(
+    localStorage.getItem("snipjet.animation_speed")
+  );
+  return removeDurationMs(speed);
+}
+
+// 应用卡片动效档位：往 :root 写两个 CSS 时间 token + 一个属性。
+//   --anim-duration-ms：粘贴 / 收藏等基准时长（CSS <time>）
+//   --anim-duration-ms-remove：删除专用，为基准的一半
+//   data-anim-disabled="true|false"：属性选择器驱动 CSS 短路动效
+// 关闭时仍写入 0s，使 CSS animation declaration 不被解析丢弃；
+// JS 走"无 setTimeout"分支保证 splice / class 移除立即执行。
+export function applyAnimationSpeed(speed) {
+  const norm = normalizeAnimationSpeed(speed);
+  const root = document.documentElement;
+  const ms = ANIMATION_DURATIONS_MS[norm];
+  const removeMs = removeDurationMs(norm);
+  // CSS 时间值必须有单位：写 "240ms" 而不是 240；off 也要写 "0s"
+  root.style.setProperty("--anim-duration-ms", ms > 0 ? `${ms}ms` : "0s");
+  root.style.setProperty(
+    "--anim-duration-ms-remove",
+    removeMs > 0 ? `${removeMs}ms` : "0s"
+  );
+  root.dataset.animDisabled = norm === "off" ? "true" : "false";
+  try {
+    localStorage.setItem("snipjet.animation_speed", norm);
+  } catch (e) {}
+  console.log("动效档位已应用:", norm, "基准:", ms, "ms", "删除:", removeMs, "ms");
+}
+
 // 应用所有界面设置
 export function applyInterfaceSettings(interfaceSettings) {
   if (!interfaceSettings) return;
@@ -316,6 +381,8 @@ export function applyInterfaceSettings(interfaceSettings) {
   applyFavoriteColor(interfaceSettings.favorite_color);
   // 界面主题色始终应用，确保字段缺失/清空时能回落到主题默认色
   applyPrimaryColor(interfaceSettings.primary_color);
+  // 卡片动效档位：始终应用，缺失字段回落默认 fast
+  applyAnimationSpeed(interfaceSettings.animation_speed);
 }
 
 // 从设置文件加载完整设置

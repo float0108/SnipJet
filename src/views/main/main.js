@@ -8,6 +8,7 @@ import {
   loadRealData,
   listenToClipboardUpdate,
 } from "../../services/clipboard-service.js";
+import { getAnimationDurationMs, getRemoveAnimationDurationMs } from "../../services/theme-service.js";
 import {html2text} from "../../utils/formatter.js";
 import {initTitlebarButtons, pinState, filterState, syncFavoritesButtonLabel} from "./titlebar.js";
 import {handleNavigation} from "./navigation.js";
@@ -146,7 +147,15 @@ window.copyToClipboard = async function (element) {
 
   // 模拟粘贴到当前窗口
 window.pasteToCurrentWindow = async function (element) {
+    // 给被点中的卡片一个"我已经在动了"的脉冲；
+    // 异常时由 finally 撤销，避免半透明 / 主色边框残留。
+    let pasted = null;
     try {
+      if (element) {
+        pasted = element;
+        pasted.classList.add("is-just-pasted");
+      }
+
       const fetched = await fetchItemContent(element);
       if (!fetched || !fetched.content) {
         await error("粘贴失败：未找到该剪贴板项的完整内容");
@@ -172,12 +181,30 @@ window.pasteToCurrentWindow = async function (element) {
       await handlePasteAftermath();
     } catch (error) {
       await error("模拟粘贴失败:", error);
+    } finally {
+      // 给动效留足关键帧时长，再撤销 class 防止下次渲染残留
+      if (pasted) {
+        const animMs = getAnimationDurationMs();
+        if (animMs > 0) {
+          setTimeout(() => pasted.classList.remove("is-just-pasted"), animMs + 100);
+        } else {
+          pasted.classList.remove("is-just-pasted");
+        }
+      }
     }
   };
 
   // 粘贴为纯文本
   window.pasteAsPlainText = async function (element) {
+    // 与 pasteToCurrentWindow 共用同一份"已粘贴"动效；同一时刻只触发一个动作，
+    // 通过加 class 实现，最终由 finally 撤销，避免重复动画叠加。
+    let pasted = null;
     try {
+      if (element) {
+        pasted = element;
+        pasted.classList.add("is-just-pasted");
+      }
+
       const fetched = await fetchItemContent(element);
       if (!fetched || !fetched.content) {
         console.error("粘贴纯文本失败：未找到该剪贴板项的完整内容");
@@ -218,60 +245,183 @@ window.pasteToCurrentWindow = async function (element) {
       await handlePasteAftermath();
     } catch (error) {
       console.error("粘贴纯文本失败:", error);
+    } finally {
+      if (pasted) {
+        const animMs = getAnimationDurationMs();
+        if (animMs > 0) {
+          setTimeout(() => pasted.classList.remove("is-just-pasted"), animMs + 100);
+        } else {
+          pasted.classList.remove("is-just-pasted");
+        }
+      }
     }
   };
+
+  // 删除动效时长由设置决定；不再硬编码 480ms
+
+/**
+ * RAF-driven "卡片折叠"动效。CSS animation 在主窗口列表（flex column + gap）
+ * 下同时插值 max-height / padding / border / margin，多组 layout 属性
+ * 每帧 reflow 导致观感卡顿。改为 JS 直接驱动：
+ * - 读卡片当前 offsetHeight（含 padding / border），写入 inline style.height
+ * - 用 requestAnimationFrame 从 N → 0 步进，ease-out（先快后慢）
+ * - 同步把 padding / margin-bottom 拉到 0，避免卡片坍塌后下方还留白
+ * - 末帧：splice + 重渲染（统一由 finishRemove 处理）
+ *
+ * @param {HTMLElement} el - 目标卡片 DOM
+ * @param {number} durationMs - 时长（毫秒）
+ * @param {() => void} onDone - 动效结束回调（执行 splice + 重渲染）
+ */
+function animateCollapse(el, durationMs, onDone) {
+  // 读出真实高度（含 padding / border），后续按比例收缩；先强制一次 layout 让高度稳定
+  const startHeight = el.offsetHeight;
+  const computed = getComputedStyle(el);
+  // 元信息（item-time / item-meta）位于卡片下沿外侧，靠卡片下沿 margin-bottom 撑出位置；
+  // 这里把 margin-bottom 与 padding 同步按比例收敛，避免坍塌后还留白
+  const startPadTop = parseFloat(computed.paddingTop) || 0;
+  const startPadBottom = parseFloat(computed.paddingBottom) || 0;
+  const startMarginBottom = parseFloat(computed.marginBottom) || 0;
+
+  // 列表是 flex column + gap：卡片高度归 0 后，上下两个 gap 依然占位；
+  // 元素移除瞬间两个 gap 合并成一个，下方内容会突兀地跳高一个 gap——
+  // 这正是"动画快结束卡一下"的观感来源之一。解法：把 margin-bottom
+  // 动画到负的 gap 值，提前吃掉下方 gap，使移除前后占位无缝衔接。
+  const gapPx = (() => {
+    const parent = el.parentElement;
+    if (!parent) return 0;
+    const gap = parseFloat(getComputedStyle(parent).rowGap);
+    return Number.isFinite(gap) ? gap : 0;
+  })();
+  const targetMarginBottom = -gapPx;
+
+  const startTime = performance.now();
+
+  // 锁住原始 height 为 auto，inline 写具体像素值后才能被 RAF 修改
+  el.style.height = `${startHeight}px`;
+  // padding / margin 一开始就锁定为原始像素（不动它们的具体来源）
+  el.style.paddingTop = `${startPadTop}px`;
+  el.style.paddingBottom = `${startPadBottom}px`;
+  el.style.marginBottom = `${startMarginBottom}px`;
+  // 只豁免 height/padding/margin 的 CSS 过渡；保留 class 里的 opacity 淡出
+  el.style.transition = "opacity 0.1s linear";
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(1, elapsed / durationMs);
+    // ease-out cubic：1 - (1 - t)^3，先快后慢
+    const eased = 1 - Math.pow(1 - t, 3);
+    const progress = eased;
+
+    // 末段：剩余 ≤ 0.5% 时提前收尾，避免持续接近 0 的微小步进。
+    // 注意：这里绝不能清空 inline 样式"还原"卡片——元素马上就要被移除，
+    // 还原会让折叠到 0 的卡片弹回原高度，下方列表先跳下去再跳回来。
+    if (t >= 1 || progress >= 0.995) {
+      onDone();
+      return;
+    }
+
+    // 按"起始值 × (1 - eased)"同步收缩；保留两位小数避免浏览器对极小步进反应
+    el.style.height = `${(startHeight * (1 - progress)).toFixed(2)}px`;
+    el.style.paddingTop = `${(startPadTop * (1 - progress)).toFixed(2)}px`;
+    el.style.paddingBottom = `${(startPadBottom * (1 - progress)).toFixed(2)}px`;
+    el.style.marginBottom = `${(
+      startMarginBottom + (targetMarginBottom - startMarginBottom) * progress
+    ).toFixed(2)}px`;
+
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
 
   // 删除剪贴板项
   window.deleteClipboardItem = async function (id) {
     console.log("删除剪贴板项:", id, "当前视图:", filterState.showFavoritesOnly ? t('view.favorites') : t('view.history'));
 
-    // 根据当前视图决定删除逻辑
-    if (filterState.showFavoritesOnly) {
-      // 在收藏视图中：彻底删除收藏项
-      const itemIndex = allFavorites.findIndex(item => item.id === id);
-      if (itemIndex !== -1) {
-        allFavorites.splice(itemIndex, 1);
-        console.log("已从 allFavorites 中移除项目，剩余:", allFavorites.length);
+    // 捕获动画开始时的视图状态：折叠动画约一两百毫秒，期间用户可能切换
+    // 视图；数据删除与后端命令统一按开始时的视图执行，避免前后不一致。
+    const fromFavoritesView = filterState.showFavoritesOnly;
+
+    // 拿到 DOM：先把卡片用"即将被移除"的 class 套上，
+    // 等动画结束再做真正的 splice + 重渲染；找不到元素（例如正在被外部全量替换）
+    // 就直接走原路径。
+    const el = document.getElementById(`item-${id}`);
+
+    // 收尾：动画结束（或无动画）后执行。
+    // 顺序很关键——先摘 DOM、再同步更新内存、按需重渲染、最后发后端命令，
+    // 每一步之间不再有"卡片仍占位"的间隙。
+    const finishRemove = async () => {
+      // 1) 先把卡片从 DOM 摘除：后续的内存更新 / 后端 IPC 都可能跨帧，
+      //    若等它们完成才重渲染，折叠到 0 的卡片会带着还原后的高度继续
+      //    占位，下方列表上下跳动。元素即将丢弃，直接移除最干净。
+      if (el && el.isConnected) {
+        el.remove();
       }
 
-      // 同时从历史记录中移除（如果存在）
+      // 1.5) 若删除的是首卡（"最新条目"），新的首卡需要接管多行预览样式
+      //（renderHistory 里只有 index 0 不带 is-row）。增量路径没有全量重
+      // 渲染，这里手动补上，避免新首卡一直显示单行历史预览。
+      const listContainer = document.getElementById("clipboard-history");
+      const newFirstCard = listContainer?.querySelector(".clipboard-item");
+      if (
+        newFirstCard &&
+        newFirstCard !== el &&
+        !filterState.searchQuery.trim()
+      ) {
+        newFirstCard.classList.remove("is-row");
+      }
+
+      // 2) 同步更新内存数据（不涉及后端，纯数组操作）
+      if (fromFavoritesView) {
+        const favIndex = allFavorites.findIndex(item => item.id === id);
+        if (favIndex !== -1) {
+          allFavorites.splice(favIndex, 1);
+        }
+      }
       const historyIndex = allClipboardItems.findIndex(item => item.id === id);
       if (historyIndex !== -1) {
         allClipboardItems.splice(historyIndex, 1);
-        console.log("已从 allClipboardItems 中移除项目");
+      }
+      // 搜索命中集合同步剔除，保证后续检索结果一致
+      if (searchMatchIds) {
+        searchMatchIds.delete(id);
       }
 
-      // 调用后端删除命令（从收藏表删除）
-      try {
-        if (invoke) {
-          await invoke("delete_favorite_item", { id });
-          console.log("后端删除收藏项命令执行成功");
-        }
-      } catch (error) {
-        console.error("后端删除收藏项命令失败（前端已删除）:", error);
-      }
-    } else {
-      // 在历史视图中：从历史删除，但保留收藏
-      const item = allClipboardItems.find(item => item.id === id);
-      const isFavorite = item?.is_favorite || false;
-
-      // 从历史记录中移除
-      const itemIndex = allClipboardItems.findIndex(item => item.id === id);
-      if (itemIndex !== -1) {
-        allClipboardItems.splice(itemIndex, 1);
-        console.log("已从 allClipboardItems 中移除项目，剩余:", allClipboardItems.length);
+      // 3) 仅在必要时全量重渲染（搜索态 / 当前列表已空需显示空状态）。
+      //    普通删除走增量 DOM 移除即可：整表 innerHTML 重建 + 全量解析 +
+      //    图片预览重载在长列表下开销很大，是删除卡顿的另一主要来源。
+      const viewData = fromFavoritesView ? allFavorites : allClipboardItems;
+      if (filterState.searchQuery.trim() || viewData.length === 0) {
+        await applyFilters(
+          document.getElementById("clipboard-history"),
+          document.getElementById("status")
+        );
       }
 
-      // 调用后端删除命令
-      try {
-        if (invoke) {
-          await invoke("delete_clipboard_item", { id });
-          console.log("后端删除历史项命令执行成功");
-        }
-      } catch (error) {
-        console.error("后端删除历史项命令失败（前端已删除）:", error);
+      // 4) 后端删除放最后，且不阻塞 UI：失败仅记录日志
+      if (invoke) {
+        const cmd = fromFavoritesView ? "delete_favorite_item" : "delete_clipboard_item";
+        invoke(cmd, { id }).catch(err => {
+          console.error(`后端删除命令失败（${cmd}）:`, err);
+        });
       }
+    };
+
+    if (el) {
+      el.classList.add("is-just-removed");
+      // 删除比反馈型动效快一档：100ms（fast）/ 200ms（normal）/ 0（off）。
+      // 用 RAF 直接驱动高度 + padding + margin-bottom 像素级插值，
+      // 不再依赖 CSS keyframes（多组 layout 属性同步插值在 flex 列里会卡）。
+      const animMs = getRemoveAnimationDurationMs();
+      if (animMs > 0) {
+        animateCollapse(el, animMs, () => finishRemove());
+      } else {
+        finishRemove();
+      }
+      return;
     }
+
+    // 找不到元素：走原路径
+    finishRemove();
   };
 
   // 切换收藏状态
@@ -332,6 +482,19 @@ window.pasteToCurrentWindow = async function (element) {
           // 更新卡片收藏状态
           element.classList.toggle("is-favorite", newState);
 
+          // 收藏切换动效：与粘贴动效颜色相反（标记语义 → 琥珀系）
+          // 卡片先重启动画（先移除再回加），由设置决定撤销时长
+          element.classList.remove("is-just-favorited");
+          // 触发重排后再加，让浏览器认作新动画
+          void element.offsetWidth;
+          element.classList.add("is-just-favorited");
+          const animMs = getAnimationDurationMs();
+          if (animMs > 0) {
+            setTimeout(() => element.classList.remove("is-just-favorited"), animMs + 100);
+          } else {
+            element.classList.remove("is-just-favorited");
+          }
+
           // 如果在收藏模式下，且取消收藏，则重新应用筛选
           if (window.filterState && window.filterState.showFavoritesOnly && !newState) {
             console.log("[toggleFavorite] 在收藏模式下取消收藏，重新应用筛选");
@@ -390,6 +553,25 @@ function bindClipboardItemActions(container) {
 
 // 全局状态引用
 window.filterState = filterState;
+
+// 给指定 id 的卡片加"已粘贴"动效（用于监听快捷键 / 轮转 / 序号触发）。
+// 不受当前视图筛选影响——找不到就静默返回。
+function flashClipboardItem(itemId) {
+  if (!itemId) return;
+  const el = document.getElementById(`item-${itemId}`);
+  if (!el) return;
+  el.classList.remove("is-just-pasted");
+  void el.offsetWidth;
+  el.classList.add("is-just-pasted");
+  // 时长由设置决定（默认 fast 240ms），关闭则即时移除
+  const animMs = getAnimationDurationMs();
+  if (animMs > 0) {
+    setTimeout(() => el.classList.remove("is-just-pasted"), animMs + 100);
+  } else {
+    el.classList.remove("is-just-pasted");
+  }
+}
+window.flashClipboardItem = flashClipboardItem;
 
 // 当前显示的所有剪贴板项（用于筛选）
 let allClipboardItems = [];
@@ -633,10 +815,31 @@ async function init() {
       const payload = event.payload;
 
       if (payload.type === "state-changed") {
-        // 全量替换
-        allClipboardItems = payload.items;
-        console.log("收到全量状态推送，items count:", allClipboardItems.length);
-        applyFilters(container, statusElement);
+        const incoming = Array.isArray(payload.items) ? payload.items : [];
+
+        // 后端删除 / 收藏切换后会回推全量状态，而这两类变更前端已增量
+        // 更新过 DOM。若 id 序列与预览内容都与当前一致，说明只是"回声"，
+        // 直接采纳数据并跳过全量重渲染——否则重建整表的开销正好落在
+        // 删除动画尾帧上，是"快结束卡一下"的主要来源。
+        // 预览上限调整会改写预览内容（id 不变），此时仍需重渲染。
+        const isEcho =
+          incoming.length === allClipboardItems.length &&
+          incoming.every((it, i) => {
+            const local = allClipboardItems[i];
+            return (
+              local && it.id === local.id && it.preview === local.preview
+            );
+          });
+        allClipboardItems = incoming;
+        console.log(
+          "收到全量状态推送，items count:",
+          incoming.length,
+          "echo(跳过重渲染):",
+          isEcho
+        );
+        if (!isEcho) {
+          applyFilters(container, statusElement);
+        }
       }
     });
     window.unlistenClipboardUpdate = unlisten;
@@ -740,6 +943,16 @@ async function init() {
     });
   } catch (error) {
     console.error("语言变化事件监听失败:", error);
+  }
+
+  // 监听 shortcut-service 发出的闪卡事件（F2 / 轮转 / 序号快捷键）
+  try {
+    await listen("snipjet-flash-clipboard-card", (event) => {
+      const id = event?.payload?.id;
+      flashClipboardItem(id);
+    });
+  } catch (error) {
+    console.error("闪卡事件监听失败:", error);
   }
 
   // 应用窗口不激活样式，防止抢夺焦点

@@ -2,7 +2,7 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, normalizeImagePreviewSize, DEFAULT_IMAGE_PREVIEW_SIZE, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
+import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, normalizeImagePreviewSize, DEFAULT_IMAGE_PREVIEW_SIZE, loadSystemFonts, getSystemFonts, applyAnimationSpeed, normalizeAnimationSpeed, ANIMATION_SPEEDS } from '../../services/theme-service.js';
 import { t, setLocale, applyI18n } from '../../utils/i18n.js';
 import {
   DEFAULT_UPDATE_REPO,
@@ -48,6 +48,8 @@ function getDefaultSettings() {
       primary_color: "",
       max_history_items: 100,
       search_scan_limit_kb: 1024,
+      // 卡片动效档位："off" | "fast" | "normal"，默认 fast（240ms）
+      animation_speed: "fast",
     },
     copy: {
       strip_formatting: false,
@@ -577,6 +579,14 @@ export function updateAppearanceSettings() {
   // 更新预览字符上限
   syncPreviewMaxChars();
 
+  // 更新卡片动效档位
+  const animationSpeed = document.getElementById("animation-speed");
+  if (animationSpeed) {
+    animationSpeed.value = normalizeAnimationSpeed(
+      settings.interface?.animation_speed
+    );
+  }
+
   // 更新图片预览大小
   syncImagePreviewSize();
 }
@@ -709,6 +719,18 @@ export function bindSettingsListeners() {
     theme.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
       settings.interface.theme = this.value;
+    });
+  }
+
+  // 卡片动效档位：立刻生效（可即时预览快/慢/关闭的差异）
+  const animationSpeed = document.getElementById("animation-speed");
+  if (animationSpeed) {
+    animationSpeed.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      const value = normalizeAnimationSpeed(this.value);
+      this.value = value;
+      settings.interface.animation_speed = value;
+      applyAnimationSpeed(value);
     });
   }
 

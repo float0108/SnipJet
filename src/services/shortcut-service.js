@@ -142,6 +142,10 @@ async function handlePlainTextPaste() {
       return;
     }
 
+    // 1.5 让主窗口上对应卡片脉冲（最新一条）。事件是 fire-and-forget，
+    // 即便主窗口未显示或事件发送失败，也不影响后续粘贴。
+    emitCardFlash(history[0]?.id);
+
     // 2. 获取最新的项目（第一个）
     const latestItem = history[0];
     const format = latestItem.format || "plain";
@@ -243,6 +247,20 @@ function createDebouncedAction(fn, delay, timerRef, label) {
 }
 
 /**
+ * 让主窗口上指定 id 的卡片脉冲（用于轮转 / 序号快捷键 / F2 触发后通知前端）
+ * 不阻塞：emit 失败也无所谓，前端没收到就当无事发生。
+ */
+async function emitCardFlash(itemId) {
+  if (!itemId) return;
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit("snipjet-flash-clipboard-card", { id: itemId });
+  } catch (e) {
+    // 静默：前端监听不到也不影响核心路径
+  }
+}
+
+/**
  * 按序号粘贴历史项（不改变历史排序）。
  *
  * 后端命令 `paste_clipboard_item_at_index` 会写入剪贴板、模拟 Ctrl+V，
@@ -271,6 +289,15 @@ async function handleQuickPaste(index, modifierKind) {
   console.log(`[quick-paste] 触发: index=${index}, modifier=${modifierKind}`);
   try {
     await debug(`快捷粘贴触发: index=${index}, modifier=${modifierKind}`);
+    // 让主窗口上对应序号的卡片脉冲（按当前历史列表）
+    try {
+      const hist = await getClipboardHistory();
+      if (Array.isArray(hist) && index >= 0 && index < hist.length) {
+        emitCardFlash(hist[index].id);
+      }
+    } catch (e) {
+      // 闪卡失败不影响主路径
+    }
     await invoke("paste_clipboard_item_at_index", {
       index,
       modifierKind,
@@ -361,6 +388,16 @@ async function handleRotatingPaste() {
   }
   quickPasteInFlight = true;
   try {
+    // 让主窗口上"轮转即将命中的卡片"脉冲：
+    // 轮转在最新一条为空时全选，否则从最新开始轮转；这里取 history[0]。
+    try {
+      const hist = await getClipboardHistory();
+      if (hist && hist.length > 0) {
+        emitCardFlash(hist[0].id);
+      }
+    } catch (e) {
+      // 闪卡失败不影响主路径
+    }
     await invoke("paste_clipboard_item_rotating");
     await handlePasteAftermath();
   } catch (err) {

@@ -261,10 +261,15 @@ const translations = {
         },
         font: {
           systemDefault: "系统默认",
-          // 次要字体空值（未启用）
+          // 次要字体空值（未设置）
           none: "未设置",
           // {name} 为字体名
           missing: "{name}（已不存在）",
+        },
+        animationSpeed: {
+          off: "关闭",
+          fast: "快速（240ms）",
+          normal: "标准（480ms）",
         },
       },
       // 数值控件的单位后缀
@@ -334,6 +339,8 @@ const translations = {
         previewMaxCharsDesc: "单条预览最多保留的字符数（100 ~ 2000）",
         imagePreviewSize: "图片预览大小",
         imagePreviewSizeDesc: "缩略图宽度占比，0 表示不显示",
+        animationSpeed: "卡片动效",
+        animationSpeedDesc: "粘贴 / 收藏 / 删除三类卡片反馈的时长；选关闭则即时生效",
       },
       shortcuts: {
         toggleInterface: "显示/隐藏界面",
@@ -675,6 +682,11 @@ const translations = {
           // {name} 为字体名
           missing: "{name} (missing)",
         },
+        animationSpeed: {
+          off: "Off",
+          fast: "Fast (240ms)",
+          normal: "Normal (480ms)",
+        },
       },
       // 数值控件的单位后缀
       units: {
@@ -743,6 +755,8 @@ const translations = {
         previewMaxCharsDesc: "Maximum characters kept per preview (100 ~ 2000)",
         imagePreviewSize: "Image Preview Size",
         imagePreviewSizeDesc: "Thumbnail width percentage; 0 hides the preview",
+        animationSpeed: "Card Animations",
+        animationSpeedDesc: "Duration for paste / favorite / delete card feedback; Off = immediate",
       },
       shortcuts: {
         toggleInterface: "Show / Hide Interface",

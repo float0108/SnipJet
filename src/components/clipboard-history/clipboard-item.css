@@ -264,3 +264,107 @@
 .card-btn.btn-favorite.active:hover {
     background: rgba(var(--favorite-color-rgb), 0.2);
 }
+
+/* --- 粘贴动效 ---
+   用户刚点完卡片 / 按下回车，"粘贴到当前窗口"刚开始执行
+   到窗口真正隐藏之间有一个细微空隙（后端 paste_to_active_window
+   完成前的几十毫秒）。在这段窗口内给卡片加一个微脉冲 + 微缩进，
+   告诉用户"我已经在动了"。
+
+   设计原则：
+   - 不加文本（避免 toast 风）
+   - 不删卡片（不能暗示"被移除"）
+   - 卡片瞬时变主色边框（动作语义），同时缩放 / 透明递进
+   - 时长由 :root 上的 --anim-duration-ms 控制（设置中可改，默认 240ms）；
+     主窗口的设置变化或刷新会重新注入这个变量。
+   - reduce-motion 下由全局媒体查询自动压成无动画。
+
+   错误路径：捕获到异常时由 JS 立刻移除本 class，避免半透明残留。*/
+.clipboard-item.is-just-pasted {
+    /* 时长变量作为 <time> token 直接代入 animation 简写 */
+    animation: paste-pulse var(--anim-duration-ms, 240ms) ease-out;
+    /* 动画结束回到卡片本身的边框，故不固定 border-color */
+}
+
+/* 全局关动效：当 :root 标记 data-anim-disabled="true" 时三类动效全部短路为即时显示 */
+html[data-anim-disabled="true"] .clipboard-item.is-just-pasted,
+html[data-anim-disabled="true"] .clipboard-item.is-just-favorited,
+html[data-anim-disabled="true"] .clipboard-item.is-just-removed {
+    animation: none;
+}
+
+@keyframes paste-pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+        border-color: var(--border-strong);
+    }
+    35% {
+        transform: scale(0.97);
+        opacity: 0.35;
+        border-color: var(--primary-color);
+    }
+    60% {
+        transform: scale(1.005);
+        border-color: var(--primary-color);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.85;
+        border-color: var(--border-strong);
+    }
+}
+
+/* --- 收藏切换动效 ---
+   与粘贴动效对比：收藏是"标记语义"，不删卡片、卡片本身留下。
+   动效用琥珀色系：背景闪一下琥珀 42% 叠加 + 边框脉冲 + 缩放回弹，
+   像"被盖了个戳"的视觉。动作完成后卡片保留原有 .is-favorite 状态。
+
+   JS 入口：toggleFavorite 命中后由调用方加 class，700ms 后移除。
+   与粘贴动效同时只用一个，避免叠加导致视觉混乱。 */
+
+@keyframes favorite-pulse {
+    0% {
+        transform: scale(1);
+        background-color: transparent;
+        /* 不写 border-color：让动画 0% 继承元素当前态（.is-favorite / 默认态），
+           峰值时短暂推到 --favorite-color，结束后回到元素当前态。
+           border-color 同理由 .is-favorite / :hover / :active 接管。 */
+    }
+    30% {
+        transform: scale(0.96);
+        background-color: rgba(var(--favorite-color-rgb), 0.42);
+        border-color: var(--favorite-color);
+    }
+    /* 100% 不再硬写 background-color / border-color：transparent 让动画
+       结束后让出控制权，外层 :hover / :active / .is-favorite 直接生效。
+       避免"鼠标仍按下/悬停时，动画尾部停在非激活态、再跳一次激活态"的闪跳。 */
+    100% {
+        transform: scale(1);
+        background-color: transparent;
+    }
+}
+
+.clipboard-item.is-just-favorited {
+    /* 时长由设置决定（默认 fast 240ms），与 is-just-pasted 同步 */
+    animation: favorite-pulse var(--anim-duration-ms, 240ms) ease-out;
+    animation-fill-mode: none;
+}
+
+/* --- 删除动效 ---
+   关键帧动效经多版尝试仍有"卡一下"的体感（多组 layout 属性插值触发 reflow）。
+   改为 JS 用 requestAnimationFrame 驱动 height / opacity 精确收敛：
+   - 起手：JS 读取卡片当前高度（含 padding / border），写入 inline style.height
+   - 每帧：ease-out 衰减到 0；同步把 padding / margin-bottom 拉到 0
+   - 末帧：高度为 0 后 JS 才 splice + 重渲染父容器
+   
+   这里只放元素进入"删除态"时的初始样式：高度暂交给 JS 接管。 */
+.clipboard-item.is-just-removed {
+    /* JS 会在挂 class 时立即用 inline style.height 写入 px 数值接管
+       原来的 auto 高度；这里只需让卡片进入"即将消失"的视觉状态 */
+    overflow: hidden;
+    pointer-events: none;
+    /* 元信息（位于卡片下沿外侧）跟随淡出 */
+    transition: opacity 0.1s linear;
+    opacity: 0;
+}
