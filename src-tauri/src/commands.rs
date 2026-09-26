@@ -28,7 +28,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{
-    APP_HANDLE, DEFAULT_PREVIEW_MAX_CHARS, LAST_HASH, PREVIEW_MAX_CHARS,
+    APP_HANDLE, AUTOSTART_ARGS, DEFAULT_PREVIEW_MAX_CHARS, LAST_HASH, PREVIEW_MAX_CHARS,
     ROTATING_PASTE_LAST_INDEX, SHORTCUT_ACTION_MAP, SYSTEM_FONTS_CACHE, WINDOW_PIN_STATE,
     set_clipboard_ignore_for,
 };
@@ -1130,7 +1130,7 @@ pub fn set_window_focusable_raw(focusable: bool) {
 
 #[tauri::command]
 pub async fn update_window_pin_state(
-    _app_handle: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
     is_pinned: bool,
 ) -> Result<(), String> {
     // 关键修复：pin 状态只控制"点击窗口外部是否自动关闭窗口"，
@@ -1146,7 +1146,24 @@ pub async fn update_window_pin_state(
     }
 
     info!("Updated global window pin state to: {}", is_pinned);
+
+    // 落盘，供下次启动（含开机自启动）沿用上次的选择；写失败不影响本次切换
+    let datastore = state.datastore.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        if let Err(e) = datastore.save_window_pinned(is_pinned) {
+            warn!("Failed to persist window pin state: {}", e);
+        }
+    })
+    .await;
+
     Ok(())
+}
+
+/// 获取窗口 pin 状态（启动时已按上次退出时的状态恢复）
+#[tauri::command]
+pub fn get_window_pin_state() -> Result<bool, String> {
+    let pin_state_lock = WINDOW_PIN_STATE.lock().map_err(|e| e.to_string())?;
+    Ok(*pin_state_lock)
 }
 
 #[tauri::command]
@@ -1894,6 +1911,86 @@ pub async fn get_autostart_status(
         .map_err(|e| format!("Failed to get autostart status: {:?}", e))?;
 
     Ok(is_enabled)
+}
+
+/// Windows 自启动注册位置（HKCU），与 auto-launch 内部使用的键一致
+#[cfg(target_os = "windows")]
+const AUTOSTART_REGKEY: &str = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+
+/// 读取自启动注册项中记录的命令行（可执行文件路径 + 启动参数）。
+///
+/// 注册项由系统侧维护，只有直接读注册表才能发现程序移动/重装后残留的旧路径。
+/// 非 Windows 平台暂无对应实现。
+#[cfg(target_os = "windows")]
+fn read_autostart_registered_command(app_name: &str) -> Option<String> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(AUTOSTART_REGKEY)
+        .ok()?
+        .get_value::<String, _>(app_name)
+        .ok()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_autostart_registered_command(_app_name: &str) -> Option<String> {
+    None
+}
+
+/// 当前可执行文件应注册的启动命令，与自启动插件写入注册项的内容保持一致
+fn current_autostart_command() -> String {
+    let exe = env::current_exe()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+
+    if AUTOSTART_ARGS.is_empty() {
+        exe
+    } else {
+        format!("{} {}", exe, AUTOSTART_ARGS.join(" "))
+    }
+}
+
+/// 汇总自启动状态：是否启用、已注册路径、当前程序应注册的路径
+fn autostart_info(app_handle: &tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let enabled = app_handle
+        .autolaunch()
+        .is_enabled()
+        .map_err(|e| format!("Failed to get autostart status: {:?}", e))?;
+
+    Ok(serde_json::json!({
+        "enabled": enabled,
+        "registered_path": read_autostart_registered_command(&app_handle.package_info().name),
+        "current_path": current_autostart_command(),
+    }))
+}
+
+/// 获取自启动状态（是否启用 + 已注册路径 + 当前程序应注册的路径）
+#[tauri::command]
+pub async fn get_autostart_info(
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    autostart_info(&app_handle)
+}
+
+/// 按当前可执行文件路径重新注册自启动。
+///
+/// 程序移动或重装后注册项可能仍指向旧路径，重新写入即可修正（enable 会覆盖同名注册项）。
+#[tauri::command]
+pub async fn refresh_autostart(
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    app_handle
+        .autolaunch()
+        .enable()
+        .map_err(|e| format!("Failed to re-register autostart: {:?}", e))?;
+    info!("Autostart re-registered with current path");
+
+    autostart_info(&app_handle)
 }
 
 // --- MCP 服务命令 ---
@@ -2789,4 +2886,446 @@ fn text_quality(s: &str) -> i32 {
         }
     }
     score
+}
+
+// --- 软件更新（手动检查 / 下载 / 安装）---
+// 更新源由用户在设置里填写（默认本仓库），检查的是 GitHub Releases，
+// 版本号优先从 tag 解析，解析不到再回退到 release 名称、附件文件名。
+
+/// GitHub Release 中可下载的单个附件
+#[derive(serde::Serialize)]
+pub struct UpdateAsset {
+    pub name: String,
+    pub url: String,
+    pub size: u64,
+}
+
+/// 命中更新时返回的 release 信息
+#[derive(serde::Serialize)]
+pub struct UpdateRelease {
+    pub version: String,
+    pub tag_name: String,
+    pub name: String,
+    pub body: String,
+    pub html_url: String,
+    pub published_at: String,
+    pub prerelease: bool,
+    pub assets: Vec<UpdateAsset>,
+}
+
+/// 更新检查结果
+#[derive(serde::Serialize)]
+pub struct UpdateCheckResult {
+    pub current_version: String,
+    pub has_update: bool,
+    pub release: Option<UpdateRelease>,
+}
+
+/// 从仓库链接解析出 owner/repo。
+/// 支持 https://github.com/owner/repo、git@github.com:owner/repo、owner/repo。
+fn parse_github_repo(repo: &str) -> Result<(String, String), String> {
+    let trimmed = repo.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err("请先填写更新源仓库链接".to_string());
+    }
+
+    let without_git = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+    let path = if let Some(rest) = without_git.strip_prefix("git@github.com:") {
+        rest.to_string()
+    } else if let Some(idx) = without_git.find("github.com") {
+        without_git[idx + "github.com".len()..]
+            .trim_start_matches(['/', ':'])
+            .to_string()
+    } else {
+        without_git.to_string()
+    };
+
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() != 2 {
+        return Err("更新源链接无法识别，请填写形如 https://github.com/owner/repo 的链接".to_string());
+    }
+    Ok((parts[0].to_string(), parts[1].to_string()))
+}
+
+/// 提取形如 x.y.z 的版本号
+fn extract_version(text: &str) -> Option<(u64, u64, u64)> {
+    use std::sync::OnceLock;
+
+    static VERSION_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = VERSION_RE.get_or_init(|| {
+        regex::Regex::new(r"(\d+)\.(\d+)\.(\d+)").expect("version regex should be valid")
+    });
+
+    let caps = re.captures(text)?;
+    let major = caps.get(1)?.as_str().parse().ok()?;
+    let minor = caps.get(2)?.as_str().parse().ok()?;
+    let patch = caps.get(3)?.as_str().parse().ok()?;
+    Some((major, minor, patch))
+}
+
+/// 依次从 tag、release 名称、附件文件名中解析版本号
+fn release_version(release: &serde_json::Value) -> Option<(u64, u64, u64)> {
+    if let Some(tag) = release.get("tag_name").and_then(|v| v.as_str()) {
+        if let Some(version) = extract_version(tag) {
+            return Some(version);
+        }
+    }
+    if let Some(name) = release.get("name").and_then(|v| v.as_str()) {
+        if let Some(version) = extract_version(name) {
+            return Some(version);
+        }
+    }
+    release
+        .get("assets")
+        .and_then(|v| v.as_array())
+        .and_then(|assets| {
+            assets
+                .iter()
+                .filter_map(|a| a.get("name").and_then(|v| v.as_str()))
+                .find_map(extract_version)
+        })
+}
+
+/// 读取 JSON 对象中的字符串字段（缺失时返回空串）
+fn json_str(value: &serde_json::Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// 检查更新：拉取 releases，返回版本号最高且高于当前版本的那个（含 pre-release，忽略草稿）
+#[tauri::command]
+pub async fn check_for_update(
+    app_handle: AppHandle,
+    repo: String,
+) -> Result<UpdateCheckResult, String> {
+    let (owner, name) = parse_github_repo(&repo)?;
+    let api_url = format!(
+        "https://api.github.com/repos/{}/{}/releases?per_page=100",
+        owner, name
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent("SnipJet-Updater")
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("初始化网络请求失败: {}", e))?;
+
+    let resp = client
+        .get(&api_url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("连接 GitHub 失败: {}", e))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let msg = match status.as_u16() {
+            404 => "找不到该仓库，请检查链接是否正确（需为公开仓库）".to_string(),
+            403 | 429 => "GitHub 接口访问受限（可能触发了速率限制），请稍后再试".to_string(),
+            _ => format!("GitHub 接口返回错误: {}", status),
+        };
+        return Err(msg);
+    }
+
+    let releases: Vec<serde_json::Value> = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析 releases 数据失败: {}", e))?;
+
+    let current_version = app_handle.package_info().version.to_string();
+    let current = extract_version(&current_version);
+
+    // 在所有非草稿 release 里挑版本号最高、且高于当前版本的一个
+    let mut best: Option<((u64, u64, u64), &serde_json::Value)> = None;
+    for release in &releases {
+        if release.get("draft").and_then(|v| v.as_bool()).unwrap_or(false) {
+            continue;
+        }
+        let Some(version) = release_version(release) else {
+            continue;
+        };
+        if let Some(cur) = current {
+            if version <= cur {
+                continue;
+            }
+        }
+        if best.as_ref().map(|(b, _)| version > *b).unwrap_or(true) {
+            best = Some((version, release));
+        }
+    }
+
+    let release = best.map(|(version, release)| UpdateRelease {
+        version: format!("{}.{}.{}", version.0, version.1, version.2),
+        tag_name: json_str(release, "tag_name"),
+        name: json_str(release, "name"),
+        body: json_str(release, "body"),
+        html_url: json_str(release, "html_url"),
+        published_at: json_str(release, "published_at"),
+        prerelease: release
+            .get("prerelease")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        assets: release
+            .get("assets")
+            .and_then(|v| v.as_array())
+            .map(|assets| {
+                assets
+                    .iter()
+                    .map(|asset| UpdateAsset {
+                        name: json_str(asset, "name"),
+                        url: json_str(asset, "browser_download_url"),
+                        size: asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    });
+
+    info!(
+        "Update check: repo={}/{} current={} has_update={}",
+        owner,
+        name,
+        current_version,
+        release.is_some()
+    );
+
+    Ok(UpdateCheckResult {
+        current_version,
+        has_update: release.is_some(),
+        release,
+    })
+}
+
+/// 判断当前是安装版还是便携版：Windows 卸载注册表项存在即视为安装版
+#[tauri::command]
+pub fn detect_install_type() -> String {
+    if is_installed_on_windows() {
+        "installer".to_string()
+    } else {
+        "portable".to_string()
+    }
+}
+
+/// 在注册表卸载项里查找本应用（HKCU / HKLM，含 32 位视图）
+#[cfg(target_os = "windows")]
+fn is_installed_on_windows() -> bool {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    const UNINSTALL: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall";
+    const WOW_UNINSTALL: &str =
+        r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall";
+    // 与打包配置一致：productName / bundle identifier
+    const PRODUCT_KEYS: [&str; 2] = ["SnipJet", "com.snipjet.desktop"];
+
+    let roots = [
+        RegKey::predef(HKEY_CURRENT_USER),
+        RegKey::predef(HKEY_LOCAL_MACHINE),
+    ];
+
+    for root in roots.iter() {
+        for sub in [UNINSTALL, WOW_UNINSTALL] {
+            let Ok(uninstall_root) = root.open_subkey(sub) else {
+                continue;
+            };
+            for entry_name in uninstall_root.enum_keys().flatten() {
+                if PRODUCT_KEYS
+                    .iter()
+                    .any(|key| entry_name.eq_ignore_ascii_case(key))
+                {
+                    return true;
+                }
+                let Ok(entry) = uninstall_root.open_subkey(&entry_name) else {
+                    continue;
+                };
+                if let Ok(display_name) = entry.get_value::<String, _>("DisplayName") {
+                    if display_name.to_lowercase().contains("snipjet") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 非 Windows 平台暂无卸载注册项可查，一律按便携版处理
+#[cfg(not(target_os = "windows"))]
+fn is_installed_on_windows() -> bool {
+    false
+}
+
+/// 更新包的默认保存目录：系统「下载」文件夹（取不到时回退用户主目录）
+#[tauri::command]
+pub fn get_default_update_dir() -> String {
+    dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
+        .unwrap_or_else(env::temp_dir)
+        .to_string_lossy()
+        .to_string()
+}
+
+/// 从下载地址中取出文件名（去掉查询串）
+fn file_name_from_url(url: &str) -> String {
+    let last = url
+        .split('/')
+        .last()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("SnipJet-update.exe");
+    last.split('?').next().unwrap_or(last).to_string()
+}
+
+/// 下载更新包到指定目录（为空则落到系统临时目录），返回完整路径。
+/// 下载过程中通过 `update-download-progress` 事件推送进度。
+#[tauri::command]
+pub async fn download_update(
+    app_handle: AppHandle,
+    url: String,
+    dest_dir: Option<String>,
+) -> Result<String, String> {
+    if url.trim().is_empty() {
+        return Err("下载地址为空".to_string());
+    }
+
+    let dir = match dest_dir {
+        Some(dir) if !dir.trim().is_empty() => PathBuf::from(dir.trim()),
+        _ => env::temp_dir(),
+    };
+    fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败: {}", e))?;
+    let dest = dir.join(file_name_from_url(&url));
+
+    let client = reqwest::Client::builder()
+        .user_agent("SnipJet-Updater")
+        .timeout(Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("初始化网络请求失败: {}", e))?;
+
+    let mut resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("下载失败: {}", e))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("下载失败: HTTP {}", status));
+    }
+
+    let total = resp.content_length().unwrap_or(0);
+    let dest_display = dest.to_string_lossy().to_string();
+
+    let mut file = tokio::fs::File::create(&dest)
+        .await
+        .map_err(|e| format!("创建文件失败: {}", e))?;
+
+    let mut downloaded: u64 = 0;
+    let mut last_emitted: u64 = 0;
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| format!("读取下载数据失败: {}", e))?
+    {
+        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+            .await
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        // 每 256 KB 推送一次进度，避免事件过于频繁
+        if downloaded - last_emitted >= 256 * 1024 {
+            last_emitted = downloaded;
+            let _ = app_handle.emit(
+                "update-download-progress",
+                serde_json::json!({ "downloaded": downloaded, "total": total }),
+            );
+        }
+    }
+    tokio::io::AsyncWriteExt::flush(&mut file)
+        .await
+        .map_err(|e| format!("写入文件失败: {}", e))?;
+    drop(file);
+
+    let _ = app_handle.emit(
+        "update-download-progress",
+        serde_json::json!({
+            "downloaded": downloaded,
+            "total": if total == 0 { downloaded } else { total },
+        }),
+    );
+
+    info!("Update package downloaded to {}", dest_display);
+    Ok(dest_display)
+}
+
+/// 静默安装更新包并重启应用。
+/// 安装包会替换正在运行的程序文件，因此先启动一个后台脚本接管：
+/// 等当前进程退出 → `/S` 静默安装 → 重新启动新版本，然后本进程退出。
+#[tauri::command]
+pub async fn install_update(
+    app_handle: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    path: String,
+) -> Result<(), String> {
+    let installer = PathBuf::from(&path);
+    if !installer.exists() {
+        return Err(format!("安装包不存在: {}", path));
+    }
+
+    let current_exe = env::current_exe()
+        .map_err(|e| format!("获取当前程序路径失败: {}", e))?;
+
+    // 退出前落盘，避免重启过程中丢失数据
+    if let Err(e) = crate::core::data_store::save_all_data(&state.datastore, state.history.clone())
+    {
+        error!("退出前保存数据失败: {}", e);
+    }
+
+    launch_installer(&installer, &current_exe)?;
+
+    info!("Update installer launched, exiting application");
+    app_handle.exit(0);
+    Ok(())
+}
+
+/// 落一个批处理并后台启动，由它负责等待、静默安装与重启
+#[cfg(target_os = "windows")]
+fn launch_installer(
+    installer: &std::path::Path,
+    current_exe: &std::path::Path,
+) -> Result<(), String> {
+    let script_path = env::temp_dir().join("snipjet_update.bat");
+    let script = format!(
+        "@echo off\r\n\
+         ping -n 3 127.0.0.1 > nul\r\n\
+         start \"\" /wait \"{}\" /S\r\n\
+         start \"\" \"{}\"\r\n\
+         del \"%~f0\"\r\n",
+        installer.display(),
+        current_exe.display()
+    );
+    fs::write(&script_path, script).map_err(|e| format!("写入更新脚本失败: {}", e))?;
+
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    Command::new("cmd")
+        .arg("/C")
+        .arg(&script_path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map_err(|e| format!("启动安装程序失败: {}", e))?;
+    Ok(())
+}
+
+/// 非 Windows 平台：直接打开安装包，由用户手动完成安装
+#[cfg(not(target_os = "windows"))]
+fn launch_installer(
+    installer: &std::path::Path,
+    _current_exe: &std::path::Path,
+) -> Result<(), String> {
+    Command::new(installer)
+        .spawn()
+        .map_err(|e| format!("启动安装程序失败: {}", e))?;
+    Ok(())
 }

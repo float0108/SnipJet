@@ -1,5 +1,6 @@
 // --- 工具函数：防止 XSS 攻击 ---
 import { t } from "../../utils/i18n.js";
+import { normalizeImagePreviewSize } from "../../services/theme-service.js";
 const escapeHtml = (str) => {
   if (str === null || str === undefined) return "";
   const map = {
@@ -21,7 +22,7 @@ const ICONS = {
   favoriteFilled: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`,
 };
 
-// --- 模块级缓存：图片预览大小设置 ---
+// --- 模块级缓存：图片预览大小设置（百分比，0 表示不显示缩略图）---
 let _cachedImagePreviewSize = null;
 
 function getImagePreviewSize() {
@@ -30,14 +31,12 @@ function getImagePreviewSize() {
   }
   try {
     const saved = localStorage.getItem('snipjet-settings');
-    if (saved) {
-      const settings = JSON.parse(saved);
-      _cachedImagePreviewSize = settings?.interface?.image_preview_size || 'medium';
-    } else {
-      _cachedImagePreviewSize = 'medium';
-    }
+    const settings = saved ? JSON.parse(saved) : null;
+    _cachedImagePreviewSize = normalizeImagePreviewSize(
+      settings?.interface?.image_preview_size
+    );
   } catch (e) {
-    _cachedImagePreviewSize = 'medium';
+    _cachedImagePreviewSize = normalizeImagePreviewSize(undefined);
   }
   return _cachedImagePreviewSize;
 }
@@ -103,7 +102,7 @@ export function renderClipboardItem(item, options = {}) {
   // 生成预览内容（根据格式类型）
   let previewHtml;
   if (item.format === "image" && item.content) {
-    if (imagePreviewSize === 'none') {
+    if (imagePreviewSize === 0) {
       // 无预览：只显示元信息占位
       const sizeInfo = item.imageWidth && item.imageHeight
         ? `${item.imageWidth} × ${item.imageHeight}`
@@ -113,11 +112,13 @@ export function renderClipboardItem(item, options = {}) {
         <span class="placeholder-info">${sizeInfo}</span>
       </div>`;
     } else {
-      // 图片预览：使用占位符，异步加载，根据设置添加尺寸类
+      // 图片预览：使用占位符，异步加载；
+      // 尺寸由设置里的百分比决定，高度按同一比例缩放
       previewHtml = `<img src=""
                            data-image-path="${item.content}"
                            alt="${t('item.imageAlt')}"
-                           class="preview-image loading size-${imagePreviewSize}"
+                           class="preview-image loading"
+                           style="max-width: ${imagePreviewSize}%; max-height: ${imagePreviewSize * 2}px"
                            loading="lazy" />`;
     }
   } else {

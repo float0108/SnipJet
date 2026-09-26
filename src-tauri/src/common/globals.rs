@@ -7,6 +7,11 @@ use tauri::AppHandle;
 
 use crate::mcp::McpServerHandle;
 
+/// 自启动注册时附加的启动参数（注册项内容为「可执行文件路径 + 参数」）。
+///
+/// 与 commands 中读取/比对注册路径的逻辑共用同一份定义，避免两处不一致。
+pub const AUTOSTART_ARGS: &[&str] = &["--hidden"];
+
 /// 预览字符串的字符上限默认值。
 ///
 /// 预览需要足够长才能在用户设置的预览行数内铺满文字（窗口最宽 800px、

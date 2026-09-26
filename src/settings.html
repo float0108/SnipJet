@@ -105,15 +105,47 @@
             </div>
           </div>
 
-          <div class="setting-item">
+          <div class="setting-item" id="startup-status-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.general.checkUpdates"></div>
+              <div class="setting-label" data-i18n="settings.general.startupStatus"></div>
+              <div class="startup-path-row">
+                <span
+                  class="startup-path"
+                  id="startup-path"
+                  data-i18n="settings.general.startupPathEmpty"
+                ></span>
+                <!-- 程序移动/重装后注册项可能仍指向旧路径，点此按当前路径重新注册 -->
+                <button
+                  type="button"
+                  class="reset-btn startup-path-reset"
+                  id="startup-path-reset"
+                  title="重新注册自启动"
+                  aria-label="重新注册自启动"
+                  data-i18n-title="settings.general.startupPathReset"
+                  data-i18n-aria-label="settings.general.startupPathReset"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="check-updates" />
-                <span class="toggle-slider"></span>
-              </label>
+              <span
+                id="startup-status"
+                class="status-badge status-stopped"
+                data-i18n="settings.general.startupDisabled"
+              ></span>
             </div>
           </div>
 
@@ -129,6 +161,65 @@
               </select>
             </div>
           </div>
+
+          <div class="setting-divider"></div>
+
+          <!-- 软件更新：手动检查 GitHub Release，命中后下载/安装 -->
+          <div class="setting-section-title" data-i18n="settings.blocks.update"></div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label" data-i18n="settings.general.updateRepo"></div>
+              <div class="setting-description" data-i18n="settings.general.updateRepoDesc"></div>
+            </div>
+            <div class="setting-control">
+              <!-- 示例链接为默认更新源，保留原样不随界面语言翻译 -->
+              <input
+                type="text"
+                class="text-input"
+                id="update-repo"
+                placeholder="https://github.com/float0108/SnipJet"
+                spellcheck="false"
+              />
+            </div>
+          </div>
+
+          <!-- 仅便携版显示：更新包保存目录 -->
+          <div class="setting-item" id="update-download-dir-item">
+            <div class="setting-info">
+              <div class="setting-label" data-i18n="settings.general.downloadDir"></div>
+              <div class="setting-description" data-i18n="settings.general.downloadDirDesc"></div>
+            </div>
+            <div class="setting-control">
+              <!-- 占位符由 updater.js 写入系统默认下载目录 -->
+              <input type="text" class="text-input" id="update-download-dir" readonly />
+              <button
+                type="button"
+                class="btn btn-cancel update-btn"
+                id="update-browse-btn"
+                data-i18n="settings.general.browse"
+              ></button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label" data-i18n="settings.general.currentVersion"></div>
+              <!-- 版本号与安装类型由 updater.js 写入 -->
+              <div class="setting-description" id="update-install-type"></div>
+            </div>
+            <div class="setting-control">
+              <button
+                type="button"
+                class="btn btn-confirm update-btn"
+                id="check-update-btn"
+                data-i18n="settings.general.checkUpdateBtn"
+              ></button>
+            </div>
+          </div>
+
+          <!-- 检查/下载结果（由 updater.js 渲染） -->
+          <div class="update-result" id="update-result" hidden></div>
         </div>
 
         <!-- 外观 -->
@@ -351,12 +442,15 @@
               ></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="latest-preview-lines">
-                <option value="2" data-i18n="settings.options.lines.n2"></option>
-                <option value="3" data-i18n="settings.options.lines.n3"></option>
-                <option value="5" data-i18n="settings.options.lines.n5"></option>
-                <option value="8" data-i18n="settings.options.lines.n8"></option>
-              </select>
+              <input
+                type="number"
+                class="number-input"
+                id="latest-preview-lines"
+                min="1"
+                max="10"
+                step="1"
+              />
+              <span class="unit-label" data-i18n="settings.units.lines"></span>
             </div>
           </div>
 
@@ -369,12 +463,15 @@
               ></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="history-preview-lines">
-                <option value="1" data-i18n="settings.options.lines.n1"></option>
-                <option value="2" data-i18n="settings.options.lines.n2"></option>
-                <option value="3" data-i18n="settings.options.lines.n3"></option>
-                <option value="5" data-i18n="settings.options.lines.n5"></option>
-              </select>
+              <input
+                type="number"
+                class="number-input"
+                id="history-preview-lines"
+                min="1"
+                max="10"
+                step="1"
+              />
+              <span class="unit-label" data-i18n="settings.units.lines"></span>
             </div>
           </div>
 
@@ -384,13 +481,15 @@
               <div class="setting-description" data-i18n="settings.appearance.previewMaxCharsDesc"></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="preview-max-chars">
-                <option value="200" data-i18n="settings.options.chars.n200"></option>
-                <option value="400" data-i18n="settings.options.chars.n400"></option>
-                <option value="600" data-i18n="settings.options.chars.n600"></option>
-                <option value="1000" data-i18n="settings.options.chars.n1000"></option>
-                <option value="2000" data-i18n="settings.options.chars.n2000"></option>
-              </select>
+              <input
+                type="number"
+                class="number-input"
+                id="preview-max-chars"
+                min="100"
+                max="2000"
+                step="100"
+              />
+              <span class="unit-label" data-i18n="settings.units.chars"></span>
             </div>
           </div>
 
@@ -400,24 +499,15 @@
               <div class="setting-description" data-i18n="settings.appearance.imagePreviewSizeDesc"></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="image-preview-size">
-                <option value="large" data-i18n="settings.options.imageSize.large"></option>
-                <option value="medium" data-i18n="settings.options.imageSize.medium"></option>
-                <option value="small" data-i18n="settings.options.imageSize.small"></option>
-                <option value="none" data-i18n="settings.options.imageSize.none"></option>
-              </select>
-            </div>
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.appearance.autoHide"></div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-switch">
-                <input type="checkbox" id="auto-hide" />
-                <span class="toggle-slider"></span>
-              </label>
+              <input
+                type="number"
+                class="number-input"
+                id="image-preview-size"
+                min="0"
+                max="100"
+                step="10"
+              />
+              <span class="unit-label" data-i18n="settings.units.percent"></span>
             </div>
           </div>
         </div>
@@ -426,7 +516,17 @@
         <div id="shortcuts-content" class="settings-section">
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.shortcuts.toggleInterface"></div>
+              <div
+                class="setting-label"
+                data-i18n="settings.shortcuts.toggleInterface"
+              ></div>
+              <!-- 独立一行左对齐：点击打开弹窗，说明如何把快捷键设为 Win+V -->
+              <button
+                type="button"
+                class="link-btn"
+                id="winv-help-link"
+                data-i18n="settings.shortcuts.winVHelpLink"
+              ></button>
             </div>
             <div class="setting-control">
               <input
@@ -438,10 +538,29 @@
                 readonly
               />
               <button
-                class="clear-btn"
+                type="button"
+                class="reset-btn"
                 data-clear-for="toggle-interface"
-                data-i18n="settings.shortcuts.clear"
-              ></button>
+                title="重置"
+                aria-label="重置"
+                data-i18n-title="settings.shortcuts.reset"
+                data-i18n-aria-label="settings.shortcuts.reset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -459,10 +578,29 @@
                 readonly
               />
               <button
-                class="clear-btn"
+                type="button"
+                class="reset-btn"
                 data-clear-for="function-paste"
-                data-i18n="settings.shortcuts.clear"
-              ></button>
+                title="重置"
+                aria-label="重置"
+                data-i18n-title="settings.shortcuts.reset"
+                data-i18n-aria-label="settings.shortcuts.reset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -472,11 +610,36 @@
               <div class="setting-description" data-i18n="settings.shortcuts.quickPasteModeDesc"></div>
             </div>
             <div class="setting-control">
+              <!-- 空值项仅用于回显「未设置」且不可直接选中；禁用快捷粘贴请用右侧重置键 -->
               <select class="select-input" id="quick-paste-mode">
+                <option value="" disabled data-i18n="settings.shortcuts.notSet"></option>
                 <option value="ctrl">Ctrl</option>
                 <option value="num">NumPad</option>
-                <option value="none" data-i18n="settings.options.quickPaste.none"></option>
               </select>
+              <button
+                type="button"
+                class="reset-btn"
+                data-clear-for="quick-paste-mode"
+                title="重置"
+                aria-label="重置"
+                data-i18n-title="settings.shortcuts.reset"
+                data-i18n-aria-label="settings.shortcuts.reset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -495,10 +658,29 @@
                 readonly
               />
               <button
-                class="clear-btn"
+                type="button"
+                class="reset-btn"
                 data-clear-for="rotating-paste"
-                data-i18n="settings.shortcuts.clear"
-              ></button>
+                title="重置"
+                aria-label="重置"
+                data-i18n-title="settings.shortcuts.reset"
+                data-i18n-aria-label="settings.shortcuts.reset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -738,6 +920,89 @@
         </div>
       </div>
     </div>
+
+    <!-- 禁用 Windows 原生 Win+V 的说明弹窗（点击快捷键旁的圆形 i 打开） -->
+    <div class="modal-overlay" id="winv-help-modal">
+      <div
+        class="modal-box"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="winv-help-title"
+      >
+        <div class="modal-header">
+          <h3
+            class="modal-title"
+            id="winv-help-title"
+            data-i18n="settings.shortcuts.winVHelpTitle"
+          ></h3>
+          <button
+            type="button"
+            class="modal-close"
+            id="winv-help-close"
+            data-i18n-aria-label="settings.shortcuts.closeDialog"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <p
+            class="modal-text"
+            data-i18n-html="settings.shortcuts.winVHelpIntro"
+          ></p>
+
+          <ol class="modal-steps">
+            <li>
+              <span data-i18n-html="settings.shortcuts.winVHelpStep1"></span>
+            </li>
+            <li>
+              <span data-i18n-html="settings.shortcuts.winVHelpStep2"></span>
+              <code class="modal-code"
+                >HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced</code
+              >
+            </li>
+            <li>
+              <span data-i18n-html="settings.shortcuts.winVHelpStep3"></span>
+              <code class="modal-code">DisabledHotkeys</code>
+            </li>
+            <li>
+              <span data-i18n-html="settings.shortcuts.winVHelpStep4"></span>
+            </li>
+            <li>
+              <span data-i18n-html="settings.shortcuts.winVHelpStep5"></span>
+            </li>
+          </ol>
+
+          <p
+            class="modal-note"
+            data-i18n-html="settings.shortcuts.winVHelpNote"
+          ></p>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-confirm"
+            id="winv-help-ok"
+            data-i18n="settings.shortcuts.gotIt"
+          ></button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="./views/settings/main.js"></script>
   </body>
 </html>

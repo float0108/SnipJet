@@ -185,7 +185,50 @@ export function setupEscKey() {
   // 监听 ESC 键执行取消操作
   window.addEventListener("keydown", async function (event) {
     if (event.key === "Escape") {
+      // 说明弹窗打开时，Esc 由弹窗自己处理（只关闭弹窗，不取消设置）
+      if (isHelpModalOpen()) return;
       await cancelAndClose();
     }
+  });
+}
+
+// 说明弹窗是否处于打开状态
+function isHelpModalOpen() {
+  return !!document
+    .getElementById("winv-help-modal")
+    ?.classList.contains("show");
+}
+
+// Win+V 说明弹窗：点击「显示/隐藏界面」旁的下划线链接打开，
+// 讲解如何禁用 Windows 原生的 Win+V 热键
+export function setupWinVHelpModal() {
+  const modal = document.getElementById("winv-help-modal");
+  const openBtn = document.getElementById("winv-help-link");
+  if (!modal || !openBtn) return;
+
+  const okBtn = document.getElementById("winv-help-ok");
+  const closeBtn = document.getElementById("winv-help-close");
+
+  const openModal = () => {
+    modal.classList.add("show");
+    okBtn?.focus();
+  };
+
+  const closeModal = () => {
+    modal.classList.remove("show");
+    // 关闭后焦点归还触发按钮，方便键盘继续操作
+    openBtn.focus();
+  };
+
+  openBtn.addEventListener("click", openModal);
+  okBtn?.addEventListener("click", closeModal);
+  closeBtn?.addEventListener("click", closeModal);
+  // 点击遮罩空白处关闭
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeModal();
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isHelpModalOpen()) closeModal();
   });
 }

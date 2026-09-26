@@ -16,6 +16,8 @@ use crate::core::database::Database;
 const SETTINGS_FILE: &str = "settings.json";
 const TEXT_EXPAND_FILE: &str = "text_expand.yaml";
 const LEGACY_HISTORY_FILE: &str = "clipboard_history.json";
+// 窗口运行时状态（与用户可在设置页编辑的配置分开存放，避免相互覆盖）
+const WINDOW_STATE_FILE: &str = "window_state.json";
 
 /// 文本扩展规则数据结构（用于文件存储）
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -76,6 +78,44 @@ impl DataStore {
     /// 获取旧版 JSON 历史文件路径
     fn get_legacy_history_path(&self) -> PathBuf {
         self.app_data_dir.join(LEGACY_HISTORY_FILE)
+    }
+
+    /// 获取窗口状态文件路径
+    fn get_window_state_path(&self) -> PathBuf {
+        self.app_data_dir.join(WINDOW_STATE_FILE)
+    }
+
+    /// 保存窗口 pin 状态（pin 只控制点击窗口外部是否自动隐藏）
+    /// 需要跨进程重启保留，因此开机自启动后仍沿用上次的选择。
+    pub fn save_window_pinned(&self, pinned: bool) -> Result<(), String> {
+        let path = self.get_window_state_path();
+        let state = serde_json::json!({ "pinned": pinned });
+
+        let json = serde_json::to_string_pretty(&state)
+            .map_err(|e| format!("Failed to serialize window state: {}", e))?;
+        fs::write(&path, json)
+            .map_err(|e| format!("Failed to write window state file: {}", e))?;
+
+        info!("Window pin state saved to {:?}: {}", path, pinned);
+        Ok(())
+    }
+
+    /// 读取窗口 pin 状态；文件不存在或内容异常时返回 None，由调用方决定默认值
+    pub fn load_window_pinned(&self) -> Option<bool> {
+        let path = self.get_window_state_path();
+        if !path.exists() {
+            return None;
+        }
+
+        match fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str::<serde_json::Value>(&content)
+                .ok()
+                .and_then(|state| state.get("pinned").and_then(|v| v.as_bool())),
+            Err(e) => {
+                warn!("Failed to read window state file {:?}: {}", path, e);
+                None
+            }
+        }
     }
 
     /// 获取图片存储目录
@@ -530,6 +570,11 @@ impl DataStore {
                 "theme": "system",
                 "font_size": 14,
                 "window_opacity": 1.0
+            },
+            "software": {
+                "startup_launch": true,
+                "update_repo": "https://github.com/float0108/SnipJet",
+                "update_download_dir": ""
             },
             "mcp": {
                 "enabled": false,

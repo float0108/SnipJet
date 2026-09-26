@@ -152,22 +152,6 @@
     justify-content: center;
 }
 
-/* 图片预览大小设置 */
-.preview-image.size-large {
-    max-width: 100%;
-    max-height: 200px;
-}
-
-.preview-image.size-medium {
-    max-width: 60%;
-    max-height: 120px;
-}
-
-.preview-image.size-small {
-    max-width: 30%;
-    max-height: 80px;
-}
-
 /* 图片无预览占位符 */
 .image-placeholder {
     display: flex;

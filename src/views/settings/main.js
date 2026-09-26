@@ -51,12 +51,13 @@ async function init() {
     bindSettingsListeners();
 
     // 设置UI交互
-    const {setupSidebar, setupCloseButton, setupEscKey, setupConfirmCancelButtons} =
+    const {setupSidebar, setupCloseButton, setupEscKey, setupConfirmCancelButtons, setupWinVHelpModal} =
       await import("./ui.js");
     setupSidebar();
     setupCloseButton();
     setupEscKey();
     setupConfirmCancelButtons();
+    setupWinVHelpModal();
 
     // 设置已全部应用到 DOM：等两帧后恢复过渡动画，
     // 移除 head 脚本加的 preload 标记（期间 toggle 等控件不播放状态切换动画）

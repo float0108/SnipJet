@@ -13,7 +13,8 @@ description = "允许前端更新窗口固定状态"
 
 # 关键改动：commands 后面要接 .allow
 commands.allow = [
-    "update_window_pin_state"
+    "update_window_pin_state",
+    "get_window_pin_state"
 ]
 
 [[permission]]
@@ -94,7 +95,9 @@ description = "允许前端管理开机自启动"
 
 commands.allow = [
     "set_autostart",
-    "get_autostart_status"
+    "get_autostart_status",
+    "get_autostart_info",
+    "refresh_autostart"
 ]
 
 [[permission]]
@@ -114,4 +117,16 @@ description = "允许前端读取系统字体列表"
 
 commands.allow = [
     "list_system_fonts"
+]
+
+[[permission]]
+identifier = "allow-update-operations"
+description = "允许前端检查、下载并安装软件更新"
+
+commands.allow = [
+    "check_for_update",
+    "detect_install_type",
+    "get_default_update_dir",
+    "download_update",
+    "install_update"
 ]

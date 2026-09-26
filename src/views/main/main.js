@@ -13,6 +13,7 @@ import {initTitlebarButtons, pinState, filterState, syncFavoritesButtonLabel} fr
 import {handleNavigation} from "./navigation.js";
 import { renderEmptyState } from "../../components/empty-state/empty-state.js";
 import { renderHistory } from "../../components/clipboard-history/clipboard-history.js";
+import { clearImagePreviewSizeCache } from "../../components/clipboard-history/clipboard-item.js";
 import {log, debug, error, event} from "../../utils/logger.js";
 import { t, loadLocaleFromSettings, setLocale, applyI18n } from "../../utils/i18n.js";
 
@@ -668,6 +669,8 @@ async function init() {
         }
         if (interfacePayload) {
           applyInterfaceSettings(interfacePayload);
+          // 图片预览大小是模块级缓存：设置变化后失效，下一次渲染才会用新值
+          clearImagePreviewSizeCache();
           console.log("[settings-changed] 主界面设置已应用:", interfacePayload);
         }
       } catch (e) {

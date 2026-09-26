@@ -92,6 +92,22 @@ async function syncPinState(pinned) {
 }
 
 /**
+ * 读取后端当前的 Pin 状态
+ *
+ * 后端在启动时已按上次退出时的状态初始化（含开机自启动），
+ * 前端以此为准，避免每次启动都被强制成"已固定"。
+ * 读取失败（如非 Tauri 环境）时沿用内存中的当前值。
+ */
+async function fetchPinState() {
+  try {
+    return await invoke("get_window_pin_state");
+  } catch (e) {
+    await error("读取 Pin 状态失败:", e);
+    return pinState.isPinned;
+  }
+}
+
+/**
  * 按当前视图状态刷新收藏按钮的文案（查看收藏 / 显示全部）
  * 语言切换后也需要重写，因此单独抽出
  */
@@ -123,9 +139,10 @@ export async function initTitlebarButtons() {
   //    **不**影响窗口置顶。窗口永远置顶（tauri.conf.json: alwaysOnTop: true）。
   if (pinBtn) {
     console.log("[titlebar] 绑定固定按钮事件");
+    // 以后端恢复的 pin 状态为准，而不是固定为"已固定"
+    pinState.isPinned = await fetchPinState();
     pinBtn.classList.toggle("pinned", pinState.isPinned); // 同步初始 UI
     pinBtn.setAttribute("aria-pressed", String(pinState.isPinned));
-    await syncPinState(pinState.isPinned);
 
     pinBtn.addEventListener("click", async () => {
       console.log("[titlebar] 固定按钮被点击, 当前状态:", pinState.isPinned);

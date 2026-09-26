@@ -2,12 +2,21 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
+import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, normalizeImagePreviewSize, DEFAULT_IMAGE_PREVIEW_SIZE, loadSystemFonts, getSystemFonts } from '../../services/theme-service.js';
 import { t, setLocale, applyI18n } from '../../utils/i18n.js';
+import {
+  DEFAULT_UPDATE_REPO,
+  applyUpdateSettings,
+  bindUpdaterEvents,
+  refreshUpdaterTexts,
+  resetUpdaterUI,
+} from './updater.js';
 
 export let settings = {};
 // 原始设置备份（用于取消时恢复）
 let originalSettings = {};
+// 最近一次读取的自启动信息（用于语言切换时按新语言重写徽标与路径文案）
+let autostartInfo = null;
 
 // 转换快捷键格式（Win -> Super）
 function convertShortcutFormat(shortcut) {
@@ -31,11 +40,10 @@ function getDefaultSettings() {
       font_family: "",
       font_family_secondary: "",
       font_size: 14,
-      auto_hide: true,
       latest_preview_lines: 5,
       history_preview_lines: 1,
       preview_max_chars: 600,
-      image_preview_size: "medium",
+      image_preview_size: DEFAULT_IMAGE_PREVIEW_SIZE,
       favorite_color: "#eab308",
       primary_color: "",
       max_history_items: 100,
@@ -51,7 +59,8 @@ function getDefaultSettings() {
     },
     software: {
       startup_launch: true,
-      check_updates: true,
+      update_repo: DEFAULT_UPDATE_REPO,
+      update_download_dir: "",
     },
     history_cleanup: {
       count_enabled: false,
@@ -112,9 +121,19 @@ export async function loadSettings() {
         delete settings.interface.preview_lines;
       }
 
-      // 移除已下线的"划词复制"字段（功能未实现，保留在文件里没有意义）
+      // 移除已下线的字段："划词复制"功能未实现、"失去焦点隐藏"已由置顶取代
       if (settings.copy) {
         delete settings.copy.copy_on_select;
+      }
+      if (settings.interface) {
+        delete settings.interface.auto_hide;
+      }
+
+      // 图片预览大小由旧版档位字符串（large/medium/small/none）迁移为百分比
+      if (settings.interface?.image_preview_size != null) {
+        settings.interface.image_preview_size = normalizeImagePreviewSize(
+          settings.interface.image_preview_size
+        );
       }
 
       console.log("设置加载成功:", settings);
@@ -174,6 +193,8 @@ export async function saveSettings() {
 
     // 检测自启动设置变化并更新
     await updateAutostartSetting();
+    // 自启动开关可能改写了系统注册项，重新读取回显
+    await refreshAutostartStatus();
 
     // 检测 MCP 服务设置变化并更新
     await updateMcpService();
@@ -333,6 +354,44 @@ async function updateMcpService() {
   }
 }
 
+// 读取自启动注册信息并回显（是否启用 + 系统侧实际注册的路径）
+async function refreshAutostartStatus() {
+  try {
+    autostartInfo = await invoke("get_autostart_info");
+  } catch (e) {
+    console.error("获取自启动状态失败:", e);
+    autostartInfo = null;
+  }
+  renderAutostartStatus();
+}
+
+// 回显自启动状态徽标与注册路径（按当前语言）
+function renderAutostartStatus() {
+  const badge = document.getElementById("startup-status");
+  const pathEl = document.getElementById("startup-path");
+  const resetBtn = document.getElementById("startup-path-reset");
+  if (!badge || !pathEl) return;
+
+  const enabled = !!autostartInfo?.enabled;
+  const registeredPath = autostartInfo?.registered_path || "";
+
+  badge.textContent = enabled
+    ? t("settings.general.startupEnabled")
+    : t("settings.general.startupDisabled");
+  badge.className = enabled
+    ? "status-badge status-running"
+    : "status-badge status-stopped";
+
+  pathEl.textContent = registeredPath || t("settings.general.startupPathEmpty");
+  // 已注册但路径与当前程序不一致：注册项指向旧位置，提示用户重新注册
+  pathEl.classList.toggle(
+    "stale",
+    enabled && !!registeredPath && registeredPath !== autostartInfo?.current_path
+  );
+
+  if (resetBtn) resetBtn.disabled = !enabled;
+}
+
 // 更新常规设置
 export function updateGeneralSettings() {
   // 更新开机启动
@@ -341,11 +400,14 @@ export function updateGeneralSettings() {
     startupLaunch.checked = settings.software?.startup_launch ?? true;
   }
 
-  // 更新检查更新
-  const checkUpdates = document.getElementById("check-updates");
-  if (checkUpdates) {
-    checkUpdates.checked = settings.software?.check_updates ?? true;
-  }
+  // 读取系统侧的自启动注册信息（异步，不阻塞其它控件回显）
+  refreshAutostartStatus();
+
+  // 回显软件更新区（安装类型检测与版本读取是异步的）
+  applyUpdateSettings({
+    repo: settings.software?.update_repo || DEFAULT_UPDATE_REPO,
+    downloadDir: settings.software?.update_download_dir || "",
+  }).catch((e) => console.error("初始化软件更新设置失败:", e));
 
   // 更新界面语言
   const language = document.getElementById("language");
@@ -510,40 +572,20 @@ export function updateAppearanceSettings() {
   }
 
   // 更新预览行数（最新条目 / 历史条目）
-  const latestPreviewLines = document.getElementById("latest-preview-lines");
-  if (latestPreviewLines) {
-    latestPreviewLines.value =
-      settings.interface?.latest_preview_lines ??
-      settings.interface?.preview_lines ??
-      5;
-  }
-
-  const historyPreviewLines = document.getElementById("history-preview-lines");
-  if (historyPreviewLines) {
-    historyPreviewLines.value = settings.interface?.history_preview_lines ?? 1;
-  }
+  syncPreviewLines();
 
   // 更新预览字符上限
-  const previewMaxChars = document.getElementById("preview-max-chars");
-  if (previewMaxChars) {
-    previewMaxChars.value = settings.interface?.preview_max_chars ?? 600;
-  }
+  syncPreviewMaxChars();
 
   // 更新图片预览大小
-  const imagePreviewSize = document.getElementById("image-preview-size");
-  if (imagePreviewSize) {
-    imagePreviewSize.value = settings.interface?.image_preview_size ?? "medium";
-  }
-
-  // 更新失去焦点隐藏
-  const autoHide = document.getElementById("auto-hide");
-  if (autoHide) {
-    autoHide.checked = settings.interface?.auto_hide ?? true;
-  }
+  syncImagePreviewSize();
 }
 
 // 绑定设置变化监听器（不再自动保存，只在内存中更新）
 export function bindSettingsListeners() {
+  // 给数值输入补上外侧上下箭头（需在绑定各 change 监听前完成，值不受影响）
+  setupNumberSteppers();
+
   // 监听软件设置变化
   const startupLaunch = document.getElementById("startup-launch");
   if (startupLaunch) {
@@ -553,13 +595,37 @@ export function bindSettingsListeners() {
     });
   }
 
-  const checkUpdates = document.getElementById("check-updates");
-  if (checkUpdates) {
-    checkUpdates.addEventListener("change", function () {
-      if (!settings.software) settings.software = {};
-      settings.software.check_updates = this.checked;
+  // 「重新注册」键：程序移动/重装后按当前路径重写系统自启动注册项
+  const startupPathReset = document.getElementById("startup-path-reset");
+  if (startupPathReset) {
+    startupPathReset.addEventListener("click", async () => {
+      startupPathReset.disabled = true;
+      const { showNotification } = await import("./ui.js");
+      try {
+        await invoke("refresh_autostart");
+        await refreshAutostartStatus();
+        showNotification(t("settings.general.startupPathUpdated"));
+      } catch (e) {
+        console.error("重新注册自启动失败:", e);
+        startupPathReset.disabled = false;
+        showNotification(t("settings.general.startupPathFailed"));
+      }
     });
   }
+
+  // 软件更新：更新源 / 便携版下载目录 / 检查更新按钮
+  bindUpdaterEvents({
+    onRepoChange: (repo) => {
+      if (!settings.software) settings.software = {};
+      settings.software.update_repo = repo;
+      // 换源后上一次的检查结果已失效
+      resetUpdaterUI();
+    },
+    onDownloadDirChange: (dir) => {
+      if (!settings.software) settings.software = {};
+      settings.software.update_download_dir = dir;
+    },
+  });
 
   // 监听历史清理设置变化
   const cleanupCountEnabled = document.getElementById("cleanup-count-enabled");
@@ -646,14 +712,6 @@ export function bindSettingsListeners() {
     });
   }
 
-  const autoHideEl = document.getElementById("auto-hide");
-  if (autoHideEl) {
-    autoHideEl.addEventListener("change", function () {
-      if (!settings.interface) settings.interface = {};
-      settings.interface.auto_hide = this.checked;
-    });
-  }
-
   const maxHistoryItems = document.getElementById("max-history-items");
   if (maxHistoryItems) {
     maxHistoryItems.addEventListener("change", function () {
@@ -691,8 +749,12 @@ export function bindSettingsListeners() {
           ? t("settings.advanced.mcpRunning")
           : t("settings.advanced.mcpStopped");
       }
+      // 自启动状态徽标与注册路径由脚本写入，需按新语言重写
+      renderAutostartStatus();
       // 字体下拉的「系统默认 / 已不存在」等文案由脚本生成，需同步刷新其文案
       refreshFontPickerTexts();
+      // 更新区的版本/安装类型/结果文案由脚本写入，需按新语言重写
+      refreshUpdaterTexts();
     });
   }
 
@@ -738,11 +800,16 @@ export function bindSettingsListeners() {
     });
   }
 
+  // 预览行数：修改后归一化回填并记录（保存时统一应用）
   const latestPreviewLines = document.getElementById("latest-preview-lines");
   if (latestPreviewLines) {
     latestPreviewLines.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.latest_preview_lines = parseInt(this.value);
+      settings.interface.latest_preview_lines = normalizePreviewLines(
+        this.value,
+        DEFAULT_LATEST_PREVIEW_LINES
+      );
+      syncPreviewLines();
     });
   }
 
@@ -750,15 +817,21 @@ export function bindSettingsListeners() {
   if (historyPreviewLines) {
     historyPreviewLines.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.history_preview_lines = parseInt(this.value);
+      settings.interface.history_preview_lines = normalizePreviewLines(
+        this.value,
+        DEFAULT_HISTORY_PREVIEW_LINES
+      );
+      syncPreviewLines();
     });
   }
 
+  // 预览字符上限 / 图片预览大小：修改后归一化回填并记录（保存时统一应用）
   const previewMaxChars = document.getElementById("preview-max-chars");
   if (previewMaxChars) {
     previewMaxChars.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.preview_max_chars = parseInt(this.value);
+      settings.interface.preview_max_chars = normalizePreviewMaxChars(this.value);
+      syncPreviewMaxChars();
     });
   }
 
@@ -766,7 +839,8 @@ export function bindSettingsListeners() {
   if (imagePreviewSize) {
     imagePreviewSize.addEventListener("change", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.image_preview_size = this.value;
+      settings.interface.image_preview_size = normalizeImagePreviewSize(this.value);
+      syncImagePreviewSize();
     });
   }
 
@@ -811,6 +885,8 @@ export function bindSettingsListeners() {
 // 恢复原始设置（取消操作）
 export async function restoreOriginalSettings() {
   settings = JSON.parse(JSON.stringify(originalSettings));
+  // 取消修改：清掉本次的更新检查结果
+  resetUpdaterUI();
   // 更新UI
   updateGeneralSettings();
   updateAppearanceSettings();
@@ -854,6 +930,135 @@ function syncFontSize() {
   input.value = value;
   const reset = document.getElementById("font-size-reset");
   if (reset) reset.disabled = value === DEFAULT_FONT_SIZE;
+}
+
+// --- 预览行数（最新条目 / 历史条目）---
+// 取值范围与默认值（与 HTML 的 min/max、getDefaultSettings 一致）
+const MIN_PREVIEW_LINES = 1;
+const MAX_PREVIEW_LINES = 10;
+const DEFAULT_LATEST_PREVIEW_LINES = 5;
+const DEFAULT_HISTORY_PREVIEW_LINES = 1;
+
+// 归一化行数：空值/非法输入回落默认值，超范围截断并取整
+function normalizePreviewLines(value, fallback) {
+  if (value === "" || value == null) return fallback;
+  const lines = Math.round(Number(value));
+  if (!Number.isFinite(lines)) return fallback;
+  return Math.min(MAX_PREVIEW_LINES, Math.max(MIN_PREVIEW_LINES, lines));
+}
+
+// 回显预览行数：写入输入框（历史遗留的单一 preview_lines 作为最新条目的兜底）
+function syncPreviewLines() {
+  const latest = document.getElementById("latest-preview-lines");
+  if (latest) {
+    latest.value = normalizePreviewLines(
+      settings.interface?.latest_preview_lines ?? settings.interface?.preview_lines,
+      DEFAULT_LATEST_PREVIEW_LINES
+    );
+  }
+  const history = document.getElementById("history-preview-lines");
+  if (history) {
+    history.value = normalizePreviewLines(
+      settings.interface?.history_preview_lines,
+      DEFAULT_HISTORY_PREVIEW_LINES
+    );
+  }
+}
+
+// --- 预览字符上限 / 图片预览大小 ---
+// 取值范围与步长（与 HTML 的 min/max/step、getDefaultSettings 一致）
+const MIN_PREVIEW_MAX_CHARS = 100;
+const MAX_PREVIEW_MAX_CHARS = 2000;
+const DEFAULT_PREVIEW_MAX_CHARS = 600;
+
+// 归一化字符上限：空值/非法输入回落默认值，超范围截断并对齐到 100
+function normalizePreviewMaxChars(value) {
+  if (value === "" || value == null) return DEFAULT_PREVIEW_MAX_CHARS;
+  const chars = Number(value);
+  if (!Number.isFinite(chars)) return DEFAULT_PREVIEW_MAX_CHARS;
+  const clamped = Math.min(
+    MAX_PREVIEW_MAX_CHARS,
+    Math.max(MIN_PREVIEW_MAX_CHARS, chars)
+  );
+  return Math.round(clamped / 100) * 100;
+}
+
+function syncPreviewMaxChars() {
+  const input = document.getElementById("preview-max-chars");
+  if (input) {
+    input.value = normalizePreviewMaxChars(settings.interface?.preview_max_chars);
+  }
+}
+
+// 图片预览大小存百分比（0 表示不显示缩略图），归一化逻辑见 theme-service
+function syncImagePreviewSize() {
+  const input = document.getElementById("image-preview-size");
+  if (input) {
+    input.value = normalizeImagePreviewSize(settings.interface?.image_preview_size);
+  }
+}
+
+// --- 数值输入的外侧上下箭头 ---
+// 原生 spinner 的热区在输入框内部且很小，点起来费劲；这里关掉它（见 settings.css），
+// 给每个数值输入补上输入框外侧的上下箭头，HTML 里只需要写 input。
+const STEP_ICONS = {
+  1: '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"></polyline></svg>',
+  "-1": '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+};
+
+let numberSteppersReady = false;
+
+function setupNumberSteppers() {
+  // 只初始化一次（同时避免重复注册委托监听）
+  if (numberSteppersReady) return;
+  numberSteppersReady = true;
+
+  document.querySelectorAll(".number-input").forEach((input) => {
+    // 输入框外包一层容器，右侧放上下箭头
+    const field = document.createElement("div");
+    field.className = "number-field";
+    input.replaceWith(field);
+    field.appendChild(input);
+
+    const stepper = document.createElement("div");
+    stepper.className = "number-stepper";
+    [1, -1].forEach((step) => {
+      const key = step === 1 ? "increase" : "decrease";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "step-btn";
+      btn.dataset.step = String(step);
+      // 文案交给 i18n：data-* 属性让 applyI18n（含语言切换）能重新写入
+      btn.dataset.i18nAriaLabel = `settings.step.${key}`;
+      btn.setAttribute("aria-label", t(`settings.step.${key}`));
+      btn.innerHTML = STEP_ICONS[step];
+      stepper.appendChild(btn);
+    });
+    field.appendChild(stepper);
+  });
+
+  // 箭头按步长增减，再派发 change 交给各控件自身的归一化逻辑收尾
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest(".step-btn");
+    if (!btn) return;
+    const input = btn.closest(".number-field")?.querySelector(".number-input");
+    if (!input) return;
+
+    const current = Number(input.value);
+    if (!Number.isFinite(current)) {
+      // 非法输入（如字母）：派发 change 让各控件按默认值归一化
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return;
+    }
+
+    const step = Number(input.step) || 1;
+    let next = current + step * Number(btn.dataset.step);
+    if (input.min !== "") next = Math.max(next, Number(input.min));
+    if (input.max !== "") next = Math.min(next, Number(input.max));
+    // 规避浮点步长（如 0.01）累加产生的尾数误差
+    input.value = Math.round(next * 100) / 100;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 }
 
 // --- 界面字体选择器（自定义下拉）---

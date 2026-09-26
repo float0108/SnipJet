@@ -18,7 +18,7 @@ use tauri_plugin_global_shortcut;
 use tauri_plugin_autostart::MacosLauncher;
 
 use crate::clipboard_manager::ClipboardManager;
-use crate::common::globals::{APP_HANDLE, SHORTCUT_ACTION_MAP};
+use crate::common::globals::{APP_HANDLE, AUTOSTART_ARGS, SHORTCUT_ACTION_MAP, WINDOW_PIN_STATE};
 use crate::common::globals::{
     DEFAULT_PREVIEW_MAX_CHARS, MCP_SERVER_HANDLE, PREVIEW_MAX_CHARS,
 };
@@ -111,8 +111,12 @@ where
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(AUTOSTART_ARGS.to_vec()),
+        ))
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
@@ -210,6 +214,15 @@ where
                         *limit_lock = search_scan_bytes;
                         info!("Search scan limit set to: {} bytes", search_scan_bytes);
                     }
+
+                    // 恢复上次退出时的窗口 pin 状态：pin 只控制"点击窗口外部是否自动隐藏窗口"，
+                    // 需要沿用用户上次的选择，而不是每次启动都固定为已 pin。
+                    let pinned = state_for_setup.datastore.load_window_pinned().unwrap_or(true);
+                    {
+                        let mut pin_lock = WINDOW_PIN_STATE.lock().unwrap();
+                        *pin_lock = pinned;
+                    }
+                    info!("Window pin state restored from last session: {}", pinned);
 
                     // 根据设置启用/禁用自启动
                     let startup_launch = loaded_settings.get("software")
@@ -462,6 +475,7 @@ where
             commands::set_window_focusable_raw,
             commands::ensure_window_topmost,
             commands::update_window_pin_state,
+            commands::get_window_pin_state,
             commands::print_message,
             commands::get_mouse_position,
             commands::save_clipboard_history,
@@ -477,6 +491,8 @@ where
             commands::get_image_path,
             commands::set_autostart,
             commands::get_autostart_status,
+            commands::get_autostart_info,
+            commands::refresh_autostart,
             commands::get_mcp_status,
             commands::start_mcp_service,
             commands::stop_mcp_service,
@@ -491,7 +507,12 @@ where
             commands::paste_clipboard_item_at_index,
             commands::paste_clipboard_item_rotating,
             commands::reset_rotating_paste,
-            commands::setup_quick_paste_shortcuts
+            commands::setup_quick_paste_shortcuts,
+            commands::check_for_update,
+            commands::detect_install_type,
+            commands::get_default_update_dir,
+            commands::download_update,
+            commands::install_update
         ))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

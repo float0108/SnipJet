@@ -26,12 +26,18 @@ export function updateShortcutInputs() {
       functionInput.value = settings.shortcuts?.function_paste || "";
     }
 
-    // 更新快捷粘贴快捷键模式
+    // 更新快捷粘贴修饰键（下拉框不含「无」项，「未设置」由重置键清除得到）
     const quickModeSelect = document.getElementById("quick-paste-mode");
     if (quickModeSelect) {
       const mode = settings.shortcuts?.quick_paste_mode || "ctrl";
-      // 兼容旧值：如果不是已知模式，默认为 ctrl
-      quickModeSelect.value = ["ctrl", "num", "none"].includes(mode) ? mode : "ctrl";
+      if (["ctrl", "num"].includes(mode)) {
+        quickModeSelect.value = mode;
+        quickModeSelect.classList.remove("is-unset");
+      } else {
+        // 「未设置」是禁用的首项，按下标选中以保证回显
+        quickModeSelect.selectedIndex = 0;
+        quickModeSelect.classList.add("is-unset");
+      }
     }
 
     // 更新候选粘贴快捷键
@@ -39,6 +45,17 @@ export function updateShortcutInputs() {
     if (rotatingInput) {
       rotatingInput.value = settings.shortcuts?.rotating_paste || "";
     }
+
+    // 回显重置键的可用状态
+    syncShortcutResetButtons();
+  });
+}
+
+// 回显重置键可用状态：值已为空（下拉框为无选中项）时置灰
+function syncShortcutResetButtons() {
+  document.querySelectorAll(".reset-btn[data-clear-for]").forEach((btn) => {
+    const target = document.getElementById(btn.dataset.clearFor);
+    if (target) btn.disabled = !target.value;
   });
 }
 
@@ -72,6 +89,7 @@ export function initShortcuts() {
           this.value = settings.shortcuts?.[key] || "";
           this.placeholder = t("settings.shortcuts.placeholderIdle");
           this.classList.remove("recording");
+          syncShortcutResetButtons();
         });
       }
     });
@@ -153,37 +171,51 @@ export function initShortcuts() {
     }
   });
 
-  // 快捷粘贴模式的变化监听
+  // 快捷粘贴修饰键的变化监听
   const quickPasteSelect = document.getElementById("quick-paste-mode");
   quickPasteSelect?.addEventListener("change", async function () {
     const {settings} = await getHandlers();
     if (!settings.shortcuts) settings.shortcuts = {};
     settings.shortcuts.quick_paste_mode = this.value;
     console.log("快捷粘贴模式已更新到内存:", this.value);
+    this.classList.remove("is-unset");
+    syncShortcutResetButtons();
   });
 
-  // 清空按钮：data-clear-for 指向要清空的输入框 id（原先写在 HTML 的内联 onclick 里）
-  document.querySelectorAll(".clear-btn[data-clear-for]").forEach((btn) => {
+  // 重置键：data-clear-for 指向要清空的控件 id（快捷键输入框 / 快捷粘贴修饰键下拉框）
+  document.querySelectorAll(".reset-btn[data-clear-for]").forEach((btn) => {
     btn.addEventListener("click", () => {
       clearShortcut(btn.dataset.clearFor);
     });
   });
 }
 
-// 清空快捷键（只更新内存，不保存文件）
-export async function clearShortcut(inputId) {
-  const input = document.getElementById(inputId);
-  input.value = "";
+// 重置快捷键（只更新内存，不保存文件）
+// 下拉框（快捷粘贴修饰键）以 "none" 表示禁用
+export async function clearShortcut(controlId) {
+  const control = document.getElementById(controlId);
+  if (!control) return;
+
+  const isSelect = control.tagName === "SELECT";
+  if (isSelect) {
+    // 第 0 项是「未设置」回显项，选中它即显示为未设置
+    control.selectedIndex = 0;
+    control.classList.add("is-unset");
+  } else {
+    control.value = "";
+  }
 
   // 更新设置对象
   try {
-    const {settings} = await import("./handlers.js");
+    const {settings} = await getHandlers();
     // 将短横线格式的ID转换为下划线格式的key
-    const key = inputId.replace(/-/g, "_");
+    const key = controlId.replace(/-/g, "_");
     if (!settings.shortcuts) settings.shortcuts = {};
-    settings.shortcuts[key] = "";
-    console.log("快捷键已清空:", key);
+    settings.shortcuts[key] = isSelect ? "none" : "";
+    console.log("快捷键已重置:", key);
   } catch (error) {
-    console.error("清空快捷键时出错:", error);
+    console.error("重置快捷键时出错:", error);
   }
+
+  syncShortcutResetButtons();
 }

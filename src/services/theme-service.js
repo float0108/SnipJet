@@ -52,6 +52,32 @@ export function applyFontSize(fontSize) {
   console.log('字号已应用:', size);
 }
 
+// 图片预览大小：百分比 0 ~ 100（0 表示不显示缩略图），步长 10
+export const MIN_IMAGE_PREVIEW_SIZE = 0;
+export const MAX_IMAGE_PREVIEW_SIZE = 100;
+export const DEFAULT_IMAGE_PREVIEW_SIZE = 60;
+// 旧版档位字符串到百分比的映射（历史设置迁移用）
+const LEGACY_IMAGE_PREVIEW_SIZES = { large: 100, medium: 60, small: 30, none: 0 };
+
+// 归一化图片预览大小：兼容旧档位字符串，超范围截断并对齐到 10
+export function normalizeImagePreviewSize(value) {
+  // 空值回落默认值（否则清空输入框会被当成 0 = 不显示）
+  if (value === "" || value == null) return DEFAULT_IMAGE_PREVIEW_SIZE;
+  if (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(LEGACY_IMAGE_PREVIEW_SIZES, value)
+  ) {
+    return LEGACY_IMAGE_PREVIEW_SIZES[value];
+  }
+  const size = Number(value);
+  if (!Number.isFinite(size)) return DEFAULT_IMAGE_PREVIEW_SIZE;
+  const clamped = Math.min(
+    MAX_IMAGE_PREVIEW_SIZE,
+    Math.max(MIN_IMAGE_PREVIEW_SIZE, size)
+  );
+  return Math.round(clamped / 10) * 10;
+}
+
 // 应用界面字体设置
 // 按「主要字体 → 次要字体 → 系统默认栈」的顺序回退：浏览器逐字查找字形，
 // 前面字体缺字形时自动使用后面的字体（次要字体为空表示不启用）。

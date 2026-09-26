@@ -247,6 +247,7 @@ const translations = {
         autoCleanup: "自动清理",
         mcp: "MCP 服务",
         performance: "性能",
+        update: "软件更新",
       },
       close: {
         ariaLabel: "关闭窗口",
@@ -265,35 +266,50 @@ const translations = {
           // {name} 为字体名
           missing: "{name}（已不存在）",
         },
-        lines: {
-          n1: "1 行",
-          n2: "2 行",
-          n3: "3 行",
-          n5: "5 行",
-          n8: "8 行",
-        },
-        chars: {
-          n200: "200 字符",
-          n400: "400 字符",
-          n600: "600 字符",
-          n1000: "1000 字符",
-          n2000: "2000 字符",
-        },
-        imageSize: {
-          large: "大 (100%)",
-          medium: "中 (60%)",
-          small: "小 (30%)",
-          none: "无 (仅显示元信息)",
-        },
-        quickPaste: {
-          none: "无",
-        },
+      },
+      // 数值控件的单位后缀
+      units: {
+        lines: "行",
+        chars: "字符",
+        percent: "%",
+      },
+      // 数值控件上下箭头的无障碍文案
+      step: {
+        increase: "增加",
+        decrease: "减少",
       },
       general: {
         startupLaunch: "开机启动",
         startupLaunchDesc: "启动电脑时自动运行 SnipJet",
-        checkUpdates: "自动检查更新",
+        startupStatus: "自启动状态",
+        startupEnabled: "已启用",
+        startupDisabled: "未启用",
+        startupPathEmpty: "未注册自启动项",
+        startupPathReset: "按当前位置重新注册自启动",
+        startupPathUpdated: "已重新注册自启动",
+        startupPathFailed: "重新注册自启动失败",
         language: "界面语言",
+        currentVersion: "当前版本",
+        installTypeInstaller: "安装版",
+        installTypePortable: "便携版",
+        updateRepo: "更新源",
+        updateRepoDesc: "GitHub 仓库链接，默认本仓库",
+        checkUpdateBtn: "检查更新",
+        checking: "正在检查更新…",
+        upToDate: "已是最新版本（v{version}）",
+        newVersion: "发现新版本 v{version}",
+        prerelease: "预发布",
+        downloadDir: "下载目录",
+        downloadDirDesc: "便携版更新包的保存位置，留空则用系统下载文件夹",
+        downloadDirPick: "选择更新包下载目录",
+        browse: "浏览",
+        download: "下载",
+        updateNow: "更新",
+        downloading: "正在下载…",
+        installing: "正在安装，程序即将重启…",
+        downloadedTo: "已下载到 {path}，请自行替换旧版本",
+        noAsset: "该版本没有可用的安装包",
+        updateError: "更新失败：{error}",
       },
       appearance: {
         themeMode: "主题模式",
@@ -315,20 +331,36 @@ const translations = {
         historyPreviewLines: "历史条目预览行数",
         historyPreviewLinesDesc: "其余条目显示的文字行数",
         previewMaxChars: "预览字符上限",
-        previewMaxCharsDesc: "单条预览最多保留的字符数",
+        previewMaxCharsDesc: "单条预览最多保留的字符数（100 ~ 2000）",
         imagePreviewSize: "图片预览大小",
-        imagePreviewSizeDesc: "列表中图片缩略图的大小",
-        autoHide: "失去焦点隐藏",
+        imagePreviewSizeDesc: "缩略图宽度占比，0 表示不显示",
       },
       shortcuts: {
         toggleInterface: "显示/隐藏界面",
+        winVHelpLink: "如何把快捷键设为 Win+V？",
+        winVHelpTitle: "禁用 Windows 原生的 Win+V",
+        winVHelpIntro:
+          "Win+V 是 Windows <strong>剪贴板历史</strong>的系统热键，会与这里的「显示/隐藏界面」冲突。只在系统设置里关闭「剪贴板历史记录」<strong>并不会释放该热键</strong>，需要通过<strong>注册表</strong>禁用。",
+        winVHelpStep1:
+          "按 <strong>Win + R</strong> 打开「运行」，输入 <strong>regedit</strong> 回车，打开注册表编辑器。",
+        winVHelpStep2: "在顶部地址栏粘贴下面这行路径并回车，定位到：",
+        winVHelpStep3:
+          "在右侧空白处右键 → 新建 → <strong>字符串值(S)</strong>，命名为（区分大小写）：",
+        winVHelpStep4:
+          "双击该值，把「数值数据」设为 <strong>V</strong>。若原本已有内容（例如 AB），在<strong>末尾追加</strong> V（改为 ABV），<strong>不要删掉原有字母</strong>。",
+        winVHelpStep5:
+          "<strong>注销或重启电脑</strong>后生效。想恢复系统热键时，删掉其中的 V 或删除该值即可。",
+        winVHelpNote:
+          "提示：修改注册表有风险，请<strong>只按上述步骤</strong>操作，不要改动其它键值。",
+        gotIt: "知道了",
+        closeDialog: "关闭",
         functionPaste: "功能粘贴",
-        clear: "清空",
+        reset: "重置",
         notSet: "未设置",
         placeholderIdle: "按下快捷键...",
         placeholderRecording: "请录制组合键...",
         quickPasteMode: "快捷粘贴修饰键",
-        quickPasteModeDesc: "配合数字键 1~9 粘贴对应序数的历史项，选\"无\"可禁用",
+        quickPasteModeDesc: "配合数字键 1~9 粘贴对应序数的历史项，用右侧重置键可禁用",
         rotatingPaste: "候选粘贴快捷键",
         rotatingPasteDesc: "从第 1 项开始依次轮转粘贴，留空可禁用",
         toastOccupied: "该快捷键已被占用",
@@ -624,6 +656,7 @@ const translations = {
         autoCleanup: "Auto Cleanup",
         mcp: "MCP Service",
         performance: "Performance",
+        update: "Software Update",
       },
       close: {
         ariaLabel: "Close window",
@@ -642,35 +675,50 @@ const translations = {
           // {name} 为字体名
           missing: "{name} (missing)",
         },
-        lines: {
-          n1: "1 line",
-          n2: "2 lines",
-          n3: "3 lines",
-          n5: "5 lines",
-          n8: "8 lines",
-        },
-        chars: {
-          n200: "200 chars",
-          n400: "400 chars",
-          n600: "600 chars",
-          n1000: "1000 chars",
-          n2000: "2000 chars",
-        },
-        imageSize: {
-          large: "Large (100%)",
-          medium: "Medium (60%)",
-          small: "Small (30%)",
-          none: "None (metadata only)",
-        },
-        quickPaste: {
-          none: "None",
-        },
+      },
+      // 数值控件的单位后缀
+      units: {
+        lines: "lines",
+        chars: "chars",
+        percent: "%",
+      },
+      // 数值控件上下箭头的无障碍文案
+      step: {
+        increase: "Increase",
+        decrease: "Decrease",
       },
       general: {
         startupLaunch: "Launch at Startup",
         startupLaunchDesc: "Run SnipJet automatically when the computer starts",
-        checkUpdates: "Automatic Update Check",
+        startupStatus: "Startup Status",
+        startupEnabled: "Enabled",
+        startupDisabled: "Disabled",
+        startupPathEmpty: "Not registered",
+        startupPathReset: "Re-register startup entry at the current location",
+        startupPathUpdated: "Startup entry re-registered",
+        startupPathFailed: "Failed to re-register startup entry",
         language: "Interface Language",
+        currentVersion: "Current Version",
+        installTypeInstaller: "Installed",
+        installTypePortable: "Portable",
+        updateRepo: "Update Source",
+        updateRepoDesc: "GitHub repository link, defaults to this repository",
+        checkUpdateBtn: "Check for Updates",
+        checking: "Checking for updates…",
+        upToDate: "You are on the latest version (v{version})",
+        newVersion: "New version v{version} available",
+        prerelease: "Pre-release",
+        downloadDir: "Download Folder",
+        downloadDirDesc: "Where the portable update package is saved; defaults to your Downloads folder",
+        downloadDirPick: "Choose a folder for the update package",
+        browse: "Browse",
+        download: "Download",
+        updateNow: "Update",
+        downloading: "Downloading…",
+        installing: "Installing, the app will restart shortly…",
+        downloadedTo: "Downloaded to {path}; replace the old version manually",
+        noAsset: "No installable package found in this release",
+        updateError: "Update failed: {error}",
       },
       appearance: {
         themeMode: "Theme Mode",
@@ -692,20 +740,37 @@ const translations = {
         historyPreviewLines: "Preview Lines for History Items",
         historyPreviewLinesDesc: "Text lines shown for the remaining items",
         previewMaxChars: "Preview Character Limit",
-        previewMaxCharsDesc: "Maximum characters kept per preview",
+        previewMaxCharsDesc: "Maximum characters kept per preview (100 ~ 2000)",
         imagePreviewSize: "Image Preview Size",
-        imagePreviewSizeDesc: "Thumbnail size of images in the list",
-        autoHide: "Hide When Unfocused",
+        imagePreviewSizeDesc: "Thumbnail width percentage; 0 hides the preview",
       },
       shortcuts: {
         toggleInterface: "Show / Hide Interface",
+        winVHelpLink: "How to set the shortcut to Win+V?",
+        winVHelpTitle: "Disable the native Windows Win+V",
+        winVHelpIntro:
+          "Win+V is the system hotkey for Windows <strong>clipboard history</strong> and conflicts with \"Show / Hide Interface\". Turning off \"Clipboard history\" in Windows Settings <strong>does not release the hotkey</strong> — you must disable it via the <strong>registry</strong>.",
+        winVHelpStep1:
+          "Press <strong>Win + R</strong> to open Run, type <strong>regedit</strong> and press Enter to open Registry Editor.",
+        winVHelpStep2:
+          "Paste the path below into the address bar and press Enter to navigate to:",
+        winVHelpStep3:
+          "Right-click an empty area on the right → New → <strong>String Value</strong>, and name it (case-sensitive):",
+        winVHelpStep4:
+          "Double-click the value and set its data to <strong>V</strong>. If it already has content (e.g. AB), <strong>append</strong> V (making it ABV) and <strong>do not remove the existing letters</strong>.",
+        winVHelpStep5:
+          "It takes effect after you <strong>sign out or restart</strong>. To restore the system hotkey, remove the V or delete the value.",
+        winVHelpNote:
+          "Note: editing the registry carries risk — <strong>follow the steps above only</strong> and do not change other entries.",
+        gotIt: "Got it",
+        closeDialog: "Close",
         functionPaste: "Function Paste",
-        clear: "Clear",
+        reset: "Reset",
         notSet: "Not set",
         placeholderIdle: "Press a shortcut...",
         placeholderRecording: "Recording keys...",
         quickPasteMode: "Quick Paste Modifier Key",
-        quickPasteModeDesc: "With number keys 1-9 to paste that history item; \"None\" disables it",
+        quickPasteModeDesc: "Press with number keys 1-9 to paste that history item; use the reset button to disable",
         rotatingPaste: "Rotating Paste Shortcut",
         rotatingPasteDesc: "Paste history items in turn starting from the first; leave empty to disable",
         toastOccupied: "This shortcut is already in use",
@@ -799,10 +864,16 @@ export function setLocale(locale) {
 }
 
 // 把 HTML 中 data-i18n* 标注的静态文案替换为当前语言，并同步 <html lang>。
-// 支持：data-i18n（文本）、data-i18n-title、data-i18n-aria-label、data-i18n-placeholder
+// 支持：data-i18n（文本）、data-i18n-html（含 <strong> 等标记的文案）、
+// data-i18n-title、data-i18n-aria-label、data-i18n-placeholder
 export function applyI18n(root = document) {
   root.querySelectorAll("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
+  });
+
+  // 文案里带 <strong> 等简单标记时用 innerHTML 渲染（文案均在本地 i18n 表中，可信）
+  root.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    el.innerHTML = t(el.dataset.i18nHtml);
   });
 
   const attrMap = {

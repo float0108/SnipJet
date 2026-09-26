@@ -57,9 +57,20 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 dirs = "5"
 encoding_rs = "0.8"
+# 更新检查：访问 GitHub Releases API 与下载安装包。
+# 关闭默认特性以使用 native-tls（Windows 走 schannel），避免 rustls/aws-lc-rs 的额外构建依赖。
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "native-tls",
+    "charset",
+    "system-proxy",
+] }
+tauri-plugin-dialog = "2"
 
 # 仅在Windows平台下添加windows依赖
 [target.'cfg(windows)'.dependencies]
+# 读取开机自启动注册项（与 auto-launch 使用同一版本，不新增编译产物）
+winreg = "0.10"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
