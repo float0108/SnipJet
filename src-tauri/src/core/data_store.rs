@@ -573,6 +573,7 @@ impl DataStore {
             },
             "software": {
                 "startup_launch": true,
+                "update_source": "github",
                 "update_repo": "https://github.com/float0108/SnipJet",
                 "update_download_dir": ""
             },

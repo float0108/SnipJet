@@ -271,6 +271,10 @@ const translations = {
           fast: "快速（240ms）",
           normal: "标准（480ms）",
         },
+        updateSource: {
+          github: "GitHub",
+          gitee: "Gitee",
+        },
       },
       // 数值控件的单位后缀
       units: {
@@ -299,6 +303,8 @@ const translations = {
         installTypePortable: "便携版",
         updateRepo: "更新源",
         updateRepoDesc: "GitHub 仓库链接，默认本仓库",
+        updateSource: "更新源平台",
+        updateSourceDesc: "在 GitHub / Gitee 之间切换，两边仓库名字一致",
         checkUpdateBtn: "检查更新",
         checking: "正在检查更新…",
         upToDate: "已是最新版本（v{version}）",
@@ -687,6 +693,10 @@ const translations = {
           fast: "Fast (240ms)",
           normal: "Normal (480ms)",
         },
+        updateSource: {
+          github: "GitHub",
+          gitee: "Gitee",
+        },
       },
       // 数值控件的单位后缀
       units: {
@@ -715,6 +725,8 @@ const translations = {
         installTypePortable: "Portable",
         updateRepo: "Update Source",
         updateRepoDesc: "GitHub repository link, defaults to this repository",
+        updateSource: "Source Platform",
+        updateSourceDesc: "Switch between GitHub and Gitee; the repo name is the same on both",
         checkUpdateBtn: "Check for Updates",
         checking: "Checking for updates…",
         upToDate: "You are on the latest version (v{version})",

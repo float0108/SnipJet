@@ -164,8 +164,22 @@
 
           <div class="setting-divider"></div>
 
-          <!-- 软件更新：手动检查 GitHub Release，命中后下载/安装 -->
+          <!-- 软件更新：手动检查 GitHub / Gitee Release，命中后下载/安装 -->
           <div class="setting-section-title" data-i18n="settings.blocks.update"></div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label" data-i18n="settings.general.updateSource"></div>
+              <div class="setting-description" data-i18n="settings.general.updateSourceDesc"></div>
+            </div>
+            <div class="setting-control">
+              <!-- 选项取固定值 github / gitee，切换时同步更新下方仓库链接的占位提示 -->
+              <select class="select-input" id="update-source">
+                <option value="github" data-i18n="settings.options.updateSource.github"></option>
+                <option value="gitee" data-i18n="settings.options.updateSource.gitee"></option>
+              </select>
+            </div>
+          </div>
 
           <div class="setting-item">
             <div class="setting-info">
@@ -173,12 +187,11 @@
               <div class="setting-description" data-i18n="settings.general.updateRepoDesc"></div>
             </div>
             <div class="setting-control">
-              <!-- 示例链接为默认更新源，保留原样不随界面语言翻译 -->
+              <!-- 占位符由 updater.js 根据当前源写入对应域名示例 -->
               <input
                 type="text"
                 class="text-input"
                 id="update-repo"
-                placeholder="https://github.com/float0108/SnipJet"
                 spellcheck="false"
               />
             </div>

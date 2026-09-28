@@ -1,5 +1,5 @@
-// 软件更新：手动检查 GitHub Release、下载并安装新版本
-// - 更新源仓库链接由用户填写（默认本仓库）
+// 软件更新：手动检查 GitHub / Gitee Release、下载并安装新版本
+// - 支持在设置里切换更新源（github / gitee），仓库 owner/name 一致
 // - 检查范围：所有非草稿 release（含 pre-release），取版本号最高且高于当前版本的一个
 // - 安装版：下载安装包后静默安装并自动重启
 // - 便携版：下载到用户指定目录，由用户自行替换旧版本
@@ -9,12 +9,17 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { t } from '../../utils/i18n.js';
 
-// 默认更新源（本仓库）
-export const DEFAULT_UPDATE_REPO = 'https://github.com/float0108/SnipJet';
+// 默认更新源（GitHub 本仓库；Gitee 镜像可在设置里改写）
+export const DEFAULT_UPDATE_SOURCE = 'github';
+export const DEFAULT_UPDATE_REPOS = {
+  github: 'https://github.com/float0108/SnipJet',
+  gitee: 'https://gitee.com/float0108/SnipJet',
+};
 
 // 更新流程状态：idle / checking / ready / downloading / installing / done / uptodate / error
 const state = {
   installType: 'portable', // 'installer' | 'portable'
+  source: DEFAULT_UPDATE_SOURCE, // 'github' | 'gitee'
   currentVersion: '',
   release: null,
   status: 'idle',
@@ -236,6 +241,18 @@ async function detectInstallType() {
   }
 }
 
+// 将外部传入或下拉选中的源值归一化为 'github' | 'gitee'
+function normalizeSource(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return v === 'gitee' ? 'gitee' : 'github';
+}
+
+// 把仓库链接占位符（仅展示用）切到当前源对应的示例
+function syncRepoPlaceholder() {
+  const repoInput = el('update-repo');
+  if (repoInput) repoInput.placeholder = DEFAULT_UPDATE_REPOS[state.source] || '';
+}
+
 async function loadCurrentVersion() {
   if (versionLoaded) return;
   versionLoaded = true;
@@ -262,7 +279,7 @@ async function resolveDefaultDownloadDir() {
 // --- 交互 ---
 
 async function checkForUpdate() {
-  const repo = (el('update-repo')?.value || '').trim() || DEFAULT_UPDATE_REPO;
+  const repo = (el('update-repo')?.value || '').trim() || DEFAULT_UPDATE_REPOS[state.source];
 
   state.status = 'checking';
   state.release = null;
@@ -270,7 +287,10 @@ async function checkForUpdate() {
   render();
 
   try {
-    const result = await invoke('check_for_update', { repo });
+    const result = await invoke('check_for_update', {
+      source: state.source,
+      repo,
+    });
     if (result?.current_version) {
       state.currentVersion = result.current_version;
       renderInstallType();
@@ -351,9 +371,20 @@ function setDownloadDir(dir) {
 // --- 对外接口 ---
 
 // 回显设置并检测安装类型（每次进入常规分区时调用）
-export async function applyUpdateSettings({ repo, downloadDir } = {}) {
+export async function applyUpdateSettings({ source, repo, downloadDir } = {}) {
+  state.source = normalizeSource(source);
+  const sourceSelect = el('update-source');
+  if (sourceSelect) sourceSelect.value = state.source;
+  syncRepoPlaceholder();
+
+  // 仅在当前域匹配时回显链接，避免旧值污染另一个源的设置
+  const currentRepo = (repo || '').trim();
+  const matchesSource = !currentRepo
+    ? true
+    : (state.source === 'gitee' && /gitee\.com/i.test(currentRepo)) ||
+      (state.source === 'github' && /github\.com/i.test(currentRepo));
   const repoInput = el('update-repo');
-  if (repoInput) repoInput.value = repo || DEFAULT_UPDATE_REPO;
+  if (repoInput) repoInput.value = matchesSource ? currentRepo : '';
   const dirInput = el('update-download-dir');
   if (dirInput) dirInput.value = downloadDir || '';
 
@@ -368,16 +399,35 @@ export async function applyUpdateSettings({ repo, downloadDir } = {}) {
 }
 
 // 绑定更新区的交互（只绑一次）
-export function bindUpdaterEvents({ onRepoChange, onDownloadDirChange } = {}) {
+export function bindUpdaterEvents({
+  onSourceChange,
+  onRepoChange,
+  onDownloadDirChange,
+} = {}) {
   if (bound) return;
   bound = true;
   downloadDirCallback = onDownloadDirChange || null;
 
+  const sourceSelect = el('update-source');
+  if (sourceSelect) {
+    sourceSelect.addEventListener('change', () => {
+      const next = normalizeSource(sourceSelect.value);
+      const prev = state.source;
+      state.source = next;
+      syncRepoPlaceholder();
+      // 切换源时把已有链接清空（不同域的链接无意义），并通知外部设置变化
+      const repoInput = el('update-repo');
+      if (repoInput) repoInput.value = '';
+      if (next !== prev && onSourceChange) onSourceChange(next, '');
+    });
+  }
+
   const repoInput = el('update-repo');
   if (repoInput) {
-    // 失焦/回车时归一化：留空回落到默认更新源
+    // 失焦/回车时归一化：留空回落到当前源的默认仓库链接
     repoInput.addEventListener('change', () => {
-      const repo = repoInput.value.trim() || DEFAULT_UPDATE_REPO;
+      const fallback = DEFAULT_UPDATE_REPOS[state.source] || '';
+      const repo = repoInput.value.trim() || fallback;
       repoInput.value = repo;
       if (onRepoChange) onRepoChange(repo);
     });

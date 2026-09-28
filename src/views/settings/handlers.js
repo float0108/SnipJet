@@ -5,7 +5,8 @@ import { emit } from '@tauri-apps/api/event';
 import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, normalizeImagePreviewSize, DEFAULT_IMAGE_PREVIEW_SIZE, loadSystemFonts, getSystemFonts, applyAnimationSpeed, normalizeAnimationSpeed, ANIMATION_SPEEDS } from '../../services/theme-service.js';
 import { t, setLocale, applyI18n } from '../../utils/i18n.js';
 import {
-  DEFAULT_UPDATE_REPO,
+  DEFAULT_UPDATE_SOURCE,
+  DEFAULT_UPDATE_REPOS,
   applyUpdateSettings,
   bindUpdaterEvents,
   refreshUpdaterTexts,
@@ -61,7 +62,8 @@ function getDefaultSettings() {
     },
     software: {
       startup_launch: true,
-      update_repo: DEFAULT_UPDATE_REPO,
+      update_source: DEFAULT_UPDATE_SOURCE,
+      update_repo: DEFAULT_UPDATE_REPOS[DEFAULT_UPDATE_SOURCE],
       update_download_dir: "",
     },
     history_cleanup: {
@@ -405,9 +407,19 @@ export function updateGeneralSettings() {
   // 读取系统侧的自启动注册信息（异步，不阻塞其它控件回显）
   refreshAutostartStatus();
 
+  // 兼容旧版本：缺少 update_source 时按已填的仓库链接推断（github.com → github，否则 gitee）
+  if (!settings.software?.update_source) {
+    if (!settings.software) settings.software = {};
+    const repo = settings.software?.update_repo || "";
+    settings.software.update_source = /github\.com/i.test(repo)
+      ? "github"
+      : "gitee";
+  }
+
   // 回显软件更新区（安装类型检测与版本读取是异步的）
   applyUpdateSettings({
-    repo: settings.software?.update_repo || DEFAULT_UPDATE_REPO,
+    source: settings.software?.update_source || DEFAULT_UPDATE_SOURCE,
+    repo: settings.software?.update_repo || "",
     downloadDir: settings.software?.update_download_dir || "",
   }).catch((e) => console.error("初始化软件更新设置失败:", e));
 
@@ -625,10 +637,17 @@ export function bindSettingsListeners() {
 
   // 软件更新：更新源 / 便携版下载目录 / 检查更新按钮
   bindUpdaterEvents({
+    onSourceChange: (source, repo) => {
+      if (!settings.software) settings.software = {};
+      settings.software.update_source = source;
+      settings.software.update_repo = repo;
+      // 换源后上一次的检查结果已失效
+      resetUpdaterUI();
+    },
     onRepoChange: (repo) => {
       if (!settings.software) settings.software = {};
       settings.software.update_repo = repo;
-      // 换源后上一次的检查结果已失效
+      // 修改链接后上一次的检查结果已失效
       resetUpdaterUI();
     },
     onDownloadDirChange: (dir) => {
