@@ -216,18 +216,27 @@ function errorText(error) {
   return error?.message || String(error);
 }
 
-// 按安装类型挑选附件：安装版优先 setup / msi，便携版优先 portable
+// 按安装类型挑选附件：
+//   installer -> 优先 *setup*.exe，fallback 到 *.msi，再 fallback 到第一个 .exe/.msi
+//   portable  -> 优先 *portable*.zip（解压即用），fallback 到 *portable*.exe（如果有），再 fallback 到第一个匹配项
 function pickAsset(assets) {
-  const packages = assets.filter((a) => /\.(exe|msi)$/i.test(a.name || ''));
+  const all = (assets || []).filter((a) => a && a.name);
   if (state.installType === 'installer') {
+    const installers = all.filter((a) => /\.(exe|msi)$/i.test(a.name));
     return (
-      packages.find((a) => /setup/i.test(a.name)) ||
-      packages.find((a) => /\.msi$/i.test(a.name)) ||
-      packages[0] ||
+      installers.find((a) => /setup/i.test(a.name)) ||
+      installers.find((a) => /\.msi$/i.test(a.name)) ||
+      installers[0] ||
       null
     );
   }
-  return packages.find((a) => /portable/i.test(a.name)) || packages[0] || null;
+  // portable: 优先 zip（CI 实际产物），其次 portable.exe（如有），最后任意 .exe
+  return (
+    all.find((a) => /portable.*\.zip$/i.test(a.name)) ||
+    all.find((a) => /portable.*\.exe$/i.test(a.name)) ||
+    all.find((a) => /\.(exe|msi|zip)$/i.test(a.name)) ||
+    null
+  );
 }
 
 // 检测当前是安装版还是便携版（注册表卸载项存在即安装版）
@@ -340,7 +349,12 @@ async function startDownload() {
       await invoke('install_update', { path });
     } else {
       state.status = 'done';
-      state.message = t('settings.general.downloadedTo').replace('{path}', path);
+      // zip 提示解压步骤；exe 直接提示路径
+      const isZip = /\.zip$/i.test(asset.name || '');
+      const msgKey = isZip
+        ? 'settings.general.downloadedPortableZip'
+        : 'settings.general.downloadedTo';
+      state.message = t(msgKey).replace('{path}', path);
       render();
     }
   } catch (e) {
