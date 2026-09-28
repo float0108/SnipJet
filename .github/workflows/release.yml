@@ -1,0 +1,277 @@
+name: Release
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release 工作流说明
+# ─────────────────────────────────────────────────────────────────────────────
+# 触发：推送形如 v1.2.3 的 tag 时自动构建并发布
+#
+# 工作流会构建并发布：
+#   - 安装版（NSIS .exe + MSI）
+#   - 便携版（单文件 .exe 打成 .zip，无安装、零注册表）
+# 并自动同步到 GitHub Releases + Gitee Releases。
+#
+# 必需的 Secrets / Variables（在仓库 Settings → Secrets and variables → Actions）：
+#   GITEE_TOKEN  Secret  Gitee 私人令牌，需 projects / releases 权限
+#   GITEE_REPO   Variable  Gitee 仓库路径，如 float0108/SnipJet
+#
+# 产物：
+#   SnipJet_<version>_x64-setup.exe    安装版（NSIS）
+#   SnipJet_<version>_x64.msi          MSI（企业批量部署）
+#   SnipJet_<version>_x64-portable.zip 便携版（解压即用）
+#
+# 应用内 src/views/settings/updater.js 的 pickAsset 按文件名识别：
+#   - 安装版：/setup/i 或 /\.msi$/i
+#   - 便携版：/portable/i
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows
+    runs-on: windows-latest
+
+    env:
+      PRODUCT_NAME: SnipJet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          # 构建失败也保存缓存，避免早期踩坑时缓存一直建立不起来
+          cache-on-failure: true
+
+      # 缓存 Tauri 打包工具（NSIS / WiX）：
+      # 否则每次 runner 都要重新下载 WiX 工具集（约 20MB）和 NSIS，慢且偶发网络超时
+      - name: Cache Tauri bundler tools
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/tauri
+          key: tauri-tools-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npm ci
+
+      # 单次构建：同时产出 SnipJet.exe + bundle/nsis/*.exe + bundle/msi/*.msi
+      # 不再单独跑一次 --no-bundle（那会重复编译 app crate + 重复构建前端，最耗时）
+      - name: Build Tauri app
+        run: npx tauri build --target x86_64-pc-windows-msvc
+
+      # 打便携 zip
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
+          $releaseDir = "src-tauri/target/x86_64-pc-windows-msvc/release"
+          $exe = "${{ env.PRODUCT_NAME }}.exe"
+
+          if (-not (Test-Path "$releaseDir/$exe")) {
+            throw "未找到 $releaseDir/$exe"
+          }
+
+          $dist = "dist"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          $zipPath = "$dist/${{ env.PRODUCT_NAME }}_${ver}_x64-portable.zip"
+          if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+
+          Compress-Archive `
+            -LiteralPath "$releaseDir/$exe" `
+            -DestinationPath $zipPath `
+            -CompressionLevel Optimal
+
+          $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+          Write-Host "便携版已生成：$zipPath ($size MB)"
+
+      # MSI 重命名：Tauri/WiX 默认产出 *_en-US.msi，简化成标准命名
+      # 例：SnipJet_0.2.0_x64_en-US.msi → SnipJet_0.2.0_x64.msi
+      - name: Normalize MSI filename
+        shell: pwsh
+        run: |
+          $msiDir = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi"
+          # 注意：WiX 产物名是 *_x64_en-US.msi（下划线），不要用连字符匹配
+          Get-ChildItem -Path $msiDir -Filter '*.msi' -File | ForEach-Object {
+              $newName = $_.Name -replace '_en-US\.msi$', '.msi'
+              if ($newName -ne $_.Name) {
+                  Rename-Item -LiteralPath $_.FullName -NewName $newName -Force
+                  Write-Host "重命名：$($_.Name) → $newName"
+              }
+          }
+          Write-Host "--- MSI 目录最终内容 ---"
+          Get-ChildItem -Path $msiDir -File | Select-Object Name | Format-Table -AutoSize
+
+      # 把所有产物平铺到 staged/，避免 upload-artifact 保留深层相对路径
+      # （否则下载后是 artifacts/dist/xxx、artifacts/src-tauri/target/.../xxx）
+      - name: Stage all artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path staged) { Remove-Item -Recurse -Force staged }
+          New-Item -ItemType Directory -Force -Path staged | Out-Null
+
+          Copy-Item dist/*.zip staged/ -Force
+          Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" staged/ -Force
+          Copy-Item "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" staged/ -Force
+
+          Write-Host "--- staged ---"
+          Get-ChildItem staged | Select-Object Name, Length | Format-Table -AutoSize
+
+      # 所有产物（NSIS + MSI + 便携 zip）一次性打包上传（平铺结构）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snipjet-windows
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish to GitHub & Gitee
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: snipjet-windows
+          path: artifacts
+          merge-multiple: false
+
+      - name: List all artifacts
+        run: |
+          echo "---- artifacts 目录结构 ----"
+          find artifacts -type f
+          echo "---- artifact 顶层结构 ----"
+          ls -la artifacts/ || echo "no artifacts dir"
+          ls -la artifacts/*/ 2>/dev/null || echo "no nested dirs"
+
+      # 准备 release notes（避免 heredoc 缩进问题，单独写文件）
+      - name: Prepare release notes
+        run: |
+          cat > /tmp/notes.md <<'EOF'
+          ## 下载说明
+
+          - `*-setup.exe`：安装版（NSIS），下载后静默安装并自动重启
+          - `*.msi`：MSI 安装包（企业 / 批量部署）
+          - `*-portable.zip`：便携版，**无需安装**，解压后双击 `SnipJet.exe` 即可运行
+
+          国内用户可前往 Gitee 镜像下载：https://gitee.com/float0108/SnipJet/releases
+
+          ## 便携版使用提示
+
+          1. 下载 `SnipJet_x.x.x_x64-portable.zip`
+          2. 解压到任意目录（建议放在非系统盘，避免权限问题）
+          3. 双击解压目录里的 `SnipJet.exe` 启动
+          EOF
+
+      # ---- GitHub Releases ----
+      # 用 gh CLI 显式管理（比 softprops 更可控）：
+      # 先删除同名旧 release（保留 tag），再创建新 release 并上传全部产物
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # release job 没有 checkout（无 .git），必须显式告诉 gh 目标仓库
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+
+          # 收集产物（artifact 解压后嵌套一层目录，用 ** 匹配）
+          FILES=(artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip)
+          echo "待上传文件数: ${#FILES[@]}"
+          printf '  %s\n' "${FILES[@]}"
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::error::未找到任何产物文件，artifact 下载可能失败"
+            exit 1
+          fi
+
+          # 删除已存在的同名 release（保留 tag）
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "删除已存在的 release: $TAG"
+            gh release delete "$TAG" --yes
+            sleep 2
+          else
+            echo "没有旧 release"
+          fi
+
+          # 组装参数：预发布 tag（含 '-'）标记为 prerelease
+          ARGS=( "$TAG" --title "SnipJet $TAG" --notes-file /tmp/notes.md )
+          if [[ "$TAG" == *-* ]]; then
+            ARGS+=( --prerelease )
+          fi
+
+          gh release create "${ARGS[@]}" "${FILES[@]}"
+          echo "GitHub release 发布完成"
+
+      # ---- Gitee Releases ----
+      - name: Mirror to Gitee
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_REPO: ${{ vars.GITEE_REPO }}
+        if: env.GITEE_TOKEN != '' && env.GITEE_REPO != ''
+        run: |
+          set -e
+          if [ -z "$GITEE_TOKEN" ] || [ -z "$GITEE_REPO" ]; then
+            echo "GITEE_TOKEN / GITEE_REPO 未配置，跳过 Gitee 同步"
+            exit 0
+          fi
+
+          TAG="${GITHUB_REF_NAME}"
+          OWNER_REPO="$GITEE_REPO"
+
+          # 1. 删除 Gitee 端已存在的同名 release（如果有）
+          EXISTING=$(curl -s "https://gitee.com/api/v5/repos/${OWNER_REPO}/releases/${TAG}?access_token=${GITEE_TOKEN}" || true)
+          EXISTING_ID=$(echo "$EXISTING" | jq -r '.id // empty' 2>/dev/null || true)
+          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+            echo "删除 Gitee 已存在的 release id=$EXISTING_ID"
+            curl -s -X DELETE \
+              "https://gitee.com/api/v5/repos/${OWNER_REPO}/releases/${EXISTING_ID}?access_token=${GITEE_TOKEN}" \
+              -o /dev/null
+          fi
+
+          # 2. 创建新 release
+          # Gitee API 必填 target_commitish（默认指向 tag 所在的 commit）
+          CREATE_RESP=$(curl -s -X POST \
+            "https://gitee.com/api/v5/repos/${OWNER_REPO}/releases?access_token=${GITEE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg tag "$TAG" \
+              --arg name "SnipJet $TAG" \
+              --arg body "同步自 GitHub Releases，标签：$TAG" \
+              '{tag_name:$tag, name:$name, body:$body, prerelease:false, target_commitish:$tag}')")
+          echo "Create release resp: $CREATE_RESP"
+          RELEASE_ID=$(echo "$CREATE_RESP" | jq -r '.id // empty')
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "无法创建 Gitee release：$CREATE_RESP"
+            exit 1
+          fi
+          echo "Gitee release id = $RELEASE_ID"
+
+          # 3. 上传所有产物（artifact 可能嵌套一层目录，用 ** glob 匹配）
+          shopt -s globstar nullglob
+          for f in artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip; do
+            echo "Uploading $f ..."
+            curl -s -X POST \
+              "https://gitee.com/api/v5/repos/${OWNER_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" \
+              -F "file=@${f}"
+            echo
+          done
+
+          echo "Gitee 同步完成"
