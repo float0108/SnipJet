@@ -2889,10 +2889,10 @@ fn text_quality(s: &str) -> i32 {
 }
 
 // --- 软件更新（手动检查 / 下载 / 安装）---
-// 更新源由用户在设置里填写（默认本仓库），检查的是 GitHub Releases，
+// 更新源由用户在设置里填写，支持 GitHub / Gitee 两种源，仓库 owner/name 一致。
 // 版本号优先从 tag 解析，解析不到再回退到 release 名称、附件文件名。
 
-/// GitHub Release 中可下载的单个附件
+/// Release 中可下载的单个附件（GitHub / Gitee 字段格式一致）
 #[derive(serde::Serialize)]
 pub struct UpdateAsset {
     pub name: String,
@@ -2921,19 +2921,78 @@ pub struct UpdateCheckResult {
     pub release: Option<UpdateRelease>,
 }
 
-/// 从仓库链接解析出 owner/repo。
-/// 支持 https://github.com/owner/repo、git@github.com:owner/repo、owner/repo。
-fn parse_github_repo(repo: &str) -> Result<(String, String), String> {
+/// 支持的更新源类型
+#[derive(Clone, Copy)]
+enum UpdateSource {
+    Github,
+    Gitee,
+}
+
+impl UpdateSource {
+    fn label(&self) -> &'static str {
+        match self {
+            UpdateSource::Github => "GitHub",
+            UpdateSource::Gitee => "Gitee",
+        }
+    }
+
+    /// 根据显式传入的 source 或仓库链接域名判定源类型；
+    /// 未识别到匹配值时默认按 GitHub 处理（保留旧行为）。
+    fn resolve(source_hint: Option<&str>, repo: &str) -> Self {
+        match source_hint.map(|s| s.trim().to_ascii_lowercase()) {
+            Some(s) if s == "gitee" => return UpdateSource::Gitee,
+            Some(s) if s == "github" => return UpdateSource::Github,
+            _ => {}
+        }
+        // 兜底：从仓库链接域名猜测
+        if repo.to_ascii_lowercase().contains("gitee.com") {
+            UpdateSource::Gitee
+        } else {
+            UpdateSource::Github
+        }
+    }
+}
+
+/// 从仓库链接解析出 (源, owner, repo)。
+/// 支持 https://{github.com|gitee.com}/owner/repo、git@...:owner/repo、owner/repo。
+fn parse_update_source(
+    source_hint: Option<&str>,
+    repo: &str,
+) -> Result<(UpdateSource, String, String), String> {
     let trimmed = repo.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return Err("请先填写更新源仓库链接".to_string());
     }
 
+    // 先按域名识别归属；链接不含域名时按 source_hint 判定
+    let lower = trimmed.to_ascii_lowercase();
+    let host: &str = if lower.contains("gitee.com") {
+        "gitee.com"
+    } else if lower.contains("github.com") {
+        "github.com"
+    } else {
+        ""
+    };
+
+    let source = if !host.is_empty() {
+        if host == "gitee.com" {
+            UpdateSource::Gitee
+        } else {
+            UpdateSource::Github
+        }
+    } else {
+        UpdateSource::resolve(source_hint, trimmed)
+    };
+
     let without_git = trimmed.strip_suffix(".git").unwrap_or(trimmed);
     let path = if let Some(rest) = without_git.strip_prefix("git@github.com:") {
         rest.to_string()
-    } else if let Some(idx) = without_git.find("github.com") {
-        without_git[idx + "github.com".len()..]
+    } else if let Some(rest) = without_git.strip_prefix("git@gitee.com:") {
+        rest.to_string()
+    } else if !host.is_empty() {
+        // 大小写不敏感：用 lower 找位置，再在原字符串里切片
+        let idx = lower.find(host).unwrap();
+        without_git[idx + host.len()..]
             .trim_start_matches(['/', ':'])
             .to_string()
     } else {
@@ -2942,9 +3001,11 @@ fn parse_github_repo(repo: &str) -> Result<(String, String), String> {
 
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() != 2 {
-        return Err("更新源链接无法识别，请填写形如 https://github.com/owner/repo 的链接".to_string());
+        return Err(
+            "更新源链接无法识别，请填写形如 https://github.com/owner/repo 的链接".to_string(),
+        );
     }
-    Ok((parts[0].to_string(), parts[1].to_string()))
+    Ok((source, parts[0].to_string(), parts[1].to_string()))
 }
 
 /// 提取形如 x.y.z 的版本号
@@ -2995,17 +3056,31 @@ fn json_str(value: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
-/// 检查更新：拉取 releases，返回版本号最高且高于当前版本的那个（含 pre-release，忽略草稿）
+/// 检查更新：拉取对应源的 releases，返回版本号最高且高于当前版本的那个
+/// （含 pre-release；GitHub 忽略 draft，Gitee 没有 draft 概念）。
 #[tauri::command]
 pub async fn check_for_update(
     app_handle: AppHandle,
+    source: Option<String>,
     repo: String,
 ) -> Result<UpdateCheckResult, String> {
-    let (owner, name) = parse_github_repo(&repo)?;
-    let api_url = format!(
-        "https://api.github.com/repos/{}/{}/releases?per_page=100",
-        owner, name
-    );
+    let (source_kind, owner, name) = parse_update_source(source.as_deref(), &repo)?;
+
+    let api_url = match source_kind {
+        UpdateSource::Github => format!(
+            "https://api.github.com/repos/{}/{}/releases?per_page=100",
+            owner, name
+        ),
+        UpdateSource::Gitee => format!(
+            "https://gitee.com/api/v5/repos/{}/{}/releases?per_page=100",
+            owner, name
+        ),
+    };
+
+    let accept = match source_kind {
+        UpdateSource::Github => "application/vnd.github+json",
+        UpdateSource::Gitee => "application/json",
+    };
 
     let client = reqwest::Client::builder()
         .user_agent("SnipJet-Updater")
@@ -3015,17 +3090,18 @@ pub async fn check_for_update(
 
     let resp = client
         .get(&api_url)
-        .header("Accept", "application/vnd.github+json")
+        .header("Accept", accept)
         .send()
         .await
-        .map_err(|e| format!("连接 GitHub 失败: {}", e))?;
+        .map_err(|e| format!("连接 {} 失败: {}", source_kind.label(), e))?;
 
     let status = resp.status();
     if !status.is_success() {
+        let label = source_kind.label();
         let msg = match status.as_u16() {
             404 => "找不到该仓库，请检查链接是否正确（需为公开仓库）".to_string(),
-            403 | 429 => "GitHub 接口访问受限（可能触发了速率限制），请稍后再试".to_string(),
-            _ => format!("GitHub 接口返回错误: {}", status),
+            403 | 429 => format!("{} 接口访问受限（可能触发了速率限制），请稍后再试", label),
+            _ => format!("{} 接口返回错误: {}", label, status),
         };
         return Err(msg);
     }
@@ -3041,6 +3117,7 @@ pub async fn check_for_update(
     // 在所有非草稿 release 里挑版本号最高、且高于当前版本的一个
     let mut best: Option<((u64, u64, u64), &serde_json::Value)> = None;
     for release in &releases {
+        // Gitee 无 draft 字段，此处通常就是 false
         if release.get("draft").and_then(|v| v.as_bool()).unwrap_or(false) {
             continue;
         }
@@ -3057,13 +3134,19 @@ pub async fn check_for_update(
         }
     }
 
+    // Gitee 的发布时间字段是 created_at，GitHub 是 published_at
+    let published_field = match source_kind {
+        UpdateSource::Github => "published_at",
+        UpdateSource::Gitee => "created_at",
+    };
+
     let release = best.map(|(version, release)| UpdateRelease {
         version: format!("{}.{}.{}", version.0, version.1, version.2),
         tag_name: json_str(release, "tag_name"),
         name: json_str(release, "name"),
         body: json_str(release, "body"),
         html_url: json_str(release, "html_url"),
-        published_at: json_str(release, "published_at"),
+        published_at: json_str(release, published_field),
         prerelease: release
             .get("prerelease")
             .and_then(|v| v.as_bool())
@@ -3076,6 +3159,7 @@ pub async fn check_for_update(
                     .iter()
                     .map(|asset| UpdateAsset {
                         name: json_str(asset, "name"),
+                        // 两个源都用 browser_download_url
                         url: json_str(asset, "browser_download_url"),
                         size: asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
                     })
@@ -3085,7 +3169,8 @@ pub async fn check_for_update(
     });
 
     info!(
-        "Update check: repo={}/{} current={} has_update={}",
+        "Update check: source={} repo={}/{} current={} has_update={}",
+        source_kind.label().to_ascii_lowercase(),
         owner,
         name,
         current_version,
