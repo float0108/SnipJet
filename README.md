@@ -4,7 +4,9 @@
 
 SnipJet 是一款轻量、高效、可定制的桌面端剪贴板工具。除了基础的剪贴板历史记录功能外，还内置**文本扩展**（自定义触发词）和 **MCP（Model Context Protocol）服务**，让你能够通过 AI 助手直接读取、检索并使用剪贴板内容。
 
-![主界面预览](todo [image])
+<img src="images/main.png" alt="主界面预览" width="360" />
+
+*主界面：始终置顶、可一键唤起，剪贴板历史一目了然。*
 
 ---
 
@@ -19,8 +21,6 @@ SnipJet 是一款轻量、高效、可定制的桌面端剪贴板工具。除了
 - **自定义历史容量**：可设置历史保留的最大条目数，避免冗余。
 - **历史自动清理**：可按条目数阈值或按天数自动清理过期的非收藏内容。
 
-todo [image]
-
 ### 🔍 内容预览与导航
 
 - **独立查看器窗口**：选中条目后可弹出独立的阅读窗口，提供完整预览，与主窗口互不干扰。
@@ -31,7 +31,11 @@ todo [image]
 - **键盘导航**：在阅读窗口中可通过快捷键向前/向后浏览相邻剪贴板条目，无需回到主窗口。
 - **图片预览**：图片类型的剪贴板条目支持尺寸、格式、大小等元数据展示。
 
-todo [image]
+| 预览视图 | 纯文本视图 |
+| :---: | :---: |
+| <img src="images/preview.png" alt="预览视图" width="420" /> | <img src="images/plain-text.png" alt="纯文本视图" width="420" /> |
+
+*还有「源码」视图，可查看剪贴板原始的 HTML / Markdown / RTF 源文本（[示例](images/source-code.png)）。*
 
 ### ⚡ 快速粘贴
 
@@ -40,8 +44,6 @@ todo [image]
 - **轮转粘贴（循环粘贴）**：进入轮转模式后，会按顺序循环将多条剪贴板条目依次粘贴到目标位置（如从最近到最早逐条粘贴），适合需要在多个位置批量填充相同模板片段的场景。
 - **粘贴为纯文本**：一键将带格式的 HTML 内容转成纯文本粘贴，剥离原有样式。
 - **按格式粘贴**：保留原格式（如 HTML / Markdown / RTF）粘贴到目标应用，保证渲染效果一致。
-
-todo [image]
 
 ### 🔡 文本扩展
 
@@ -53,7 +55,7 @@ todo [image]
 - **草稿模式**：顶部常驻「新建规则」空卡片，填写后点 ✔ 才入列，避免误添加。
 - **配置文件化**：规则以 YAML 文件形式存储，便于备份与跨设备同步。
 
-todo [image]
+<img src="images/expand.png" alt="文本扩展" width="560" />
 
 ### ⚙️ 个性化设置
 
@@ -63,13 +65,13 @@ todo [image]
 - **多语言**：内置中英文界面切换。
 - **开机自启**：可选 Windows 开机自启动。
 
+<img src="images/settings.png" alt="设置面板" width="560" />
+
 ### 🤖 MCP（Model Context Protocol）服务
 
 - 内置 MCP 服务，可让 AI 助手（如 Claude、Cursor 等）通过标准化接口访问剪贴板历史。
 - 默认端口 `3000`，可在设置中开启/关闭。
 - 适用于自动化场景：让 AI 主动读取你最近复制过的内容、检索历史、辅助写作与排版。
-
-todo [image]
 
 ### 🔄 自动更新
 
@@ -81,47 +83,13 @@ todo [image]
 
 ## 🚀 安装与运行
 
-### 环境要求
+SnipJet 提供三种下载方式（在 Releases 页面）：
 
-- **Node.js** ≥ 18
-- **Rust** ≥ 1.77.2
-- **Tauri CLI** 依赖：
-  - **Windows**：WebView2（Win10+ 默认已安装）；部分功能依赖 Windows 平台原生能力（如开机自启动注册表读写）
+- **安装版**（`*setup.exe`）：下载后双击安装，会写入注册表、占用开始菜单
+- **MSI**（`*.msi`）：企业批量部署用
+- **便携版**（`*portable.zip`）：解压即用，无注册表、无 UAC
 
-### 开发模式
-
-```bash
-# 安装前端依赖
-npm install
-
-# 启动 Tauri 开发窗口（自动运行 vite + 启动 Rust 后端）
-npm run tauri dev
-```
-
-### 构建发布版
-
-```bash
-# Windows：构建 NSIS 安装包
-npm run tauri build
-```
-
-构建产物位于 `src-tauri/target/release/bundle/` 下。
-
-### 构建发布版（Windows 安装包）
-
-```bash
-npm run tauri build
-```
-
-构建产物位于 `src-tauri/target/release/bundle/` 下。
-
-### 单独构建前端（调试 UI 用）
-
-```bash
-npm run dev      # 启动 vite 开发服务器
-npm run build    # 打包前端到 dist/
-npm run preview  # 预览构建结果
-```
+开发与构建说明请查看 [MAINTENANCE.md](MAINTENANCE.md)。
 
 ---
 
@@ -139,73 +107,6 @@ SnipJet 内置快捷键均可在「设置 → 快捷键」中自定义。功能�
 
 ---
 
-## 🗂️ 项目结构
-
-```
-SnipJet/
-├── src/                          # 前端（Vite + 原生 JS）
-│   ├── views/
-│   │   ├── main/                 # 主窗口（剪贴板历史列表）
-│   │   ├── reader/               # 详情查看器窗口
-│   │   ├── settings/             # 设置窗口
-│   │   └── expander/             # 文本扩展管理窗口
-│   ├── components/               # 共享组件（卡片、空状态、iframe 容器等）
-│   ├── services/                 # 前端服务层（剪贴板、主题、窗口、快捷键）
-│   ├── utils/                    # 工具函数（i18n、formatter、logger）
-│   ├── config/settings.json      # 默认设置
-│   ├── public/bootstrap.js       # Tauri bootstrap
-│   ├── index.html                # 主窗口入口
-│   ├── reader.html               # 查看器入口
-│   ├── settings.html             # 设置入口
-│   └── expander.html             # 文本扩展入口
-│
-├── src-tauri/                    # Rust 后端（Tauri 2.x）
-│   ├── src/
-│   │   ├── core/                 # 剪贴板监听、文本扩展、数据存储
-│   │   ├── generators/           # 多格式导出（HTML / DOCX / Office 自动化）
-│   │   ├── mcp/                  # MCP 服务端实现
-│   │   ├── clipboard_manager.rs  # 剪贴板管理器
-│   │   ├── commands.rs           # Tauri 命令接口
-│   │   └── main.rs / lib.rs      # 入口
-│   ├── text_expand.yaml          # 文本扩展规则配置
-│   ├── tauri.conf.json           # Tauri 应用配置
-│   └── Cargo.toml                # Rust 依赖清单
-│
-├── package.json                  # 前端依赖与脚本
-└── vite.config.js                # Vite 构建配置
-```
-
----
-
-## 🔧 配置说明
-
-### 设置文件位置
-
-所有用户设置统一存放在 `src/config/settings.json` 中（开发态），运行时由前端读取并通过 `localStorage` 缓存。Rust 后端维护独立的状态（历史、收藏、文本扩展规则）。
-
-### 文本扩展规则
-
-文本扩展规则以 YAML 文件形式存储，路径：
-
-```
-src-tauri/text_expand.yaml
-```
-
-格式示例：
-
-```yaml
-rules:
-  - key: ":hello"
-    content: "Hello, World!"
-    group: "greeting"
-    description: "问候语"
-    date: "2026-02-12"
-```
-
-> 在「文本扩展」窗口的 UI 中可直接增删改查并保存到该文件。
-
----
-
 ## 🧩 MCP 集成示例
 
 在设置中启用 MCP 服务（默认端口 `3000`）后，AI 助手可通过标准 MCP 客户端访问你的剪贴板历史。典型场景：
@@ -218,11 +119,7 @@ rules:
 
 ## 🤝 贡献
 
-欢迎提交 Issue 与 PR。在提交代码前，请确保：
-
-1. 已安装 pre-commit 工具链（Rust 工具链 + Node 18+）。
-2. 在本地执行 `npm run tauri dev` 验证主流程可用。
-3. 不要提交构建产物（`dist/`、`src-tauri/target/`）与本地配置。
+欢迎提交 Issue 与 PR。开发、构建、发布流程请查看 [MAINTENANCE.md](MAINTENANCE.md)。
 
 ---
 
@@ -234,5 +131,37 @@ rules:
 
 ## 📮 联系
 
-- GitHub: [float0108/SnipJet](https://github.com/float0108/SnipJet)
-- 反馈与建议：欢迎在 Issue 区留言
+> **代码主仓库在 GitHub**：[float0108/SnipJet](https://github.com/float0108/SnipJet)
+> 所有提交、Issue、PR 默认在 GitHub 进行。Gitee 仓库为**镜像仓库**，仅用于国内用户下载 release 产物。
+
+- **GitHub**（推荐）：[float0108/SnipJet](https://github.com/float0108/SnipJet)
+  - 🐛 提 Issue、💬 讨论、🔀 提 PR
+  - 包含最新代码、所有提交历史
+- **Gitee**（国内下载）：[float0108/SnipJet](https://gitee.com/float0108/SnipJet)
+  - 📦 仅同步 Release 产物（exe / msi / portable.zip）
+  - 代码约每 24 小时自动同步一次
+- **反馈与建议**：欢迎在 GitHub Issue 区留言
+
+---
+
+## ⚠️ 免责声明
+
+**除作者本人或获得作者书面许可外，任何人不得在 Bilibili、小红书、抖音、微信公众号、X（Twitter）、知乎、CSDN、掘金等公开媒体平台上以任何形式对本软件进行宣传、推广、推荐或销售。**
+
+具体禁止行为包括但不限于：
+
+- 🚫 发布本软件的介绍、评测、教程、使用技巧等内容（包括但不限于视频、文章、图文、动态、直播等）
+- 🚫 通过「点赞 / 收藏 / 关注」后才能获取下载地址，或设置其他任何形式的获取门槛
+- 🚫 通过「付费后获取」「开通会员后获取」「加入群组后获取」等方式将本软件作为引流 / 变现工具
+- 🚫 将本软件与其他付费内容捆绑销售
+- 🚫 冒用本软件名义进行任何商业活动或诱导用户付费
+- 🚫 修改本软件后以「SnipJet」或类似名称对外发布
+
+允许的行为：
+
+- ✅ 个人下载、安装、试用本软件
+- ✅ 在 GitHub Issue 区反馈 Bug 或提建议
+- ✅ 在个人技术博客中**客观陈述本软件的存在**（需要附源仓库地址）
+- ✅ 在私有群组（QQ 群、微信群等）内**仅限群成员内部交流**地分享本软件的仓库链接
+
+违反上述条款者，作者保留追究法律责任的权利。本软件基于 [GNU General Public License v3.0](LICENSE) 开源，但本免责声明作为作者额外附加的传播限制条款，与 GPL 协议并行生效。
