@@ -355,7 +355,13 @@ async function startDownload() {
   render();
 
   try {
-    const path = await invoke('download_update', { url: asset.url, destDir });
+    // 传入 release 中解析出的 SHA-256，后端下载完成后会校验；
+    // 为空（历史 release 未附带 checksums.txt）时后端只告警不拦截。
+    const path = await invoke('download_update', {
+      url: asset.url,
+      destDir,
+      expectedSha256: asset.expected_sha256 || null,
+    });
     if (state.installType === 'installer') {
       state.status = 'installing';
       render();

@@ -18,6 +18,7 @@ name: Release
 #   SnipJet_<version>_x64-setup.exe    安装版（NSIS）
 #   SnipJet_<version>_x64.msi          MSI（企业批量部署）
 #   SnipJet_<version>_x64-portable.zip 便携版（解压即用）
+#   checksums.txt                      上述产物的 SHA-256 清单（应用内更新据此校验下载）
 #
 # 应用内 src/views/settings/updater.js 的 pickAsset 按文件名识别：
 #   - 安装版：/setup/i 或 /\.msi$/i
@@ -160,6 +161,29 @@ jobs:
           ls -la artifacts/ || echo "no artifacts dir"
           ls -la artifacts/*/ 2>/dev/null || echo "no nested dirs"
 
+      # 生成 SHA-256 校验和清单：应用内更新会用它校验下载的安装包
+      # 格式为标准 sha256sum 风格 `<hex>  <文件名>`（只写文件名，不带目录）
+      - name: Generate checksums.txt
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+
+          FILES=(artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::error::未找到任何产物文件，无法生成校验和"
+            exit 1
+          fi
+
+          : > checksums.txt
+          for f in "${FILES[@]}"; do
+            printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")" >> checksums.txt
+          done
+          # 按文件名排序，保证同样产物每次生成的清单一致
+          LC_ALL=C sort -k2 -o checksums.txt checksums.txt
+
+          echo "---- checksums.txt ----"
+          cat checksums.txt
+
       # 准备 release notes（避免 heredoc 缩进问题，单独写文件）
       - name: Prepare release notes
         run: |
@@ -169,6 +193,7 @@ jobs:
           - `*-setup.exe`：安装版（NSIS），下载后静默安装并自动重启
           - `*.msi`：MSI 安装包（企业 / 批量部署）
           - `*-portable.zip`：便携版，**无需安装**，解压后双击 `SnipJet.exe` 即可运行
+          - `checksums.txt`：全部产物的 SHA-256 校验和，可自行核对下载完整性
 
           国内用户可前往 Gitee 镜像下载：https://gitee.com/float0108/SnipJet/releases
 
@@ -192,12 +217,19 @@ jobs:
           set -euo pipefail
           shopt -s globstar nullglob
 
-          # 收集产物（artifact 解压后嵌套一层目录，用 ** 匹配）
-          FILES=(artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip)
+          # 收集产物（artifact 解压后嵌套一层目录，用 ** 匹配）+ 校验和清单
+          FILES=(artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip checksums.txt)
           echo "待上传文件数: ${#FILES[@]}"
           printf '  %s\n' "${FILES[@]}"
-          if [ ${#FILES[@]} -eq 0 ]; then
-            echo "::error::未找到任何产物文件，artifact 下载可能失败"
+          MISSING=0
+          for f in "${FILES[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::产物缺失: $f"
+              MISSING=1
+            fi
+          done
+          if [ $MISSING -ne 0 ] || [ ! -s checksums.txt ]; then
+            echo "::error::未找到任何产物文件或校验和清单，artifact 下载可能失败"
             exit 1
           fi
 
@@ -264,9 +296,13 @@ jobs:
           fi
           echo "Gitee release id = $RELEASE_ID"
 
-          # 3. 上传所有产物（artifact 可能嵌套一层目录，用 ** glob 匹配）
+          # 3. 上传所有产物 + 校验和清单（artifact 可能嵌套一层目录，用 ** glob 匹配）
+          # Gitee 没有一等的校验和字段，把 checksums.txt 当普通附件传上去即可
           shopt -s globstar nullglob
-          for f in artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip; do
+          FILES=(artifacts/**/*.exe artifacts/**/*.msi artifacts/**/*.zip checksums.txt)
+          for f in "${FILES[@]}"; do
+            # glob 未命中时会原样返回字面量，这里跳过，避免把字面量当文件名上传
+            [ -f "$f" ] || { echo "跳过不存在的文件: $f"; continue; }
             echo "Uploading $f ..."
             curl -s -X POST \
               "https://gitee.com/api/v5/repos/${OWNER_REPO}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}" \

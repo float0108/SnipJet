@@ -2943,6 +2943,9 @@ pub struct UpdateAsset {
     pub name: String,
     pub url: String,
     pub size: u64,
+    /// 期望的 SHA-256（小写十六进制）：由同 release 下的校验和文件解析得到，
+    /// 解析不到时为 None，此时下载不校验（兼容历史 release）。新增字段对前端是向后兼容的。
+    pub expected_sha256: Option<String>,
 }
 
 /// 命中更新时返回的 release 信息
@@ -3101,6 +3104,131 @@ fn json_str(value: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
+/// 校验和清单的常见文件名（大小写不敏感）
+const CHECKSUM_MANIFEST_NAMES: [&str; 2] = ["checksums.txt", "sha256sums.txt"];
+
+/// 是否为校验和相关文件（清单或 `.sha256` 伴随文件）——这类附件本身不参与校验
+fn is_checksum_file(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    CHECKSUM_MANIFEST_NAMES.contains(&lower.as_str()) || lower.ends_with(".sha256")
+}
+
+/// 判断字符串是否为 64 位十六进制摘要
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// 解析 `sha256sum` 风格清单：每行 `<hex>  <文件名>`。
+/// 兼容二进制模式的 `*文件名`、前导 `./` 以及反斜杠分隔的路径。
+fn parse_checksum_manifest(text: &str) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // 标准格式是 `<hex>  <name>`（两个空格），按空白切分即可
+        let mut parts = line.split_whitespace();
+        let Some(digest) = parts.next().filter(|d| is_sha256_hex(d)) else {
+            continue;
+        };
+        let Some(name_part) = parts.next() else { continue };
+        // 只保留文件名本身，清单里写成相对路径也能匹配
+        let name = name_part
+            .trim()
+            .trim_start_matches('*')
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .trim_start_matches("./")
+            .trim();
+        if name.is_empty() {
+            continue;
+        }
+        map.insert(name.to_ascii_lowercase(), digest.to_ascii_lowercase());
+    }
+    map
+}
+
+/// 从 `<asset>.sha256` 伴随文件内容里取摘要：
+/// 既支持整份文件只有一行裸 hex，也支持标准 `<hex>  <文件名>` 格式
+fn parse_companion_checksum(text: &str, asset_name: &str) -> Option<String> {
+    if let Some(sum) = parse_checksum_manifest(text).remove(&asset_name.to_ascii_lowercase()) {
+        return Some(sum);
+    }
+    let first = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))?;
+    let digest = first.split_whitespace().next()?;
+    is_sha256_hex(digest).then(|| digest.to_ascii_lowercase())
+}
+
+/// 拉取附件文本内容（校验和文件都很小），失败一律返回 None，不影响更新检查本身
+async fn fetch_asset_text(client: &reqwest::Client, url: &str) -> Option<String> {
+    if url.trim().is_empty() {
+        return None;
+    }
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() {
+        warn!("下载校验和文件失败: {} (HTTP {})", url, resp.status());
+        return None;
+    }
+    resp.text().await.ok()
+}
+
+/// 查找并解析 release 内的校验和清单（checksums.txt / sha256sums.txt），
+/// 返回「文件名（小写） → sha256」表；不存在或内容为空时返回 None
+async fn load_checksum_manifest(
+    client: &reqwest::Client,
+    assets: &[serde_json::Value],
+) -> Option<std::collections::HashMap<String, String>> {
+    let manifest = assets.iter().find(|a| {
+        let name = json_str(a, "name").to_ascii_lowercase();
+        CHECKSUM_MANIFEST_NAMES.contains(&name.as_str())
+    })?;
+    let url = json_str(manifest, "browser_download_url");
+    let text = fetch_asset_text(client, &url).await?;
+    let map = parse_checksum_manifest(&text);
+    if map.is_empty() {
+        warn!("校验和清单解析后为空: {}", url);
+        return None;
+    }
+    info!("Loaded {} checksum entries from {}", map.len(), url);
+    Some(map)
+}
+
+/// 解析单个附件的期望 SHA-256：优先取清单文件，清单里没有再回退到 `<文件名>.sha256` 伴随文件。
+/// 两者都没有时返回 None —— 该附件按「不校验」处理（历史 release 兼容）。
+async fn resolve_expected_sha256(
+    client: &reqwest::Client,
+    assets: &[serde_json::Value],
+    manifest: &Option<std::collections::HashMap<String, String>>,
+    asset_name: &str,
+) -> Option<String> {
+    if is_checksum_file(asset_name) {
+        return None;
+    }
+    if let Some(sum) = manifest
+        .as_ref()
+        .and_then(|m| m.get(&asset_name.to_ascii_lowercase()))
+    {
+        return Some(sum.clone());
+    }
+    // 回退：同 release 下的 `<文件名>.sha256` 伴随文件
+    let companion_name = format!("{}.sha256", asset_name);
+    let companion = assets
+        .iter()
+        .find(|a| json_str(a, "name").eq_ignore_ascii_case(&companion_name))?;
+    let companion_url = json_str(companion, "browser_download_url");
+    let text = fetch_asset_text(client, &companion_url).await?;
+    let sum = parse_companion_checksum(&text, asset_name);
+    if sum.is_none() {
+        warn!("解析伴随校验文件失败，内容不可用: {}", companion_name);
+    }
+    sum
+}
+
 /// 检查更新：拉取对应源的 releases，返回版本号最高且高于当前版本的那个
 /// （含 pre-release；GitHub 忽略 draft，Gitee 没有 draft 概念）。
 #[tauri::command]
@@ -3185,33 +3313,55 @@ pub async fn check_for_update(
         UpdateSource::Gitee => "created_at",
     };
 
-    let release = best.map(|(version, release)| UpdateRelease {
-        version: format!("{}.{}.{}", version.0, version.1, version.2),
-        tag_name: json_str(release, "tag_name"),
-        name: json_str(release, "name"),
-        body: json_str(release, "body"),
-        html_url: json_str(release, "html_url"),
-        published_at: json_str(release, published_field),
-        prerelease: release
-            .get("prerelease")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
-        assets: release
-            .get("assets")
-            .and_then(|v| v.as_array())
-            .map(|assets| {
-                assets
-                    .iter()
-                    .map(|asset| UpdateAsset {
-                        name: json_str(asset, "name"),
-                        // 两个源都用 browser_download_url
-                        url: json_str(asset, "browser_download_url"),
-                        size: asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
-                    })
-                    .collect()
+    // 附件列表单独抽出：既用于拼装返回结果，也用于在同 release 里找校验和文件
+    let asset_values: Vec<serde_json::Value> = best
+        .as_ref()
+        .and_then(|(_, rel)| rel.get("assets"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    // 清单只拉一次；没有清单时退化为逐个附件找 `.sha256` 伴随文件
+    let checksum_manifest = load_checksum_manifest(&client, &asset_values).await;
+
+    // 附件逐个解析校验和：解析需要发网络请求，必须放在 async 上下文里，
+    // 所以这里用 match 而不是 Option::map
+    let release = match best {
+        Some((version, release)) => {
+            let mut assets = Vec::with_capacity(asset_values.len());
+            for asset in &asset_values {
+                let name = json_str(asset, "name");
+                // 两个源都用 browser_download_url
+                let url = json_str(asset, "browser_download_url");
+                let size = asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                let expected_sha256 =
+                    resolve_expected_sha256(&client, &asset_values, &checksum_manifest, &name).await;
+                if expected_sha256.is_none() {
+                    warn!("附件未附带校验和，下载时将跳过完整性校验: {}", name);
+                }
+                assets.push(UpdateAsset {
+                    name,
+                    url,
+                    size,
+                    expected_sha256,
+                });
+            }
+
+            Some(UpdateRelease {
+                version: format!("{}.{}.{}", version.0, version.1, version.2),
+                tag_name: json_str(release, "tag_name"),
+                name: json_str(release, "name"),
+                body: json_str(release, "body"),
+                html_url: json_str(release, "html_url"),
+                published_at: json_str(release, published_field),
+                prerelease: release
+                    .get("prerelease")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                assets,
             })
-            .unwrap_or_default(),
-    });
+        }
+        None => None,
+    };
 
     info!(
         "Update check: source={} repo={}/{} current={} has_update={}",
@@ -3310,11 +3460,14 @@ fn file_name_from_url(url: &str) -> String {
 
 /// 下载更新包到指定目录（为空则落到系统临时目录），返回完整路径。
 /// 下载过程中通过 `update-download-progress` 事件推送进度。
+/// `expected_sha256` 为该附件的期望摘要（来自 release 校验和文件，大小写不敏感）：
+/// 给了就边下边算、下载完成后比对，不一致直接删文件报错；没给则只告警不拦截。
 #[tauri::command]
 pub async fn download_update(
     app_handle: AppHandle,
     url: String,
     dest_dir: Option<String>,
+    expected_sha256: Option<String>,
 ) -> Result<String, String> {
     if url.trim().is_empty() {
         return Err("下载地址为空".to_string());
@@ -3347,6 +3500,9 @@ pub async fn download_update(
     let total = resp.content_length().unwrap_or(0);
     let dest_display = dest.to_string_lossy().to_string();
 
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+
     let mut file = tokio::fs::File::create(&dest)
         .await
         .map_err(|e| format!("创建文件失败: {}", e))?;
@@ -3358,6 +3514,7 @@ pub async fn download_update(
         .await
         .map_err(|e| format!("读取下载数据失败: {}", e))?
     {
+        hasher.update(&chunk);
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
             .await
             .map_err(|e| format!("写入文件失败: {}", e))?;
@@ -3377,6 +3534,35 @@ pub async fn download_update(
         .map_err(|e| format!("写入文件失败: {}", e))?;
     drop(file);
 
+    // 完整性校验：期望值来自 release 的校验和文件，取不到就只告警（兼容旧 release）
+    let expected = expected_sha256
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase());
+
+    if let Some(expected) = expected {
+        let actual = hex::encode(hasher.finalize());
+        if actual != expected {
+            // 校验不通过：立刻删掉，绝不把未经验证的安装包留在磁盘上给用户运行
+            match fs::remove_file(&dest) {
+                Ok(()) => error!("安装包 SHA-256 校验失败，已删除文件: {}", dest_display),
+                Err(e) => error!(
+                    "安装包 SHA-256 校验失败且删除文件失败（{}）: {}",
+                    dest_display, e
+                ),
+            }
+            return Err(format!(
+                "安装包完整性校验失败，文件可能已损坏或被篡改，请重新下载。\n期望 SHA-256: {}\n实际 SHA-256: {}",
+                expected, actual
+            ));
+        }
+        info!("Update package verified (sha256) {}", dest_display);
+    } else {
+        warn!("未提供期望的 SHA-256，跳过完整性校验: {}", dest_display);
+    }
+
+    // 完成事件在校验通过后再发，避免前端把未通过校验的文件当成可用
     let _ = app_handle.emit(
         "update-download-progress",
         serde_json::json!({
