@@ -105,6 +105,29 @@ where
     #[cfg(not(debug_assertions))]
     let log_level = log::LevelFilter::Info;
 
+    // panic 兜底记录：
+    // release 构建带 `windows_subsystem = "windows"`，不挂控制台，panic 默认写 stderr 的信息
+    // 会随进程一起消失；后台常驻线程（剪贴板监听、托盘、文本扩展）一旦 panic，
+    // 既无从排查也会带走整个线程。这里把 panic 落到日志文件，保留原 hook 以维持
+    // debug 构建下的 backtrace 输出。
+    {
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let message = info
+                .payload()
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| info.payload().downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "<non-string panic payload>".to_string());
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .unwrap_or_else(|| "<unknown location>".to_string());
+            log::error!("PANIC: {} (at {})", message, location);
+            previous_hook(info);
+        }));
+    }
+
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::default()

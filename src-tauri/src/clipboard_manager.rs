@@ -111,6 +111,24 @@ impl ClipboardManager {
 
 impl ClipboardHandler for ClipboardManager {
     fn on_clipboard_change(&mut self) {
+        // clipboard-rs 在独立线程上派发这个回调，panic 会直接 unwind 掉该线程，
+        // 监听随之永久消失（且 release 构建无控制台，用户只看到剪贴板"不动了"）。
+        // 这里兜住：单次事件的失败不应带走整条监听线程。
+        // &mut self 不是 UnwindSafe，用 AssertUnwindSafe 明确承担这一语义——
+        // panic 发生时 self 可能处于中间状态，但监听存活比单条记录丢失重要得多。
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.on_clipboard_change_inner()
+        }));
+        if outcome.is_err() {
+            // 完整 panic 信息（含文件行号）由 lib.rs 里安装的 panic hook 写入日志，
+            // 这里只记录"本次事件被丢弃、监听继续"，便于统计发生频率。
+            error!("clipboard change handler panicked; event dropped, listener still alive");
+        }
+    }
+}
+
+impl ClipboardManager {
+    fn on_clipboard_change_inner(&mut self) {
         // 检查是否应该忽略剪贴板变化（粘贴操作后的短暂禁用）
         // 修复：should_ignore_clipboard 是基于全局时间窗口的粗粒度过滤。
         // 在粘贴后立即用户又手动复制时，用户的真实复制也会被吞掉。
