@@ -32,7 +32,6 @@
     "core:window:allow-monitor-from-point",
     "core:window:allow-primary-monitor",
     "core:window:allow-available-monitors",
-    "fs:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister-all",
     "dialog:default",

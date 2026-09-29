@@ -14,6 +14,9 @@ use crate::common::models::ClipboardItem;
 use super::service::ClipboardMcpService;
 
 /// MCP 服务器句柄
+///
+/// 全部字段（SocketAddr / CancellationToken / JoinHandle）本身即满足 `Send`，
+/// 无需像旧实现那样用 `unsafe impl Send` 绕过编译期检查。
 pub struct McpServerHandle {
     #[allow(dead_code)]
     pub addr: SocketAddr,
@@ -21,9 +24,6 @@ pub struct McpServerHandle {
     #[allow(dead_code)]
     pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
-
-// 实现 Send 以便在 Tauri 状态中使用
-unsafe impl Send for McpServerHandle {}
 
 /// 启动 MCP 服务器（在独立线程中运行）
 ///

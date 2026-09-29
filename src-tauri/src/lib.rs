@@ -20,7 +20,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{APP_HANDLE, AUTOSTART_ARGS, SHORTCUT_ACTION_MAP, WINDOW_PIN_STATE};
 use crate::common::globals::{
-    DEFAULT_PREVIEW_MAX_CHARS, MCP_SERVER_HANDLE, PREVIEW_MAX_CHARS,
+    lock_or_recover, DEFAULT_PREVIEW_MAX_CHARS, MCP_SERVER_HANDLE, PREVIEW_MAX_CHARS,
 };
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::{load_all_data, save_all_data, DataStore};
@@ -123,7 +123,7 @@ where
 
             // 存储app_handle到全局变量
             {
-                let mut app_handle_lock = APP_HANDLE.lock().unwrap();
+                let mut app_handle_lock = lock_or_recover(&APP_HANDLE);
                 *app_handle_lock = Some(app_handle.clone());
                 info!("App handle stored to global variable");
             }
@@ -173,7 +173,7 @@ where
                         }
                     };
                     {
-                        let mut history_lock = state_for_setup.history.lock().unwrap();
+                        let mut history_lock = lock_or_recover(&state_for_setup.history);
                         *history_lock = history_to_memory;
                     }
 
@@ -181,7 +181,7 @@ where
                     match state_for_setup.datastore.load_favorites() {
                         Ok(loaded_favorites) => {
                             info!("Loaded {} favorites from storage", loaded_favorites.len());
-                            let mut favorites_lock = state_for_setup.favorites.lock().unwrap();
+                            let mut favorites_lock = lock_or_recover(&state_for_setup.favorites);
                             *favorites_lock = loaded_favorites;
                         }
                         Err(e) => {
@@ -200,7 +200,7 @@ where
                         None => DEFAULT_SEARCH_SCAN_LIMIT_BYTES,
                     };
                     {
-                        let mut limit_lock = state_for_setup.search_scan_limit_bytes.lock().unwrap();
+                        let mut limit_lock = lock_or_recover(&state_for_setup.search_scan_limit_bytes);
                         *limit_lock = search_scan_bytes;
                         info!("Search scan limit set to: {} bytes", search_scan_bytes);
                     }
@@ -209,7 +209,7 @@ where
                     // 需要沿用用户上次的选择，而不是每次启动都固定为已 pin。
                     let pinned = state_for_setup.datastore.load_window_pinned().unwrap_or(true);
                     {
-                        let mut pin_lock = WINDOW_PIN_STATE.lock().unwrap();
+                        let mut pin_lock = lock_or_recover(&WINDOW_PIN_STATE);
                         *pin_lock = pinned;
                     }
                     info!("Window pin state restored from last session: {}", pinned);
@@ -324,7 +324,7 @@ where
 
                 // 查找对应的动作
                 let action = {
-                    let map = SHORTCUT_ACTION_MAP.lock().unwrap();
+                    let map = lock_or_recover(&SHORTCUT_ACTION_MAP);
                     map.get(shortcut_str).cloned()
                 };
 
@@ -385,7 +385,7 @@ where
                     match start_mcp_server(mcp_port, Some(Arc::new(app_handle_for_mcp)), history_for_mcp) {
                         Ok(handle) => {
                             info!("MCP server started successfully on port {}", mcp_port);
-                            let mut mcp_handle = MCP_SERVER_HANDLE.lock().unwrap();
+                            let mut mcp_handle = lock_or_recover(&MCP_SERVER_HANDLE);
                             *mcp_handle = Some(handle);
                         }
                         Err(e) => {

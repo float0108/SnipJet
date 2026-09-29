@@ -7,7 +7,7 @@ use log::{error, info, warn};
 use tauri::{AppHandle, Emitter};
 use xxhash_rust::xxh3;
 
-use crate::common::globals::{LAST_HASH, should_ignore_clipboard};
+use crate::common::globals::{lock_or_recover, LAST_HASH, should_ignore_clipboard};
 use crate::common::models::ClipboardItem;
 use crate::core::data_store::DataStore;
 use crate::generators::html_generator::has_markdown_syntax;
@@ -65,8 +65,8 @@ impl ClipboardManager {
 
         // 1. 更新 State（先在内存中操作）
         {
-            let mut history_lock = self.history.lock().unwrap();
-            let max_items = *self.history_count_limit.lock().unwrap();
+            let mut history_lock = lock_or_recover(&self.history);
+            let max_items = *lock_or_recover(&self.history_count_limit);
 
             // 去重：移除相同 ID 的旧条目
             history_lock.retain(|i| i.id != item.id);
@@ -83,7 +83,7 @@ impl ClipboardManager {
         }
 
         // 2. 同步保存到数据库（使用缓存的 DataStore）
-        let history_to_save = self.history.lock().unwrap().clone();
+        let history_to_save = lock_or_recover(&self.history).clone();
         if let Err(e) = self.datastore.save_clipboard_history(&history_to_save) {
             error!("Failed to save clipboard history: {}", e);
             return;
@@ -134,7 +134,7 @@ impl ClipboardHandler for ClipboardManager {
                 // 立即更新 last_hash，防止竞态条件
                 self.last_hash = hash.clone();
                 {
-                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    let mut global_last_hash = lock_or_recover(&LAST_HASH);
                     *global_last_hash = hash.clone();
                 }
 
@@ -162,7 +162,7 @@ impl ClipboardHandler for ClipboardManager {
                 // 立即更新 last_hash，防止竞态条件
                 self.last_hash = hash.clone();
                 {
-                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    let mut global_last_hash = lock_or_recover(&LAST_HASH);
                     *global_last_hash = hash.clone();
                 }
 
@@ -185,7 +185,7 @@ impl ClipboardHandler for ClipboardManager {
                 // 立即更新 last_hash，防止竞态条件
                 self.last_hash = hash.clone();
                 {
-                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    let mut global_last_hash = lock_or_recover(&LAST_HASH);
                     *global_last_hash = hash.clone();
                 }
 
@@ -206,7 +206,7 @@ impl ClipboardHandler for ClipboardManager {
                 // 立即更新 last_hash，防止竞态条件
                 self.last_hash = hash.clone();
                 {
-                    let mut global_last_hash = LAST_HASH.lock().unwrap();
+                    let mut global_last_hash = lock_or_recover(&LAST_HASH);
                     *global_last_hash = hash.clone();
                 }
 
@@ -266,7 +266,7 @@ impl ClipboardHandler for ClipboardManager {
             // 立即更新 last_hash，防止竞态条件
             self.last_hash = hash.clone();
             {
-                let mut global_last_hash = LAST_HASH.lock().unwrap();
+                let mut global_last_hash = lock_or_recover(&LAST_HASH);
                 *global_last_hash = hash.clone();
             }
 

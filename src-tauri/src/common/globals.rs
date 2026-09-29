@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 
@@ -54,6 +54,15 @@ pub static ROTATING_PASTE_LAST_INDEX: LazyLock<Arc<Mutex<usize>>> =
 // 全局缓存：系统已安装的字体族列表（OS API 枚举结果可靠，进程内缓存避免重复枚举）
 pub static SYSTEM_FONTS_CACHE: LazyLock<Mutex<Option<Vec<String>>>> =
     LazyLock::new(|| Mutex::new(None));
+
+/// 锁获取失败（中毒）时取回内部值，而不是 panic。
+///
+/// 后台常驻线程（剪贴板监听、托盘、全局快捷键回调）中一旦因中毒而 panic，
+/// 会导致后续每次对该 Mutex 加锁都 panic，剪贴板监听将永久失效；
+/// 因此这里降级为「继续使用现有数据」，让常驻线程带着可能不一致的数据继续工作。
+pub fn lock_or_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// 设置剪贴板忽略截止时间（从现在起忽略指定毫秒）
 pub fn set_clipboard_ignore_for(millis: u64) {
