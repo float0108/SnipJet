@@ -407,6 +407,8 @@ async function updateMcpService() {
     } catch (e) {
       console.error("更新 MCP 服务失败:", e);
     }
+    // 启停/重启后回显需要跟着刷新
+    await renderMcpStatus();
   }
 }
 
@@ -540,7 +542,6 @@ export async function updateAdvancedSettings() {
 
   const mcpEnabled = document.getElementById("mcp-enabled");
   const mcpPort = document.getElementById("mcp-port");
-  const mcpStatus = document.getElementById("mcp-status");
 
   if (mcpEnabled) {
     mcpEnabled.checked = settings.mcp?.enabled ?? false;
@@ -551,22 +552,31 @@ export async function updateAdvancedSettings() {
   }
 
   // 获取 MCP 服务状态
-  if (mcpStatus) {
-    try {
-      const status = await invoke("get_mcp_status");
-      console.log("MCP status:", status);
-      if (status.is_running) {
-        mcpStatus.textContent = t("settings.advanced.mcpRunning");
-        mcpStatus.className = "status-badge status-running";
-      } else {
-        mcpStatus.textContent = t("settings.advanced.mcpStopped");
-        mcpStatus.className = "status-badge status-stopped";
-      }
-    } catch (e) {
-      console.error("获取 MCP 状态失败:", e);
+  await renderMcpStatus();
+}
+
+// 回显 MCP 运行状态（按当前语言）
+async function renderMcpStatus() {
+  const mcpStatus = document.getElementById("mcp-status");
+
+  if (!mcpStatus) {
+    return;
+  }
+
+  try {
+    const status = await invoke("get_mcp_status");
+    console.log("MCP status:", status);
+    if (status.is_running) {
+      mcpStatus.textContent = t("settings.advanced.mcpRunning");
+      mcpStatus.className = "status-badge status-running";
+    } else {
       mcpStatus.textContent = t("settings.advanced.mcpStopped");
       mcpStatus.className = "status-badge status-stopped";
     }
+  } catch (e) {
+    console.error("获取 MCP 状态失败:", e);
+    mcpStatus.textContent = t("settings.advanced.mcpStopped");
+    mcpStatus.className = "status-badge status-stopped";
   }
 }
 
