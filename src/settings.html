@@ -52,8 +52,8 @@
         <button
           type="button"
           class="sidebar-item"
-          data-section="history"
-          data-i18n="settings.section.history"
+          data-section="storage"
+          data-i18n="settings.section.storage"
         ></button>
         <button
           type="button"
@@ -108,37 +108,11 @@
           <div class="setting-item" id="startup-status-item">
             <div class="setting-info">
               <div class="setting-label" data-i18n="settings.general.startupStatus"></div>
-              <div class="startup-path-row">
-                <span
-                  class="startup-path"
-                  id="startup-path"
-                  data-i18n="settings.general.startupPathEmpty"
-                ></span>
-                <!-- 程序移动/重装后注册项可能仍指向旧路径，点此按当前路径重新注册 -->
-                <button
-                  type="button"
-                  class="reset-btn startup-path-reset"
-                  id="startup-path-reset"
-                  title="重新注册自启动"
-                  aria-label="重新注册自启动"
-                  data-i18n-title="settings.general.startupPathReset"
-                  data-i18n-aria-label="settings.general.startupPathReset"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                    <path d="M3 3v5h5"></path>
-                  </svg>
-                </button>
-              </div>
+              <div
+                class="startup-path"
+                id="startup-path"
+                data-i18n="settings.general.startupPathEmpty"
+              ></div>
             </div>
             <div class="setting-control">
               <span
@@ -146,6 +120,31 @@
                 class="status-badge status-stopped"
                 data-i18n="settings.general.startupDisabled"
               ></span>
+              <!-- 程序移动/重装后注册项可能仍指向旧路径，点此按当前路径重新注册 -->
+              <button
+                type="button"
+                class="reset-btn"
+                id="startup-path-reset"
+                title="重新注册自启动"
+                aria-label="重新注册自启动"
+                data-i18n-title="settings.general.startupPathReset"
+                data-i18n-aria-label="settings.general.startupPathReset"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -240,20 +239,95 @@
           <div class="setting-section-title" data-i18n="settings.blocks.theme"></div>
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.appearance.themeMode"></div>
+              <div class="setting-label" data-i18n="settings.appearance.followSystem"></div>
             </div>
             <div class="setting-control">
-              <select class="select-input" id="theme">
-                <option value="light" data-i18n="settings.options.theme.light"></option>
-                <option value="dark" data-i18n="settings.options.theme.dark"></option>
-                <option value="system" data-i18n="settings.options.theme.system"></option>
-              </select>
+              <label class="toggle-switch">
+                <input type="checkbox" id="follow-system" />
+                <span class="toggle-slider"></span>
+              </label>
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.appearance.primaryColor"></div>
+              <div class="setting-label" data-i18n="settings.appearance.themeMode"></div>
+              <!-- 仅在开启「跟随系统」时显示：此时主题模式只用于选择编辑哪套配色 -->
+              <div
+                class="setting-description"
+                id="theme-mode-hint"
+                data-i18n="settings.appearance.themeModeHint"
+              ></div>
+            </div>
+            <div class="setting-control">
+              <!-- 主题模式：☀️ 浅色 / 🌙 深色。开启「跟随系统」后，这里只用于选择编辑哪套主题色 -->
+              <div
+                class="segmented"
+                id="theme"
+                role="group"
+                data-i18n-aria-label="settings.appearance.themeMode"
+              >
+                <button
+                  type="button"
+                  class="segmented-btn"
+                  data-theme-mode="light"
+                  data-i18n-title="settings.options.theme.light"
+                  data-i18n-aria-label="settings.options.theme.light"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="15"
+                    height="15"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="4"></circle>
+                    <path d="M12 2v2"></path>
+                    <path d="M12 20v2"></path>
+                    <path d="M4.93 4.93l1.41 1.41"></path>
+                    <path d="M17.66 17.66l1.41 1.41"></path>
+                    <path d="M2 12h2"></path>
+                    <path d="M20 12h2"></path>
+                    <path d="M6.34 17.66l-1.41 1.41"></path>
+                    <path d="M19.07 4.93l-1.41 1.41"></path>
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="segmented-btn"
+                  data-theme-mode="dark"
+                  data-i18n-title="settings.options.theme.dark"
+                  data-i18n-aria-label="settings.options.theme.dark"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="15"
+                    height="15"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <!-- 图标由脚本写入，标识当前编辑的是浅色还是深色那一套 -->
+              <div class="setting-label theme-color-label">
+                <span data-i18n="settings.appearance.primaryColor"></span>
+                <span class="theme-color-icon"></span>
+              </div>
               <div class="setting-description" data-i18n="settings.appearance.primaryColorDesc"></div>
             </div>
             <div class="setting-control">
@@ -263,7 +337,10 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.appearance.favoriteColor"></div>
+              <div class="setting-label theme-color-label">
+                <span data-i18n="settings.appearance.favoriteColor"></span>
+                <span class="theme-color-icon"></span>
+              </div>
               <div class="setting-description" data-i18n="settings.appearance.favoriteColorDesc"></div>
             </div>
             <div class="setting-control">
@@ -556,14 +633,6 @@
               ></button>
             </div>
             <div class="setting-control">
-              <input
-                type="text"
-                class="shortcut-input"
-                id="toggle-interface"
-                placeholder="未设置"
-                data-i18n-placeholder="settings.shortcuts.notSet"
-                readonly
-              />
               <button
                 type="button"
                 class="reset-btn"
@@ -588,6 +657,14 @@
                   <path d="M3 3v5h5"></path>
                 </svg>
               </button>
+              <input
+                type="text"
+                class="shortcut-input"
+                id="toggle-interface"
+                placeholder="未设置"
+                data-i18n-placeholder="settings.shortcuts.notSet"
+                readonly
+              />
             </div>
           </div>
 
@@ -596,14 +673,6 @@
               <div class="setting-label" data-i18n="settings.shortcuts.functionPaste"></div>
             </div>
             <div class="setting-control">
-              <input
-                type="text"
-                class="shortcut-input"
-                id="function-paste"
-                placeholder="未设置"
-                data-i18n-placeholder="settings.shortcuts.notSet"
-                readonly
-              />
               <button
                 type="button"
                 class="reset-btn"
@@ -628,6 +697,14 @@
                   <path d="M3 3v5h5"></path>
                 </svg>
               </button>
+              <input
+                type="text"
+                class="shortcut-input"
+                id="function-paste"
+                placeholder="未设置"
+                data-i18n-placeholder="settings.shortcuts.notSet"
+                readonly
+              />
             </div>
           </div>
 
@@ -637,12 +714,7 @@
               <div class="setting-description" data-i18n="settings.shortcuts.quickPasteModeDesc"></div>
             </div>
             <div class="setting-control">
-              <!-- 空值项仅用于回显「未设置」且不可直接选中；禁用快捷粘贴请用右侧重置键 -->
-              <select class="select-input" id="quick-paste-mode">
-                <option value="" disabled data-i18n="settings.shortcuts.notSet"></option>
-                <option value="ctrl">Ctrl</option>
-                <option value="num">NumPad</option>
-              </select>
+              <!-- 空值项仅用于回显「未设置」且不可直接选中；禁用快捷粘贴请用左侧重置键 -->
               <button
                 type="button"
                 class="reset-btn"
@@ -667,6 +739,11 @@
                   <path d="M3 3v5h5"></path>
                 </svg>
               </button>
+              <select class="select-input" id="quick-paste-mode">
+                <option value="" disabled data-i18n="settings.shortcuts.notSet"></option>
+                <option value="ctrl">Ctrl</option>
+                <option value="num">NumPad</option>
+              </select>
             </div>
           </div>
 
@@ -676,14 +753,6 @@
               <div class="setting-description" data-i18n="settings.shortcuts.rotatingPasteDesc"></div>
             </div>
             <div class="setting-control">
-              <input
-                type="text"
-                class="shortcut-input"
-                id="rotating-paste"
-                placeholder="未设置"
-                data-i18n-placeholder="settings.shortcuts.notSet"
-                readonly
-              />
               <button
                 type="button"
                 class="reset-btn"
@@ -708,6 +777,14 @@
                   <path d="M3 3v5h5"></path>
                 </svg>
               </button>
+              <input
+                type="text"
+                class="shortcut-input"
+                id="rotating-paste"
+                placeholder="未设置"
+                data-i18n-placeholder="settings.shortcuts.notSet"
+                readonly
+              />
             </div>
           </div>
         </div>
@@ -777,37 +854,15 @@
           </div>
         </div>
 
-        <!-- 历史记录 -->
-        <div id="history-content" class="settings-section">
-          <div class="setting-section-title" data-i18n="settings.blocks.storageLimit"></div>
-          <div class="setting-item">
-            <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.history.maxItems"></div>
-              <div class="setting-description" data-i18n="settings.history.maxItemsDesc"></div>
-            </div>
-            <div class="setting-control">
-              <input
-                type="number"
-                class="number-input"
-                id="max-history-items"
-                min="10"
-                max="10000"
-                step="10"
-                placeholder="无限制"
-                data-i18n-placeholder="settings.history.maxItemsPlaceholder"
-              />
-            </div>
-          </div>
-
-          <div class="setting-divider"></div>
-
+        <!-- 存储 -->
+        <div id="storage-content" class="settings-section">
           <div class="setting-section-title" data-i18n="settings.blocks.autoCleanup"></div>
-          <div class="setting-description block" data-i18n="settings.history.cleanupIntro"></div>
+          <div class="setting-description block" data-i18n="settings.storage.cleanupIntro"></div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.history.cleanupByCount"></div>
-              <div class="setting-description" data-i18n="settings.history.cleanupByCountDesc"></div>
+              <div class="setting-label" data-i18n="settings.storage.cleanupByCount"></div>
+              <div class="setting-description" data-i18n="settings.storage.cleanupByCountDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -819,8 +874,8 @@
 
           <div class="setting-item" id="cleanup-count-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.history.keepCount"></div>
-              <div class="setting-description" data-i18n="settings.history.keepCountDesc"></div>
+              <div class="setting-label" data-i18n="settings.storage.keepCount"></div>
+              <div class="setting-description" data-i18n="settings.storage.keepCountDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -831,15 +886,15 @@
                 max="100000"
                 step="10"
                 placeholder="例如 500"
-                data-i18n-placeholder="settings.history.keepCountPlaceholder"
+                data-i18n-placeholder="settings.storage.keepCountPlaceholder"
               />
             </div>
           </div>
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.history.cleanupByAge"></div>
-              <div class="setting-description" data-i18n="settings.history.cleanupByAgeDesc"></div>
+              <div class="setting-label" data-i18n="settings.storage.cleanupByAge"></div>
+              <div class="setting-description" data-i18n="settings.storage.cleanupByAgeDesc"></div>
             </div>
             <div class="setting-control">
               <label class="toggle-switch">
@@ -851,8 +906,8 @@
 
           <div class="setting-item" id="cleanup-age-item">
             <div class="setting-info">
-              <div class="setting-label" data-i18n="settings.history.keepDays"></div>
-              <div class="setting-description" data-i18n="settings.history.keepDaysDesc"></div>
+              <div class="setting-label" data-i18n="settings.storage.keepDays"></div>
+              <div class="setting-description" data-i18n="settings.storage.keepDaysDesc"></div>
             </div>
             <div class="setting-control">
               <input
@@ -863,7 +918,7 @@
                 max="3650"
                 step="1"
                 placeholder="例如 30"
-                data-i18n-placeholder="settings.history.keepDaysPlaceholder"
+                data-i18n-placeholder="settings.storage.keepDaysPlaceholder"
               />
             </div>
           </div>

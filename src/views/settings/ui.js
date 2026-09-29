@@ -87,11 +87,11 @@ const SECTIONS = {
         updateClipboardSettings()
       ),
   },
-  history: {
-    content: "history-content",
+  storage: {
+    content: "storage-content",
     reload: () =>
-      import("./handlers.js").then(({ updateHistorySettings }) =>
-        updateHistorySettings()
+      import("./handlers.js").then(({ updateStorageSettings }) =>
+        updateStorageSettings()
       ),
   },
   advanced: {

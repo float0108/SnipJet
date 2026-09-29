@@ -39,7 +39,8 @@ pub const DEFAULT_SEARCH_SCAN_LIMIT_BYTES: usize = 1024 * 1024;
 pub struct AppState {
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
     pub favorites: Arc<Mutex<Vec<ClipboardItem>>>,
-    pub max_history_items: Arc<Mutex<Option<usize>>>,
+    /// 历史条目数上限，由「自动清理-按条数」设置驱动；None 表示不限制
+    pub history_count_limit: Arc<Mutex<Option<usize>>>,
     /// 搜索时单条内容的扫描上限（字节）
     pub search_scan_limit_bytes: Arc<Mutex<usize>>,
     pub datastore: Arc<DataStore>,
@@ -51,7 +52,7 @@ impl AppState {
         Self {
             history: Arc::new(Mutex::new(Vec::new())),
             favorites: Arc::new(Mutex::new(Vec::new())),
-            max_history_items: Arc::new(Mutex::new(None)),
+            history_count_limit: Arc::new(Mutex::new(None)),
             search_scan_limit_bytes: Arc::new(Mutex::new(DEFAULT_SEARCH_SCAN_LIMIT_BYTES)),
             datastore: Arc::new(datastore),
             app_handle,
@@ -188,17 +189,6 @@ where
                         }
                     }
 
-                    // 加载最大历史条目数设置
-                    let max_items = loaded_settings.get("interface")
-                        .and_then(|i| i.get("max_history_items"))
-                        .and_then(|v| v.as_u64())
-                        .map(|v| v as usize);
-                    {
-                        let mut max_lock = state_for_setup.max_history_items.lock().unwrap();
-                        *max_lock = max_items;
-                        info!("Max history items set to: {:?}", max_items);
-                    }
-
                     // 加载搜索扫描上限设置（单位 KB，缺省/非法值回退到默认 1 MB）
                     let search_scan_kb = loaded_settings.get("interface")
                         .and_then(|i| i.get("search_scan_limit_kb"))
@@ -283,15 +273,32 @@ where
 
             // 启动时根据设置执行一次历史清理
             {
+                // 默认与前端保持一致：按条数清理默认开启、保留 100 条
                 let default_cleanup = serde_json::json!({
-                    "count_enabled": false,
-                    "count_threshold": 0,
+                    "count_enabled": true,
+                    "count_threshold": 100,
                     "age_enabled": false,
                     "age_days": 0,
                 });
                 let cleanup_settings = crate::core::data_store::load_all_data(&state_for_setup.datastore)
                     .map(|(_, settings, _)| {
-                        settings.get("history_cleanup").cloned().unwrap_or(default_cleanup.clone())
+                        if let Some(cleanup) = settings.get("history_cleanup") {
+                            cleanup.clone()
+                        } else if let Some(legacy) = settings
+                            .get("interface")
+                            .and_then(|i| i.get("max_history_items"))
+                            .and_then(|v| v.as_u64())
+                        {
+                            // 兼容旧版"最大历史条目数"：迁移为按条数清理
+                            serde_json::json!({
+                                "count_enabled": true,
+                                "count_threshold": legacy,
+                                "age_enabled": false,
+                                "age_days": 0,
+                            })
+                        } else {
+                            default_cleanup.clone()
+                        }
                     })
                     .unwrap_or(default_cleanup);
                 crate::commands::run_startup_history_cleanup(&state_for_setup, &cleanup_settings);
@@ -335,7 +342,7 @@ where
                 let manager = ClipboardManager::new(
                     app_handle_for_clipboard,
                     state_for_clipboard.history.clone(),
-                    state_for_clipboard.max_history_items.clone(),
+                    state_for_clipboard.history_count_limit.clone(),
                     state_for_clipboard.datastore.clone()
                 );
 
@@ -498,7 +505,7 @@ where
             commands::stop_mcp_service,
             commands::restart_mcp_service,
             commands::copy_markdown_as_docx,
-            commands::update_max_history_items,
+            commands::update_history_cleanup,
             commands::update_preview_max_chars,
             commands::update_search_scan_limit_kb,
             commands::list_system_fonts,

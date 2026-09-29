@@ -880,13 +880,13 @@ async function init() {
         // 设置更新失败静默处理
       }
 
-      // 更新后端的最大历史条目数设置
+      // 更新后端的历史清理设置（「按条数」上限会实时裁剪历史）
       try {
-        const maxItems = event.payload?.interface?.max_history_items;
-        await invoke("update_max_history_items", { maxItems: maxItems || null });
-        console.log("[settings-changed] 最大历史条目数已更新:", maxItems);
+        const cleanup = event.payload?.history_cleanup;
+        await invoke("update_history_cleanup", { cleanup: cleanup || null });
+        console.log("[settings-changed] 历史清理设置已更新:", cleanup);
       } catch (e) {
-        console.error("[settings-changed] 更新最大历史条目数失败:", e);
+        console.error("[settings-changed] 更新历史清理设置失败:", e);
       }
 
       // 更新后端的预览字符上限（后端会顺带刷新存量预览并推送新列表）

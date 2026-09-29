@@ -22,7 +22,7 @@ pub struct ClipboardManager {
     pub ctx: ClipboardContext,
     pub app_handle: AppHandle,
     pub history: Arc<Mutex<Vec<ClipboardItem>>>,
-    pub max_history_items: Arc<Mutex<Option<usize>>>,
+    pub history_count_limit: Arc<Mutex<Option<usize>>>,
     pub datastore: Arc<DataStore>,
     pub last_hash: String,
     pub last_event_time: Instant,
@@ -33,7 +33,7 @@ impl ClipboardManager {
     pub fn new(
         app_handle: AppHandle,
         history: Arc<Mutex<Vec<ClipboardItem>>>,
-        max_history_items: Arc<Mutex<Option<usize>>>,
+        history_count_limit: Arc<Mutex<Option<usize>>>,
         datastore: Arc<DataStore>,
     ) -> Self {
         let ctx = ClipboardContext::new().expect("Failed to init clipboard context");
@@ -41,7 +41,7 @@ impl ClipboardManager {
             ctx,
             app_handle,
             history,
-            max_history_items,
+            history_count_limit,
             datastore,
             last_hash: String::new(),
             last_event_time: Instant::now(),
@@ -66,7 +66,7 @@ impl ClipboardManager {
         // 1. 更新 State（先在内存中操作）
         {
             let mut history_lock = self.history.lock().unwrap();
-            let max_items = *self.max_history_items.lock().unwrap();
+            let max_items = *self.history_count_limit.lock().unwrap();
 
             // 去重：移除相同 ID 的旧条目
             history_lock.retain(|i| i.id != item.id);

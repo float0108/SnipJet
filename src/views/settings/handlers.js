@@ -2,7 +2,7 @@
 import * as fs from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
-import { applyTheme, applyFontFamily, applyFontSize, applyPreviewLines, applyFavoriteColor, applyPrimaryColor, applyZoomLevel, normalizeZoomLevel, getEffectivePrimaryColor, normalizeImagePreviewSize, DEFAULT_IMAGE_PREVIEW_SIZE, loadSystemFonts, getSystemFonts, applyAnimationSpeed, normalizeAnimationSpeed, ANIMATION_SPEEDS } from '../../services/theme-service.js';
+import { applyTheme, applyThemeColors, getResolvedTheme, THEME_COLOR_DEFAULTS, applyFontFamily, applyFontSize, applyPreviewLines, applyZoomLevel, normalizeZoomLevel, normalizeImagePreviewSize, DEFAULT_IMAGE_PREVIEW_SIZE, loadSystemFonts, getSystemFonts, applyAnimationSpeed, normalizeAnimationSpeed, ANIMATION_SPEEDS } from '../../services/theme-service.js';
 import { t, setLocale, applyI18n } from '../../utils/i18n.js';
 import {
   DEFAULT_UPDATE_SOURCE,
@@ -36,6 +36,7 @@ function getDefaultSettings() {
     },
     interface: {
       theme: "light",
+      follow_system: false,
       language: "en",
       zoom_level: 1,
       font_family: "",
@@ -45,9 +46,11 @@ function getDefaultSettings() {
       history_preview_lines: 1,
       preview_max_chars: 600,
       image_preview_size: DEFAULT_IMAGE_PREVIEW_SIZE,
-      favorite_color: "#eab308",
-      primary_color: "",
-      max_history_items: 100,
+      // 主题色按浅色 / 深色各存一套，空串表示跟随该主题的默认色
+      favorite_color_light: "",
+      favorite_color_dark: "",
+      primary_color_light: "",
+      primary_color_dark: "",
       search_scan_limit_kb: 1024,
       // 卡片动效档位："off" | "fast" | "normal"，默认 fast（240ms）
       animation_speed: "fast",
@@ -63,12 +66,13 @@ function getDefaultSettings() {
     software: {
       startup_launch: true,
       update_source: DEFAULT_UPDATE_SOURCE,
-      update_repo: DEFAULT_UPDATE_REPOS[DEFAULT_UPDATE_SOURCE],
+      // 留空表示使用官方仓库，仓库链接由占位符提示
+      update_repo: "",
       update_download_dir: "",
     },
     history_cleanup: {
-      count_enabled: false,
-      count_threshold: 500,
+      count_enabled: true,
+      count_threshold: 100,
       age_enabled: false,
       age_days: 30,
     },
@@ -138,6 +142,56 @@ export async function loadSettings() {
         settings.interface.image_preview_size = normalizeImagePreviewSize(
           settings.interface.image_preview_size
         );
+      }
+
+      // 历史条目数上限已合并进「自动清理-按条数」：
+      // 旧版 interface.max_history_items 迁移为 count_threshold，并移除旧字段
+      if (settings.interface?.max_history_items != null) {
+        if (!settings.history_cleanup) settings.history_cleanup = {};
+        if (settings.history_cleanup.count_threshold == null) {
+          settings.history_cleanup.count_threshold = settings.interface.max_history_items;
+          settings.history_cleanup.count_enabled = true;
+        }
+        delete settings.interface.max_history_items;
+      }
+
+      // 主题色改为浅色 / 深色各存一套：
+      // 旧版单一 primary_color / favorite_color 迁移为两套同值，并移除旧字段
+      if (settings.interface) {
+        const { primary_color, favorite_color } = settings.interface;
+        if (primary_color != null) {
+          if (settings.interface.primary_color_light == null) {
+            settings.interface.primary_color_light = primary_color;
+          }
+          if (settings.interface.primary_color_dark == null) {
+            settings.interface.primary_color_dark = primary_color;
+          }
+          delete settings.interface.primary_color;
+        }
+        if (favorite_color != null) {
+          if (settings.interface.favorite_color_light == null) {
+            settings.interface.favorite_color_light = favorite_color;
+          }
+          if (settings.interface.favorite_color_dark == null) {
+            settings.interface.favorite_color_dark = favorite_color;
+          }
+          delete settings.interface.favorite_color;
+        }
+      }
+
+      // 「跟随系统」从主题模式拆成独立开关：
+      // 旧版 theme === 'system' 迁移为 follow_system = true，
+      // theme 落到当前解析出的浅色 / 深色（仅作为关闭开关后的默认项）
+      if (settings.interface) {
+        if (settings.interface.follow_system == null) {
+          settings.interface.follow_system = settings.interface.theme === "system";
+        }
+        if (
+          settings.interface.theme !== "light" &&
+          settings.interface.theme !== "dark"
+        ) {
+          settings.interface.theme = getResolvedTheme();
+        }
       }
 
       console.log("设置加载成功:", settings);
@@ -210,9 +264,7 @@ export async function saveSettings() {
     localStorage.setItem('snipjet-settings', JSON.stringify(settings));
 
     // 应用界面设置
-    if (settings.interface?.theme) {
-      applyTheme(settings.interface.theme);
-    }
+    applyTheme(effectiveThemeMode());
     // 主要/次要字体一起应用；两者都为空时回落到默认字体
     applyFontFamily(
       settings.interface?.font_family,
@@ -230,8 +282,8 @@ export async function saveSettings() {
         settings.interface?.preview_lines,
       history: settings.interface?.history_preview_lines,
     });
-    applyFavoriteColor(settings.interface?.favorite_color);
-    applyPrimaryColor(settings.interface?.primary_color);
+    // 主题色：按浅色 / 深色两套分别应用（主题已在上面 applyTheme 中落地）
+    applyThemeColors(themeColorPayload());
 
     // 更新原始设置备份（保存成功后）
     originalSettings = JSON.parse(JSON.stringify(settings));
@@ -407,13 +459,19 @@ export function updateGeneralSettings() {
   // 读取系统侧的自启动注册信息（异步，不阻塞其它控件回显）
   refreshAutostartStatus();
 
-  // 兼容旧版本：缺少 update_source 时按已填的仓库链接推断（github.com → github，否则 gitee）
+  // 兼容旧版本：缺少 update_source 时按已填的仓库链接推断（gitee.com → gitee，否则 github）
   if (!settings.software?.update_source) {
     if (!settings.software) settings.software = {};
     const repo = settings.software?.update_repo || "";
-    settings.software.update_source = /github\.com/i.test(repo)
-      ? "github"
-      : "gitee";
+    settings.software.update_source = /gitee\.com/i.test(repo)
+      ? "gitee"
+      : "github";
+  }
+
+  // 官方仓库链接存入设置无意义：统一清空，由占位符提示官方链接，留空即用它
+  const storedRepo = (settings.software?.update_repo || "").trim();
+  if (storedRepo && Object.values(DEFAULT_UPDATE_REPOS).includes(storedRepo)) {
+    settings.software.update_repo = "";
   }
 
   // 回显软件更新区（安装类型检测与版本读取是异步的）
@@ -430,15 +488,8 @@ export function updateGeneralSettings() {
   }
 }
 
-// 更新历史记录设置
-export function updateHistorySettings() {
-  // 更新最大历史条目数（空值表示不限制）
-  const maxHistoryItems = document.getElementById("max-history-items");
-  if (maxHistoryItems) {
-    const value = settings.interface?.max_history_items;
-    maxHistoryItems.value = value ? value : "";
-  }
-
+// 更新存储设置
+export function updateStorageSettings() {
   const cleanup = settings.history_cleanup || {};
 
   const countEnabled = document.getElementById("cleanup-count-enabled");
@@ -550,26 +601,87 @@ export function updateClipboardSettings() {
   }
 }
 
-// 更新外观设置
-export function updateAppearanceSettings() {
-  // 更新主题
-  const theme = document.getElementById("theme");
-  if (theme) {
-    theme.value = settings.interface?.theme ?? "light";
-  }
+// 主题模式分段切换：高亮当前选中的模式
+function syncThemeToggle() {
+  const mode = settings.interface?.theme ?? "light";
+  document.querySelectorAll("#theme .segmented-btn").forEach((btn) => {
+    const active = btn.dataset.themeMode === mode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
 
-  // 更新收藏主题色
-  const favoriteColor = document.getElementById("favorite-color");
-  if (favoriteColor) {
-    favoriteColor.value = settings.interface?.favorite_color ?? "#eab308";
-  }
+// 实际生效的主题模式：开启「跟随系统」时交给系统，否则用浅色 / 深色选择
+function effectiveThemeMode() {
+  if (settings.interface?.follow_system) return "system";
+  return settings.interface?.theme === "dark" ? "dark" : "light";
+}
 
-  // 更新界面主题色（未自定义时回显当前主题的默认主色）
+// 当前编辑哪一套主题色 = 主题模式里的浅色 / 深色选择
+// （开启「跟随系统」时它不再决定实际主题，只决定编辑哪套颜色）
+function themeColorScope() {
+  return settings.interface?.theme === "dark" ? "dark" : "light";
+}
+
+// 主题色标签上的浅 / 深图标：标识当前编辑的是哪一套
+const THEME_COLOR_ICONS = {
+  light:
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M6.34 17.66l-1.41 1.41"></path><path d="M19.07 4.93l-1.41 1.41"></path></svg>',
+  dark:
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>',
+};
+
+function syncThemeColorIcons() {
+  const icon = THEME_COLOR_ICONS[themeColorScope()] || THEME_COLOR_ICONS.light;
+  document.querySelectorAll(".theme-color-icon").forEach((el) => {
+    el.innerHTML = icon;
+  });
+}
+
+// 「跟随系统」开关回显；开启时在「主题模式」下方提示它只决定编辑哪套配色
+function syncFollowSystem() {
+  const enabled = !!settings.interface?.follow_system;
+  const input = document.getElementById("follow-system");
+  if (input) input.checked = enabled;
+  const hint = document.getElementById("theme-mode-hint");
+  if (hint) hint.style.display = enabled ? "" : "none";
+}
+
+// 主题色回显：两个控件回显当前编辑的一套，为空时用该主题的默认色
+function syncThemeColors() {
+  const scope = themeColorScope();
+  const iface = settings.interface || {};
+  const defaults = THEME_COLOR_DEFAULTS[scope] || THEME_COLOR_DEFAULTS.light;
   const primaryColor = document.getElementById("primary-color");
   if (primaryColor) {
-    primaryColor.value =
-      settings.interface?.primary_color || getEffectivePrimaryColor();
+    primaryColor.value = iface[`primary_color_${scope}`] || defaults.primary;
   }
+  const favoriteColor = document.getElementById("favorite-color");
+  if (favoriteColor) {
+    favoriteColor.value = iface[`favorite_color_${scope}`] || defaults.favorite;
+  }
+}
+
+// 把 settings.interface 里的两套主题色整理成 applyThemeColors 需要的入参
+function themeColorPayload() {
+  const iface = settings.interface || {};
+  return {
+    primary_color_light: iface.primary_color_light ?? "",
+    primary_color_dark: iface.primary_color_dark ?? "",
+    favorite_color_light: iface.favorite_color_light ?? "",
+    favorite_color_dark: iface.favorite_color_dark ?? "",
+  };
+}
+
+// 更新外观设置
+export function updateAppearanceSettings() {
+  // 主题模式（浅色 / 深色）高亮 + 「跟随系统」开关
+  syncThemeToggle();
+  syncFollowSystem();
+
+  // 主题色：标签图标随浅/深选择切换，并回显当前一套的颜色
+  syncThemeColorIcons();
+  syncThemeColors();
 
   // 更新界面字体（先确保下拉框已加载系统字体）
   // populate 是幂等的，选项已存在时这里仍需同步选中态（取消修改后回显原字体）
@@ -732,12 +844,35 @@ export function bindSettingsListeners() {
     });
   }
 
-  // 监听界面设置变化
+  // 主题模式（浅色 / 深色）：未开启「跟随系统」时立即切换主题；
+  // 开启后它只用于选择编辑哪套主题色，不再改变实际主题
   const theme = document.getElementById("theme");
   if (theme) {
-    theme.addEventListener("change", function () {
+    theme.addEventListener("click", function (e) {
+      const btn = e.target.closest(".segmented-btn");
+      if (!btn) return;
       if (!settings.interface) settings.interface = {};
-      settings.interface.theme = this.value;
+      settings.interface.theme =
+        btn.dataset.themeMode === "dark" ? "dark" : "light";
+      if (!settings.interface.follow_system) {
+        applyTheme(settings.interface.theme);
+        applyThemeColors(themeColorPayload());
+      }
+      syncThemeToggle();
+      syncThemeColorIcons();
+      syncThemeColors();
+    });
+  }
+
+  // 跟随系统：开启后主题交给系统，浅色 / 深色选择只影响编辑哪套主题色
+  const followSystem = document.getElementById("follow-system");
+  if (followSystem) {
+    followSystem.addEventListener("change", function () {
+      if (!settings.interface) settings.interface = {};
+      settings.interface.follow_system = this.checked;
+      applyTheme(effectiveThemeMode());
+      applyThemeColors(themeColorPayload());
+      syncFollowSystem();
     });
   }
 
@@ -750,15 +885,6 @@ export function bindSettingsListeners() {
       this.value = value;
       settings.interface.animation_speed = value;
       applyAnimationSpeed(value);
-    });
-  }
-
-  const maxHistoryItems = document.getElementById("max-history-items");
-  if (maxHistoryItems) {
-    maxHistoryItems.addEventListener("change", function () {
-      if (!settings.interface) settings.interface = {};
-      const value = this.value.trim();
-      settings.interface.max_history_items = value ? parseInt(value) : null;
     });
   }
 
@@ -885,25 +1011,19 @@ export function bindSettingsListeners() {
     });
   }
 
-  const favoriteColor = document.getElementById("favorite-color");
-  if (favoriteColor) {
-    // 实时预览，无需等待保存
-    favoriteColor.addEventListener("input", function () {
+  // 主题色：写入「当前编辑的一套」，实时预览（实际生效的是当前主题那一套）
+  const bindColorInput = (id, base) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener("input", function () {
       if (!settings.interface) settings.interface = {};
-      settings.interface.favorite_color = this.value;
-      applyFavoriteColor(this.value);
+      const key = `${base}_${themeColorScope()}`;
+      settings.interface[key] = this.value;
+      applyThemeColors({ [key]: this.value });
     });
-  }
-
-  const primaryColor = document.getElementById("primary-color");
-  if (primaryColor) {
-    // 实时预览，无需等待保存
-    primaryColor.addEventListener("input", function () {
-      if (!settings.interface) settings.interface = {};
-      settings.interface.primary_color = this.value;
-      applyPrimaryColor(this.value);
-    });
-  }
+  };
+  bindColorInput("primary-color", "primary_color");
+  bindColorInput("favorite-color", "favorite_color");
 
   // 监听 MCP 设置变化
   const mcpEnabled = document.getElementById("mcp-enabled");
@@ -928,6 +1048,9 @@ export async function restoreOriginalSettings() {
   settings = JSON.parse(JSON.stringify(originalSettings));
   // 取消修改：清掉本次的更新检查结果
   resetUpdaterUI();
+  // 还原主题与两套主题色（切换主题/颜色都会实时预览，取消时要恢复）
+  applyTheme(effectiveThemeMode());
+  applyThemeColors(themeColorPayload());
   // 更新UI
   updateGeneralSettings();
   updateAppearanceSettings();
@@ -939,7 +1062,7 @@ export async function restoreOriginalSettings() {
   );
   applyFontSize(settings.interface?.font_size);
   updateClipboardSettings();
-  updateHistorySettings();
+  updateStorageSettings();
   await updateAdvancedSettings();
   // 更新快捷键UI
   const { updateShortcutInputs } = await import("./shortcuts.js");

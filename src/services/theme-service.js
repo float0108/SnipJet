@@ -19,6 +19,13 @@ function getSystemTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+// 当前实际生效的主题（system 已在上层解析为明确的 light / dark）
+export function getResolvedTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'dark'
+    ? 'dark'
+    : 'light';
+}
+
 // 应用主题到页面
 // 三种模式最终都会落到明确的 data-theme 上（system 解析为当前系统偏好），
 // 这样 CSS 里只有 :root（浅色）与 [data-theme="dark"] 两份取值
@@ -132,22 +139,27 @@ export function getSystemFonts() {
   return systemFontsCache;
 }
 
-// 收藏主题色默认值（琥珀黄）
-const DEFAULT_FAVORITE_COLOR = "#eab308";
-
 // 应用收藏主题色
-// 同时写入 hex 与 rgb 分量两个变量，便于 CSS 中做透明度混合
+// 同时写入 hex 与 rgb 分量两个变量，便于 CSS 中做透明度混合；
+// 空值/非法值时移除覆盖，回落到当前主题在 CSS 中定义的默认收藏色
 export function applyFavoriteColor(color) {
   const root = document.documentElement;
-  const hex = /^#[0-9a-fA-F]{6}$/.test(color || "") ? color : DEFAULT_FAVORITE_COLOR;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  root.style.setProperty('--favorite-color', hex);
-  root.style.setProperty('--favorite-color-rgb', `${r}, ${g}, ${b}`);
+  const hex = /^#[0-9a-fA-F]{6}$/.test(color || "")
+    ? color.toLowerCase()
+    : "";
+  if (hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    root.style.setProperty('--favorite-color', hex);
+    root.style.setProperty('--favorite-color-rgb', `${r}, ${g}, ${b}`);
+  } else {
+    root.style.removeProperty('--favorite-color');
+    root.style.removeProperty('--favorite-color-rgb');
+  }
   // 文字/图标用的派生色要按新色相重新推导
   refreshDerivedColors();
-  console.log('收藏主题色已应用:', hex);
+  console.log('收藏主题色已应用:', hex || '跟随主题默认');
 }
 
 // 主色实心块上的前景色候选：深色用与深色主题背景一致的墨蓝
@@ -246,13 +258,29 @@ export function applyPrimaryColor(color) {
   console.log('界面主题色已应用:', hex || '跟随主题默认');
 }
 
-// 获取当前生效的界面主题色（设置页颜色控件回显用）：
-// 未自定义时返回当前主题的默认主色
-export function getEffectivePrimaryColor() {
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue('--primary-color')
-    .trim();
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#2563eb';
+// 各主题的默认主题色（与 common/style.css 中 :root 与 [data-theme="dark"] 的取值保持一致）
+export const THEME_COLOR_DEFAULTS = {
+  light: { primary: '#2563eb', favorite: '#eab308' },
+  dark: { primary: '#60a5fa', favorite: '#fbbf24' },
+};
+
+// 主题色按浅色 / 深色各存一套：空串表示跟随该主题在 CSS 中的默认色
+let themeColors = {
+  primary_color_light: '',
+  primary_color_dark: '',
+  favorite_color_light: '',
+  favorite_color_dark: '',
+};
+
+// 应用「当前生效主题」对应的界面主题色与收藏主题色。
+// 切换主题（含 system 跟随系统变化）后调用即可自动切到对应的一套。
+export function applyThemeColors(settings = {}) {
+  for (const key of Object.keys(themeColors)) {
+    if (settings[key] != null) themeColors[key] = settings[key];
+  }
+  const dark = getResolvedTheme() === 'dark';
+  applyPrimaryColor(dark ? themeColors.primary_color_dark : themeColors.primary_color_light);
+  applyFavoriteColor(dark ? themeColors.favorite_color_dark : themeColors.favorite_color_light);
 }
 
 // 应用预览行数设置：最新条目与历史条目分开控制
@@ -358,9 +386,18 @@ export function applyAnimationSpeed(speed) {
 export function applyInterfaceSettings(interfaceSettings) {
   if (!interfaceSettings) return;
 
-  if (interfaceSettings.theme) {
-    applyTheme(interfaceSettings.theme);
+  // 主题模式：开启「跟随系统」（或旧版 theme === 'system'）时交给系统，
+  // 否则使用明确选定的浅色 / 深色
+  const followSystem =
+    interfaceSettings.follow_system === true ||
+    interfaceSettings.theme === 'system';
+  let themeMode = 'light';
+  if (followSystem) {
+    themeMode = 'system';
+  } else if (interfaceSettings.theme === 'dark') {
+    themeMode = 'dark';
   }
+  applyTheme(themeMode);
   // 缩放字段始终应用，确保字段缺失/清空时能回落到 1（不缩放）
   applyZoomLevel(interfaceSettings.zoom_level);
   // 字体字段始终应用，确保清空（主要字体回落系统默认、次要字体不启用）后能正确还原
@@ -377,10 +414,18 @@ export function applyInterfaceSettings(interfaceSettings) {
       interfaceSettings.latest_preview_lines ?? interfaceSettings.preview_lines,
     history: interfaceSettings.history_preview_lines,
   });
-  // 收藏主题色始终应用，确保字段缺失/清空时能回落到默认色
-  applyFavoriteColor(interfaceSettings.favorite_color);
-  // 界面主题色始终应用，确保字段缺失/清空时能回落到主题默认色
-  applyPrimaryColor(interfaceSettings.primary_color);
+  // 收藏主题色 / 界面主题色：按浅色、深色两套分别应用
+  // （旧版单字段 primary_color / favorite_color 迁移为两套同值，见设置页 loadSettings）
+  applyThemeColors({
+    primary_color_light:
+      interfaceSettings.primary_color_light ?? interfaceSettings.primary_color ?? '',
+    primary_color_dark:
+      interfaceSettings.primary_color_dark ?? interfaceSettings.primary_color ?? '',
+    favorite_color_light:
+      interfaceSettings.favorite_color_light ?? interfaceSettings.favorite_color ?? '',
+    favorite_color_dark:
+      interfaceSettings.favorite_color_dark ?? interfaceSettings.favorite_color ?? '',
+  });
   // 卡片动效档位：始终应用，缺失字段回落默认 fast
   applyAnimationSpeed(interfaceSettings.animation_speed);
 }
@@ -417,8 +462,10 @@ export async function initTheme() {
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   mediaQuery.addEventListener('change', () => {
     if (currentThemeMode === 'system') {
-      // system 模式下把系统偏好解析成明确的 data-theme（顺带刷新派生色）
+      // system 模式下把系统偏好解析成明确的 data-theme（顺带刷新派生色），
+      // 再切到对应的一套主题色
       applyTheme(currentThemeMode);
+      applyThemeColors();
     }
   });
 

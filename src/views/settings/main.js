@@ -37,14 +37,14 @@ async function init() {
       updateGeneralSettings,
       updateAppearanceSettings,
       updateClipboardSettings,
-      updateHistorySettings,
+      updateStorageSettings,
       updateAdvancedSettings,
       bindSettingsListeners,
     } = await import("./handlers.js");
     updateGeneralSettings();
     updateAppearanceSettings();
     updateClipboardSettings();
-    updateHistorySettings();
+    updateStorageSettings();
     updateAdvancedSettings();
 
     // 绑定设置变化监听器

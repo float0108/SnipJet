@@ -2214,15 +2214,68 @@ pub async fn copy_markdown_as_docx(
     Ok(file_path_str)
 }
 
-/// 更新最大历史条目数设置
+/// 从历史清理设置中解析「按条数清理」的保留上限。
+/// 未启用或阈值非法时返回 None（表示不限制）。
+fn count_cleanup_limit(cleanup_obj: &serde_json::Value) -> Option<usize> {
+    let enabled = cleanup_obj
+        .get("count_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !enabled {
+        return None;
+    }
+    cleanup_obj
+        .get("count_threshold")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .filter(|v| *v > 0)
+}
+
+/// 更新历史清理设置（当前用于「按条数」上限），并立即对存量历史实时裁剪。
 #[tauri::command]
-pub fn update_max_history_items(
+pub fn update_history_cleanup(
     state: State<'_, Arc<AppState>>,
-    max_items: Option<usize>,
+    cleanup: Option<serde_json::Value>,
 ) -> Result<(), String> {
-    let mut max_lock = state.max_history_items.lock().unwrap();
-    *max_lock = max_items;
-    info!("Max history items updated to: {:?}", max_items);
+    let limit = cleanup.as_ref().and_then(count_cleanup_limit);
+
+    {
+        let mut limit_lock = state.history_count_limit.lock().unwrap();
+        *limit_lock = limit;
+    }
+    info!("History count limit updated to: {:?}", limit);
+
+    // 立即按新上限裁剪一次，使设置即时生效
+    let Some(keep) = limit else {
+        return Ok(());
+    };
+
+    match state.datastore.clean_history_by_count(keep) {
+        Ok(deleted) if deleted > 0 => {
+            let items = state.datastore.load_clipboard_history()?;
+            let list_items: Vec<ClipboardItem> = items.iter().map(|it| it.to_list_item()).collect();
+            {
+                let mut history_lock = state.history.lock().unwrap();
+                *history_lock = items;
+            }
+            state.datastore.reset_last_saved_history();
+
+            let payload = serde_json::json!({
+                "type": "state-changed",
+                "items": list_items
+            });
+            if let Err(e) = state.app_handle.emit("clipboard-update", &payload) {
+                error!("Event emit error: {:?}", e);
+            }
+            info!(
+                "History trimmed on cleanup update: deleted={}, keep={}",
+                deleted, keep
+            );
+        }
+        Ok(_) => {}
+        Err(e) => error!("Failed to trim history on cleanup update: {}", e),
+    }
+
     Ok(())
 }
 
@@ -2355,34 +2408,26 @@ pub fn run_startup_history_cleanup(
         _ => return,
     };
 
-    // 1. 按条数清理
-    let count_enabled = cleanup_obj
-        .get("count_enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let count_threshold = cleanup_obj
-        .get("count_threshold")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as usize);
+    // 1. 按条数清理：同时把上限写入共享状态，供新增条目时实时裁剪
+    let count_limit = count_cleanup_limit(cleanup_obj);
+    let count_enabled = count_limit.is_some();
+    {
+        let mut limit_lock = state.history_count_limit.lock().unwrap();
+        *limit_lock = count_limit;
+        info!("启动：历史按条数上限设为 {:?}", count_limit);
+    }
 
-    if count_enabled {
-        if let Some(keep) = count_threshold {
-            if keep > 0 {
-                info!(
-                    "启动清理：按条数保留最新 {} 条历史",
-                    keep
-                );
-                match state.datastore.clean_history_by_count(keep) {
-                    Ok(n) if n > 0 => {
-                        info!("启动清理：按条数删除了 {} 条历史", n);
-                    }
-                    Ok(_) => {
-                        info!("启动清理：按条数无需删除");
-                    }
-                    Err(e) => {
-                        log::error!("启动清理（按条数）失败: {}", e);
-                    }
-                }
+    if let Some(keep) = count_limit {
+        info!("启动清理：按条数保留最新 {} 条历史", keep);
+        match state.datastore.clean_history_by_count(keep) {
+            Ok(n) if n > 0 => {
+                info!("启动清理：按条数删除了 {} 条历史", n);
+            }
+            Ok(_) => {
+                info!("启动清理：按条数无需删除");
+            }
+            Err(e) => {
+                log::error!("启动清理（按条数）失败: {}", e);
             }
         }
     }
@@ -3002,7 +3047,7 @@ fn parse_update_source(
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() != 2 {
         return Err(
-            "更新源链接无法识别，请填写形如 https://github.com/owner/repo 的链接".to_string(),
+            "更新源链接无法识别，请填写形如 https://github.com/owner/repo 或 https://gitee.com/owner/repo 的链接".to_string(),
         );
     }
     Ok((source, parts[0].to_string(), parts[1].to_string()))

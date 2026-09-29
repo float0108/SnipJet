@@ -1,5 +1,5 @@
 // 软件更新：手动检查 GitHub / Gitee Release、下载并安装新版本
-// - 支持在设置里切换更新源（github / gitee），仓库 owner/name 一致
+// - 支持在设置里切换发布平台（github / gitee）；仓库链接留空即用官方仓库，也可填 Fork / 镜像链接
 // - 检查范围：所有非草稿 release（含 pre-release），取版本号最高且高于当前版本的一个
 // - 安装版：下载安装包后静默安装并自动重启
 // - 便携版：下载到用户指定目录，由用户自行替换旧版本
@@ -78,12 +78,16 @@ function render() {
 
   switch (state.status) {
     case 'checking':
-      result.appendChild(textEl(t('settings.general.checking')));
+      result.appendChild(
+        textEl(t('settings.general.checking').replace('{source}', sourceLabel()))
+      );
       return;
     case 'uptodate':
       result.appendChild(
         textEl(
-          t('settings.general.upToDate').replace('{version}', state.currentVersion)
+          t('settings.general.upToDate')
+            .replace('{version}', state.currentVersion)
+            .replace('{source}', sourceLabel())
         )
       );
       return;
@@ -117,13 +121,12 @@ function renderReleaseCard(container) {
 
   const title = document.createElement('div');
   title.className = 'update-card-title';
-  title.textContent = t('settings.general.newVersion').replace(
-    '{version}',
-    release.version
-  );
+  title.textContent = t('settings.general.newVersion')
+    .replace('{version}', release.version)
+    .replace('{current}', state.currentVersion || '-');
   card.appendChild(title);
 
-  const metaParts = [];
+  const metaParts = [sourceLabel()];
   const published = formatDate(release.published_at);
   if (published) metaParts.push(published);
   if (release.tag_name) metaParts.push(release.tag_name);
@@ -256,10 +259,20 @@ function normalizeSource(value) {
   return v === 'gitee' ? 'gitee' : 'github';
 }
 
-// 把仓库链接占位符（仅展示用）切到当前源对应的示例
+// 当前源的官方仓库地址（留空时的默认值）
+function officialRepo(source) {
+  return DEFAULT_UPDATE_REPOS[source] || '';
+}
+
+// 当前源的展示名（用于检查结果文案）
+function sourceLabel() {
+  return t(`settings.options.updateSource.${state.source}`);
+}
+
+// 把仓库链接占位符（仅展示用）切到当前源对应的官方仓库
 function syncRepoPlaceholder() {
   const repoInput = el('update-repo');
-  if (repoInput) repoInput.placeholder = DEFAULT_UPDATE_REPOS[state.source] || '';
+  if (repoInput) repoInput.placeholder = officialRepo(state.source);
 }
 
 async function loadCurrentVersion() {
@@ -288,7 +301,8 @@ async function resolveDefaultDownloadDir() {
 // --- 交互 ---
 
 async function checkForUpdate() {
-  const repo = (el('update-repo')?.value || '').trim() || DEFAULT_UPDATE_REPOS[state.source];
+  // 留空即使用当前源的官方仓库；填写了 Fork / 镜像链接则按用户的
+  const repo = (el('update-repo')?.value || '').trim() || officialRepo(state.source);
 
   state.status = 'checking';
   state.release = null;
@@ -391,14 +405,20 @@ export async function applyUpdateSettings({ source, repo, downloadDir } = {}) {
   if (sourceSelect) sourceSelect.value = state.source;
   syncRepoPlaceholder();
 
-  // 仅在当前域匹配时回显链接，避免旧值污染另一个源的设置
-  const currentRepo = (repo || '').trim();
-  const matchesSource = !currentRepo
-    ? true
-    : (state.source === 'gitee' && /gitee\.com/i.test(currentRepo)) ||
-      (state.source === 'github' && /github\.com/i.test(currentRepo));
+  // 官方仓库视为「默认」：留空展示，由占位符提示官方链接
+  let currentRepo = (repo || '').trim();
+  if (currentRepo === officialRepo(state.source)) currentRepo = '';
+
+  // 仅当链接明显属于另一个平台时忽略（避免旧值污染）；Fork / 镜像链接原样回显
+  const repoLower = currentRepo.toLowerCase();
+  const looksGithub = repoLower.includes('github.com');
+  const looksGitee = repoLower.includes('gitee.com');
+  const belongsToOtherSource =
+    (state.source === 'gitee' && looksGithub && !looksGitee) ||
+    (state.source === 'github' && looksGitee && !looksGithub);
+
   const repoInput = el('update-repo');
-  if (repoInput) repoInput.value = matchesSource ? currentRepo : '';
+  if (repoInput) repoInput.value = belongsToOtherSource ? '' : currentRepo;
   const dirInput = el('update-download-dir');
   if (dirInput) dirInput.value = downloadDir || '';
 
@@ -438,10 +458,10 @@ export function bindUpdaterEvents({
 
   const repoInput = el('update-repo');
   if (repoInput) {
-    // 失焦/回车时归一化：留空回落到当前源的默认仓库链接
+    // 留空即使用官方仓库；填写 Fork / 镜像链接则按用户的
     repoInput.addEventListener('change', () => {
-      const fallback = DEFAULT_UPDATE_REPOS[state.source] || '';
-      const repo = repoInput.value.trim() || fallback;
+      let repo = repoInput.value.trim();
+      if (repo === officialRepo(state.source)) repo = '';
       repoInput.value = repo;
       if (onRepoChange) onRepoChange(repo);
     });

@@ -110,7 +110,6 @@ body {
   width: 76px;
 }
 
-#max-history-items,
 #cleanup-count-threshold,
 #cleanup-age-days,
 #mcp-port,
@@ -391,6 +390,59 @@ body {
   gap: var(--space-md);
 }
 
+/* 主题模式：分段切换（太阳 / 跟随系统 / 月亮） */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-body);
+}
+
+.segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.segmented-btn:hover {
+  color: var(--text-primary);
+}
+
+.segmented-btn.active {
+  background: var(--bg-hover);
+  color: var(--primary-color);
+}
+
+.segmented-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* 主题色标签：行内嵌一个图标，标识当前编辑的是浅色还是深色那一套 */
+.theme-color-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.theme-color-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+}
+
 /* 输入框通用样式 */
 .shortcut-input,
 .select-input,
@@ -642,13 +694,7 @@ body {
   cursor: default;
 }
 
-/* 自启动状态：注册路径 + 「重新注册」键（路径过长时换行，完整可见） */
-.startup-path-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
+/* 自启动状态：注册路径（过长时换行，完整可见） */
 .startup-path {
   min-width: 0;
   font-size: var(--font-size-xs);
@@ -660,14 +706,6 @@ body {
 /* 注册路径与当前程序路径不一致：提示需要重新注册 */
 .startup-path.stale {
   color: var(--warning-text);
-}
-
-/* 紧跟路径的「重新注册」键：比默认重置键更小且无边框 */
-.startup-path-reset {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border: none;
 }
 
 /* --- 开关 (Toggle) 紧凑版 --- */
