@@ -1,4 +1,4 @@
-use crate::common::globals::WINDOW_PIN_STATE; // 只需要 Pin 状态
+use crate::common::globals::{lock_or_recover, WINDOW_PIN_STATE}; // 只需要 Pin 状态
 use log::info;
 use std::thread;
 use std::time::Duration;
@@ -58,7 +58,7 @@ pub fn start_global_click_listener(app: AppHandle) {
             }
 
             // 3. 检查 Pin 状态
-            let is_pinned = *WINDOW_PIN_STATE.lock().unwrap();
+            let is_pinned = *lock_or_recover(&WINDOW_PIN_STATE);
             if is_pinned {
                 continue;
             }

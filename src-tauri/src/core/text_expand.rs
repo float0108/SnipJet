@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use crate::common::globals::lock_or_recover;
+
 // 定义扩展规则结构体
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TextExpandRule {
@@ -81,7 +83,7 @@ impl TextExpander {
     /// 重新加载规则（从用户数据目录）
     pub fn reload_rules(&self, app_handle: &tauri::AppHandle) {
         let new_rules = Self::load_rules_from_user_data(app_handle);
-        let mut rules_lock = self.rules.lock().unwrap();
+        let mut rules_lock = lock_or_recover(&self.rules);
         *rules_lock = new_rules;
         info!("Text expand rules reloaded");
     }
@@ -89,7 +91,7 @@ impl TextExpander {
     /// 获取当前规则
     #[allow(dead_code)]
     pub fn get_rules(&self) -> Vec<TextExpandRule> {
-        self.rules.lock().unwrap().clone()
+        lock_or_recover(&self.rules).clone()
     }
 
     /// 启动监听
@@ -141,7 +143,7 @@ fn process_events(rx: Receiver<Event>, is_paused: Arc<AtomicBool>, rules: Arc<Mu
 
                 // --- 触发检测 ---
                 // 获取当前规则的快照
-                let current_rules = rules.lock().unwrap().clone();
+                let current_rules = lock_or_recover(&rules).clone();
                 for rule in &current_rules {
                     let trigger = &rule.key;
                     if buffer.ends_with(trigger) {

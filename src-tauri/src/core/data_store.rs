@@ -9,6 +9,7 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+use crate::common::globals::lock_or_recover;
 use crate::common::models::ClipboardItem;
 use crate::core::database::Database;
 
@@ -280,7 +281,7 @@ impl DataStore {
         self.db.save_clipboard_history(history)?;
 
         // 更新最后保存的历史记录
-        let mut last_saved = self.last_saved_history.lock().unwrap();
+        let mut last_saved = lock_or_recover(&self.last_saved_history);
         *last_saved = history.to_vec();
 
         Ok(())
@@ -291,7 +292,7 @@ impl DataStore {
         let history = self.db.load_clipboard_history()?;
 
         // 更新最后保存的历史记录
-        let mut last_saved = self.last_saved_history.lock().unwrap();
+        let mut last_saved = lock_or_recover(&self.last_saved_history);
         *last_saved = history.clone();
 
         Ok(history)
@@ -526,7 +527,7 @@ impl DataStore {
     /// 修复：原实现仅比较 id 与长度，content / is_favorite / preview 等字段变化检测不到。
     /// 改为深度比较关键字段。
     pub fn has_history_changed(&self, current: &[ClipboardItem]) -> bool {
-        let last_saved = self.last_saved_history.lock().unwrap();
+        let last_saved = lock_or_recover(&self.last_saved_history);
         if last_saved.len() != current.len() {
             return true;
         }
@@ -548,7 +549,7 @@ impl DataStore {
 
     /// 重置 last_saved_history 缓存（清空历史后调用，避免下次保存时被误判为有变更）
     pub fn reset_last_saved_history(&self) {
-        let mut guard = self.last_saved_history.lock().unwrap();
+        let mut guard = lock_or_recover(&self.last_saved_history);
         guard.clear();
     }
 
@@ -619,7 +620,7 @@ pub fn start_auto_save(
             thread::sleep(Duration::from_secs(interval_secs));
 
             let current_history = {
-                let history_lock = history.lock().unwrap();
+                let history_lock = lock_or_recover(&history);
                 history_lock.clone()
             };
 
@@ -668,7 +669,7 @@ pub fn save_all_data(
 ) -> Result<(), String> {
     // 保存历史记录
     let history_data = {
-        let history_lock = history.lock().unwrap();
+        let history_lock = lock_or_recover(&history);
         history_lock.clone()
     };
     datastore.save_clipboard_history(&history_data)?;

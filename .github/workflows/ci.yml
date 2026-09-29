@@ -1,0 +1,45 @@
+name: CI
+
+# 轻量守卫：不编译，只跑快速静态检查。
+# 与 release.yml（仅在 v* tag 上触发）分开，保证问题在 PR 阶段就暴露，
+# 而不是等到发版才被 build 步骤撞出来。
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Source guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 锁中毒保护：Rust 的 Mutex 一旦中毒就是永久的——某线程 panic 时持有锁，
+      # 之后每次 .lock() 都会 panic。后台常驻线程（剪贴板监听 / 托盘 / 文本扩展）
+      # 尤其不能因为一次数据驱动的 panic 就永久失效。
+      # 取锁一律走 common::globals::lock_or_recover，它在中毒时取回内部值而非 panic。
+      - name: Forbid raw .lock().unwrap()
+        run: |
+          set -euo pipefail
+          if grep -rn '\.lock()\.unwrap()' src-tauri/src --include='*.rs'; then
+            echo "::error::请改用 common::globals::lock_or_recover(&...) 取锁"
+            exit 1
+          fi
+          echo "OK: no raw .lock().unwrap() in src-tauri/src"
+
+      # 补一层调用方检查：lib.rs 里的 panic hook 必须存在，
+      # 否则 release 构建（windows_subsystem = windows，无控制台）下 panic 无从追溯。
+      - name: Require panic hook
+        run: |
+          set -euo pipefail
+          if ! grep -q 'set_hook' src-tauri/src/lib.rs; then
+            echo "::error::lib.rs 缺少 panic hook，release 构建下 panic 信息会丢失"
+            exit 1
+          fi
+          echo "OK: panic hook present"

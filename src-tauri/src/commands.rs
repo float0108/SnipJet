@@ -30,7 +30,7 @@ use crate::clipboard_manager::ClipboardManager;
 use crate::common::globals::{
     APP_HANDLE, AUTOSTART_ARGS, DEFAULT_PREVIEW_MAX_CHARS, LAST_HASH, PREVIEW_MAX_CHARS,
     ROTATING_PASTE_LAST_INDEX, SHORTCUT_ACTION_MAP, SYSTEM_FONTS_CACHE, WINDOW_PIN_STATE,
-    set_clipboard_ignore_for,
+    lock_or_recover, set_clipboard_ignore_for,
 };
 use crate::generators::html_generator::markdown_to_html;
 use crate::common::models::ClipboardItem;
@@ -45,7 +45,7 @@ pub fn get_clipboard_history(
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> Vec<ClipboardItem> {
-    let history = state.history.lock().unwrap();
+    let history = lock_or_recover(&state.history);
     let total = history.len();
     // 边界保护：offset 超过总量时直接返回空数组，避免无意义的 skip
     if total == 0 {
@@ -85,14 +85,14 @@ pub fn get_clipboard_content(
     id: String,
 ) -> Option<ClipboardItem> {
     {
-        let history = state.history.lock().unwrap();
+        let history = lock_or_recover(&state.history);
         if let Some(item) = history.iter().find(|it| it.id == id) {
             return Some(item.clone());
         }
     }
 
     // 收藏列表里也找一下（用户可能在收藏视图打开该项）
-    let favorites = state.favorites.lock().unwrap();
+    let favorites = lock_or_recover(&state.favorites);
     favorites.iter().find(|it| it.id == id).cloned()
 }
 
@@ -182,7 +182,7 @@ pub async fn search_clipboard_history(
         return Ok(vec![]);
     }
 
-    let scan_limit_bytes = *state.search_scan_limit_bytes.lock().unwrap();
+    let scan_limit_bytes = *lock_or_recover(&state.search_scan_limit_bytes);
     let history = state.history.clone();
     let favorites = state.favorites.clone();
 
@@ -191,11 +191,11 @@ pub async fn search_clipboard_history(
         let mut seen: HashSet<String> = HashSet::new();
 
         {
-            let history = history.lock().unwrap();
+            let history = lock_or_recover(&history);
             collect_search_matches(&history, &needle, scan_limit_bytes, &mut ids, &mut seen);
         }
         {
-            let favorites = favorites.lock().unwrap();
+            let favorites = lock_or_recover(&favorites);
             collect_search_matches(&favorites, &needle, scan_limit_bytes, &mut ids, &mut seen);
         }
 
@@ -221,7 +221,7 @@ pub fn update_search_scan_limit_kb(
         None => crate::DEFAULT_SEARCH_SCAN_LIMIT_BYTES,
     };
 
-    let mut limit_lock = state.search_scan_limit_bytes.lock().unwrap();
+    let mut limit_lock = lock_or_recover(&state.search_scan_limit_bytes);
     *limit_lock = bytes;
     info!("Search scan limit updated to: {} bytes", bytes);
     Ok(())
@@ -234,7 +234,7 @@ pub fn clear_history(state: State<'_, Arc<AppState>>) -> Result<(), String> {
         .map_err(|e| format!("Failed to clear database history: {}", e))?;
 
     // 2. 清理内存中的历史记录
-    state.history.lock().unwrap().clear();
+    lock_or_recover(&state.history).clear();
 
     // 3. 同步 last_saved_history 缓存，防止 has_history_changed 误判
     state.datastore.reset_last_saved_history();
@@ -255,7 +255,7 @@ pub fn delete_clipboard_item(
     // 从内存中的历史记录移除
     let history_to_save: Vec<ClipboardItem>;
     {
-        let mut history_lock = state.history.lock().unwrap();
+        let mut history_lock = lock_or_recover(&state.history);
         history_lock.retain(|item| item.id != id);
         history_to_save = history_lock.iter().map(|it| it.to_list_item()).collect();
         info!("Deleted clipboard item with id: {} from history", id);
@@ -285,7 +285,7 @@ pub fn delete_favorite_item(
     datastore.delete_favorite_item(&id)?;
 
     // 从内存中的收藏列表移除
-    let mut favorites_lock = state.favorites.lock().unwrap();
+    let mut favorites_lock = lock_or_recover(&state.favorites);
     let initial_len = favorites_lock.len();
     favorites_lock.retain(|item| item.id != id);
 
@@ -310,7 +310,7 @@ pub fn toggle_favorite(
 
     // 更新内存中的历史记录状态
     {
-        let mut history_lock = state.history.lock().unwrap();
+        let mut history_lock = lock_or_recover(&state.history);
         if let Some(item) = history_lock.iter_mut().find(|item| item.id == id) {
             item.is_favorite = new_state;
         }
@@ -318,10 +318,10 @@ pub fn toggle_favorite(
 
     // 更新内存中的收藏列表
     {
-        let mut favorites_lock = state.favorites.lock().unwrap();
+        let mut favorites_lock = lock_or_recover(&state.favorites);
         if new_state {
             // 添加到收藏：从历史记录复制
-            let history_lock = state.history.lock().unwrap();
+            let history_lock = lock_or_recover(&state.history);
             if let Some(item) = history_lock.iter().find(|item| item.id == id) {
                 if !favorites_lock.iter().any(|f| f.id == id) {
                     favorites_lock.push(item.clone());
@@ -375,7 +375,7 @@ pub fn load_favorites_from_db(
     let loaded_favorites = datastore.load_favorites()?;
 
     // 更新内存中的收藏列表（内存中保留完整内容，供懒加载使用）
-    let mut favorites_lock = state.favorites.lock().unwrap();
+    let mut favorites_lock = lock_or_recover(&state.favorites);
     *favorites_lock = loaded_favorites.clone();
 
     info!("Loaded {} favorites from database", loaded_favorites.len());
@@ -406,7 +406,7 @@ pub async fn paste_to_active_window(
     let hash = ClipboardManager::generate_hash(content.as_bytes());
     {
         // 这里假设 LAST_HASH 是个全局 Mutex
-        let mut last_hash_lock = LAST_HASH.lock().unwrap();
+        let mut last_hash_lock = lock_or_recover(&LAST_HASH);
         *last_hash_lock = hash.clone();
     }
 
@@ -447,7 +447,7 @@ pub async fn paste_to_active_window(
         let docx_bytes = read_file_to_bytes(&docx_path)?;
         let docx_hash = ClipboardManager::generate_hash(&docx_bytes);
         {
-            let mut last_hash_lock = LAST_HASH.lock().unwrap();
+            let mut last_hash_lock = lock_or_recover(&LAST_HASH);
             *last_hash_lock = docx_hash;
         }
 
@@ -644,7 +644,7 @@ pub async fn paste_clipboard_item_at_index(
 ) -> Result<(), String> {
     // 1. 取历史中的目标项（克隆出来，避免后续锁内长时间操作）
     let item = {
-        let history_lock = state.history.lock().unwrap();
+        let history_lock = lock_or_recover(&state.history);
         if history_lock.is_empty() {
             return Err("剪贴板历史为空".to_string());
         }
@@ -702,12 +702,12 @@ pub async fn paste_clipboard_item_rotating(
 ) -> Result<usize, String> {
     // 计算下一项索引
     let next_index = {
-        let history_lock = state.history.lock().unwrap();
+        let history_lock = lock_or_recover(&state.history);
         let len = history_lock.len();
         if len == 0 {
             return Err("剪贴板历史为空".to_string());
         }
-        let mut last_lock = ROTATING_PASTE_LAST_INDEX.lock().unwrap();
+        let mut last_lock = lock_or_recover(&ROTATING_PASTE_LAST_INDEX);
         let next = if *last_lock == usize::MAX {
             0
         } else {
@@ -727,7 +727,7 @@ pub async fn paste_clipboard_item_rotating(
 /// 一键清理轮转粘贴的进度（下次按下从第 1 项开始）。
 #[tauri::command]
 pub fn reset_rotating_paste() -> Result<(), String> {
-    let mut last_lock = ROTATING_PASTE_LAST_INDEX.lock().unwrap();
+    let mut last_lock = lock_or_recover(&ROTATING_PASTE_LAST_INDEX);
     *last_lock = usize::MAX;
     info!("轮转粘贴进度已重置");
     Ok(())
@@ -767,7 +767,7 @@ pub async fn setup_quick_paste_shortcuts(
         let action = format!("quick_paste_{}", i);
         // 通过 SHORTCUT_ACTION_MAP 反查快捷键字符串
         let shortcut_to_remove: Option<String> = {
-            let map = SHORTCUT_ACTION_MAP.lock().unwrap();
+            let map = lock_or_recover(&SHORTCUT_ACTION_MAP);
             map.iter()
                 .find_map(|(k, v)| if v == &action { Some(k.clone()) } else { None })
         };
@@ -775,11 +775,11 @@ pub async fn setup_quick_paste_shortcuts(
             if let Ok(parsed) = sc.parse::<Shortcut>() {
                 let _ = global_shortcut.unregister(parsed);
             }
-            SHORTCUT_ACTION_MAP.lock().unwrap().remove(&sc);
+            lock_or_recover(&SHORTCUT_ACTION_MAP).remove(&sc);
         }
     }
     {
-        let map = SHORTCUT_ACTION_MAP.lock().unwrap();
+        let map = lock_or_recover(&SHORTCUT_ACTION_MAP);
         if let Some(sc) = map
             .iter()
             .find_map(|(k, v)| if v == "rotating_paste" { Some(k.clone()) } else { None })
@@ -788,7 +788,7 @@ pub async fn setup_quick_paste_shortcuts(
             if let Ok(parsed) = sc.parse::<Shortcut>() {
                 let _ = global_shortcut.unregister(parsed);
             }
-            SHORTCUT_ACTION_MAP.lock().unwrap().remove(&sc);
+            lock_or_recover(&SHORTCUT_ACTION_MAP).remove(&sc);
         }
     }
 
@@ -872,7 +872,7 @@ async fn paste_to_active_window_inner(
     // 计算 hash 并写入 LAST_HASH（与原 paste_to_active_window 一致）
     let hash = ClipboardManager::generate_hash(content.as_bytes());
     {
-        let mut last_hash_lock = LAST_HASH.lock().unwrap();
+        let mut last_hash_lock = lock_or_recover(&LAST_HASH);
         *last_hash_lock = hash;
     }
 
@@ -984,7 +984,7 @@ fn html_escape(s: &str) -> String {
 #[tauri::command]
 pub async fn update_global_last_hash(hash: String) -> Result<(), String> {
     // 更新全局的LAST_HASH变量
-    let mut last_hash_lock = LAST_HASH.lock().unwrap();
+    let mut last_hash_lock = lock_or_recover(&LAST_HASH);
     *last_hash_lock = hash;
     info!("Updated global last hash");
     Ok(())
@@ -995,7 +995,7 @@ pub fn apply_no_activate_style() {
     #[cfg(target_os = "windows")]
     {
         // 从全局APP_HANDLE获取主窗口
-        let app_handle_lock = APP_HANDLE.lock().unwrap();
+        let app_handle_lock = lock_or_recover(&APP_HANDLE);
         if let Some(app_handle) = &*app_handle_lock {
             if let Some(window) = app_handle.get_webview_window("main") {
                 if let Ok(hwnd) = window.hwnd() {
@@ -1036,7 +1036,7 @@ pub fn apply_no_activate_style() {
 pub fn ensure_window_topmost() {
     #[cfg(target_os = "windows")]
     {
-        let app_handle_lock = APP_HANDLE.lock().unwrap();
+        let app_handle_lock = lock_or_recover(&APP_HANDLE);
         if let Some(app_handle) = &*app_handle_lock {
             if let Some(window) = app_handle.get_webview_window("main") {
                 if let Ok(hwnd) = window.hwnd() {
@@ -1085,7 +1085,7 @@ pub fn ensure_window_topmost() {
 pub fn set_window_focusable_raw(focusable: bool) {
     #[cfg(target_os = "windows")]
     {
-        let app_handle_lock = APP_HANDLE.lock().unwrap();
+        let app_handle_lock = lock_or_recover(&APP_HANDLE);
         if let Some(app_handle) = &*app_handle_lock {
             if let Some(window) = app_handle.get_webview_window("main") {
                 if let Ok(hwnd) = window.hwnd() {
@@ -1141,7 +1141,7 @@ pub async fn update_window_pin_state(
     //
     // 这里只更新全局状态供 mouse_listener.rs 等模块读取。
     {
-        let mut pin_state_lock = WINDOW_PIN_STATE.lock().unwrap();
+        let mut pin_state_lock = lock_or_recover(&WINDOW_PIN_STATE);
         *pin_state_lock = is_pinned;
     }
 
@@ -1171,7 +1171,7 @@ pub async fn copy_to_clipboard_no_history(content: String, format: String) -> Re
     // 计算内容的hash
     let hash = ClipboardManager::generate_hash(content.as_bytes());
     // 更新全局的LAST_HASH变量
-    let mut last_hash_lock = LAST_HASH.lock().unwrap();
+    let mut last_hash_lock = lock_or_recover(&LAST_HASH);
     *last_hash_lock = hash.clone();
 
     // 对于 markdown 格式，需要将原始文本转换为 HTML
@@ -1532,7 +1532,7 @@ pub async fn save_clipboard_history(
 ) -> Result<(), String> {
     // 获取历史数据（在锁外获取，避免长时间持有锁）
     let history_data = {
-        let history_lock = state.history.lock().unwrap();
+        let history_lock = lock_or_recover(&state.history);
         history_lock.clone()
     };
     let history_len = history_data.len();
@@ -1570,7 +1570,7 @@ pub async fn load_clipboard_history_command(
 
     // 更新内存中的历史记录
     {
-        let mut history_lock = state.history.lock().unwrap();
+        let mut history_lock = lock_or_recover(&state.history);
         *history_lock = loaded_history.clone();
     }
 
@@ -1661,7 +1661,7 @@ pub fn register_shortcut_internal(
 
     // 存储快捷键到动作的映射
     {
-        let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
+        let mut map = lock_or_recover(&SHORTCUT_ACTION_MAP);
         map.insert(shortcut.to_string(), action.to_string());
     }
 
@@ -1696,7 +1696,7 @@ pub async fn unregister_global_shortcut(
             .map_err(|e| format!("Failed to unregister shortcut: {:?}", e))?;
 
         // 从映射表中移除
-        let mut map = SHORTCUT_ACTION_MAP.lock().unwrap();
+        let mut map = lock_or_recover(&SHORTCUT_ACTION_MAP);
         map.remove(&shortcut);
     }
 
@@ -2194,7 +2194,7 @@ pub async fn copy_markdown_as_docx(
     let docx_bytes = read_file_to_bytes(&docx_path)?;
     let hash = ClipboardManager::generate_hash(&docx_bytes);
     {
-        let mut last_hash_lock = LAST_HASH.lock().unwrap();
+        let mut last_hash_lock = lock_or_recover(&LAST_HASH);
         *last_hash_lock = hash.clone();
     }
 
@@ -2240,7 +2240,7 @@ pub fn update_history_cleanup(
     let limit = cleanup.as_ref().and_then(count_cleanup_limit);
 
     {
-        let mut limit_lock = state.history_count_limit.lock().unwrap();
+        let mut limit_lock = lock_or_recover(&state.history_count_limit);
         *limit_lock = limit;
     }
     info!("History count limit updated to: {:?}", limit);
@@ -2255,7 +2255,7 @@ pub fn update_history_cleanup(
             let items = state.datastore.load_clipboard_history()?;
             let list_items: Vec<ClipboardItem> = items.iter().map(|it| it.to_list_item()).collect();
             {
-                let mut history_lock = state.history.lock().unwrap();
+                let mut history_lock = lock_or_recover(&state.history);
                 *history_lock = items;
             }
             state.datastore.reset_last_saved_history();
@@ -2301,11 +2301,11 @@ pub fn update_preview_max_chars(
     let items = state.datastore.load_clipboard_history()?;
     let list_items: Vec<ClipboardItem> = items.iter().map(|it| it.to_list_item()).collect();
     {
-        let mut history_lock = state.history.lock().unwrap();
+        let mut history_lock = lock_or_recover(&state.history);
         *history_lock = items;
     }
     if let Ok(favorites) = state.datastore.load_favorites() {
-        let mut favorites_lock = state.favorites.lock().unwrap();
+        let mut favorites_lock = lock_or_recover(&state.favorites);
         *favorites_lock = favorites;
     }
 
@@ -2346,7 +2346,7 @@ pub async fn clean_history_by_count(
         let history = tokio::task::spawn_blocking(move || datastore.load_clipboard_history())
             .await
             .map_err(|e| format!("Task join error: {}", e))??;
-        let mut history_lock = state.history.lock().unwrap();
+        let mut history_lock = lock_or_recover(&state.history);
         *history_lock = history;
         state.datastore.reset_last_saved_history();
     }
@@ -2382,7 +2382,7 @@ pub async fn clean_history_by_age(
         let history = tokio::task::spawn_blocking(move || datastore.load_clipboard_history())
             .await
             .map_err(|e| format!("Task join error: {}", e))??;
-        let mut history_lock = state.history.lock().unwrap();
+        let mut history_lock = lock_or_recover(&state.history);
         *history_lock = history;
         state.datastore.reset_last_saved_history();
     }
@@ -2412,7 +2412,7 @@ pub fn run_startup_history_cleanup(
     let count_limit = count_cleanup_limit(cleanup_obj);
     let count_enabled = count_limit.is_some();
     {
-        let mut limit_lock = state.history_count_limit.lock().unwrap();
+        let mut limit_lock = lock_or_recover(&state.history_count_limit);
         *limit_lock = count_limit;
         info!("启动：历史按条数上限设为 {:?}", count_limit);
     }
@@ -2463,7 +2463,7 @@ pub fn run_startup_history_cleanup(
     // 同步内存历史到最新数据库状态
     if count_enabled || age_enabled {
         if let Ok(history) = state.datastore.load_clipboard_history() {
-            let mut history_lock = state.history.lock().unwrap();
+            let mut history_lock = lock_or_recover(&state.history);
             *history_lock = history;
         }
         state.datastore.reset_last_saved_history();
