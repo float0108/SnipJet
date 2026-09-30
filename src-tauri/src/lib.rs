@@ -129,6 +129,20 @@ where
     }
 
     tauri::Builder::default()
+        // 单实例插件必须注册在其他插件之前：插件按注册顺序初始化，
+        // 第二个实例必须在其余 setup 跑起来之前就被拦下。
+        // 命中已有实例时，第二个实例会把参数转发过去并立即退出（走不到 Builder::run），
+        // 因此不会重复启动剪贴板监听、也不会抢同一个全局快捷键。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // 剪贴板工具被再次启动时，用户预期是「把面板叫出来」而不是毫无反应，
+            // 所以这里显示并置焦已有窗口，行为与托盘菜单的「显示界面」保持一致。
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                info!("Second instance detected; brought existing window to front");
+            }
+        }))
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log_level)
