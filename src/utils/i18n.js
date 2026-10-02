@@ -378,6 +378,7 @@ const translations = {
         rotatingPaste: "候选粘贴快捷键",
         rotatingPasteDesc: "从第 1 项开始依次轮转粘贴，留空可禁用",
         toastOccupied: "该快捷键已被占用",
+        toastNeedModifier: "请同时按住修饰键（Ctrl / Alt / Shift / Win）再按目标键",
       },
       clipboard: {
         autoCopy: "自动监听",
@@ -799,6 +800,7 @@ const translations = {
         rotatingPaste: "Rotating Paste Shortcut",
         rotatingPasteDesc: "Paste history items in turn starting from the first; leave empty to disable",
         toastOccupied: "This shortcut is already in use",
+        toastNeedModifier: "Hold a modifier key (Ctrl / Alt / Shift / Win) together with the target key",
       },
       clipboard: {
         autoCopy: "Auto Monitor",

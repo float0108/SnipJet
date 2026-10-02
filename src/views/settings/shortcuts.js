@@ -111,11 +111,13 @@ export function initShortcuts() {
     if (e.ctrlKey) modifiers.push("Ctrl");
     if (e.altKey) modifiers.push("Alt");
     if (e.shiftKey) modifiers.push("Shift");
-    if (e.metaKey) modifiers.push("Command"); // 兼容 Mac
+    // WebView2 报告的是 metaKey；应用内统一用 "Win" 展示与落盘，
+    // 后端 parse_shortcut 会在解析前归一化成解析器认识的 Super
+    if (e.metaKey) modifiers.push("Win");
 
     // 检查按键是否为功能键（非修饰键）
     const key = e.key;
-    const isModifier = ["Control", "Alt", "Shift", "Meta"].includes(key);
+    const isModifier = ["Control", "Alt", "Shift", "Meta", "OS"].includes(key);
 
     // 只有按下非修饰键时才触发保存
     if (!isModifier) {
@@ -128,19 +130,34 @@ export function initShortcuts() {
       if (key === "Tab") keyName = "Tab";
       if (key.startsWith("Arrow")) keyName = key.replace("Arrow", "");
 
+      // 无修饰键会注册成全局热键，此后该键在所有程序里都被 SnipJet 捕获；
+      // 功能键语义独立，允许单独使用
+      const isFunctionKey = /^F\d{1,2}$/.test(key);
+      if (modifiers.length === 0 && !isFunctionKey) {
+        currentInput.blur();
+        import("./ui.js").then(({ showNotification }) => {
+          showNotification(t("settings.shortcuts.toastNeedModifier"));
+        });
+        return;
+      }
+
       const finalShortcut = [...modifiers, keyName].join("+");
 
       // 防重检查
-      const {settings} = await getHandlers();
+      const {settings, convertShortcutFormat} = await getHandlers();
 
       // 确保 shortcuts 对象存在
       if (!settings.shortcuts) settings.shortcuts = {};
 
+      // 按归一化形式比较：Win+V 与 Super+V 是同一个热键，
+      // 直接比原始字符串会让后者绕过防重、把前者的注册顶掉
+      const normalizedTarget = convertShortcutFormat(finalShortcut);
       let isDuplicate = false;
       for (const [func, shortcut] of Object.entries(settings.shortcuts)) {
         if (
           func !== currentInput.id.replace(/-/g, "_") &&
-          shortcut === finalShortcut
+          shortcut &&
+          convertShortcutFormat(shortcut) === normalizedTarget
         ) {
           isDuplicate = true;
           break;

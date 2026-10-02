@@ -19,8 +19,18 @@ let originalSettings = {};
 // 最近一次读取的自启动信息（用于语言切换时按新语言重写徽标与路径文案）
 let autostartInfo = null;
 
+// MCP 端口范围与默认值：与 settings.html 的 min/max 及后端 lib.rs 的
+// unwrap_or(3000) 保持一致，避免前端落库与服务端默认值出现两套口径。
+const MCP_PORT_MIN = 1024;
+const MCP_PORT_MAX = 65535;
+const DEFAULT_MCP_PORT = 3000;
+
 // 转换快捷键格式（Win -> Super）
-function convertShortcutFormat(shortcut) {
+//
+// 存盘/发给后端的仍是 "Win+X" 原文（后端 parse_shortcut 统一归一化），
+// 这份转换只用于「比较是否变化」和快捷键防重：避免 Win+X 与 Super+X
+// 被当成两个不同的键放行。
+export function convertShortcutFormat(shortcut) {
   if (!shortcut) return "";
   return shortcut.trim().replace(/Win/i, "Super");
 }
@@ -1048,7 +1058,14 @@ export function bindSettingsListeners() {
   if (mcpPort) {
     mcpPort.addEventListener("change", function () {
       if (!settings.mcp) settings.mcp = {};
-      settings.mcp.port = parseInt(this.value);
+      // 不能直接 parseInt(this.value)：清空输入得到 NaN，
+      // JSON.stringify 会把它写成 "port": null，后端 u16 参数反序列化失败；
+      // 超范围值也会被后端 as u64 as u16 回绕。两者都在落库前夹紧，并回写输入框。
+      const parsed = parseInt(this.value, 10);
+      const port = Number.isNaN(parsed) ? DEFAULT_MCP_PORT : parsed;
+      const clamped = Math.min(MCP_PORT_MAX, Math.max(MCP_PORT_MIN, port));
+      if (this.value !== String(clamped)) this.value = String(clamped);
+      settings.mcp.port = clamped;
     });
   }
 }
@@ -1071,6 +1088,8 @@ export async function restoreOriginalSettings() {
     settings.interface?.font_family_secondary
   );
   applyFontSize(settings.interface?.font_size);
+  // 卡片动效同样是「改一下就实时生效」，漏掉它会让 UI 显示已恢复、实际仍停在被取消的档位
+  applyAnimationSpeed(settings.interface?.animation_speed);
   updateClipboardSettings();
   updateStorageSettings();
   await updateAdvancedSettings();
@@ -1412,6 +1431,8 @@ function setupFontPicker(picker) {
       case "Escape":
         if (isOpen) {
           event.preventDefault();
+          // 必须阻断冒泡：ui.js 的窗口级 Esc 会关掉整个设置窗口
+          event.stopPropagation();
           closeFontPicker();
         }
         break;

@@ -772,7 +772,7 @@ pub async fn setup_quick_paste_shortcuts(
                 .find_map(|(k, v)| if v == &action { Some(k.clone()) } else { None })
         };
         if let Some(sc) = shortcut_to_remove {
-            if let Ok(parsed) = sc.parse::<Shortcut>() {
+            if let Ok(parsed) = parse_shortcut(&sc) {
                 let _ = global_shortcut.unregister(parsed);
             }
             lock_or_recover(&SHORTCUT_ACTION_MAP).remove(&sc);
@@ -785,7 +785,7 @@ pub async fn setup_quick_paste_shortcuts(
             .find_map(|(k, v)| if v == "rotating_paste" { Some(k.clone()) } else { None })
         {
             drop(map);
-            if let Ok(parsed) = sc.parse::<Shortcut>() {
+            if let Ok(parsed) = parse_shortcut(&sc) {
                 let _ = global_shortcut.unregister(parsed);
             }
             lock_or_recover(&SHORTCUT_ACTION_MAP).remove(&sc);
@@ -806,9 +806,7 @@ pub async fn setup_quick_paste_shortcuts(
         let app_handle_for_cb = app_handle.clone();
         let action_for_cb = action.clone();
 
-        let shortcut_parsed: Shortcut = shortcut.parse().map_err(|e| {
-            format!("Failed to parse shortcut '{}': {:?}", shortcut, e)
-        })?;
+        let shortcut_parsed = parse_shortcut(shortcut)?;
 
         // 如果已经在 SHORTCUT_ACTION_MAP 中（即旧的 toggle 等快捷键），
         // 跳过避免误删；但 quick_paste 相关的我们已经在上面注销了。
@@ -1619,6 +1617,35 @@ pub async fn load_settings_command(
 
 // --- 全局快捷键命令 ---
 
+/// 把快捷键字符串里的 "Win" 修饰符改写成解析器认识的 "Super"。
+///
+/// global-hotkey 的解析器只认 COMMAND / CMD / SUPER 三种 SUPER 写法，
+/// "Win+V" 会被当成主键去查 parse_key 而失败。前端录制器产出的是 "Win+X"，
+/// 且设置文件里可能已经存有这类值（含启动时 lib.rs 直接读盘注册那条路径），
+/// 因此统一在解析前归一化，而不是指望每个调用方各自记得转换。
+fn normalize_shortcut_str(shortcut: &str) -> String {
+    shortcut
+        .split('+')
+        .map(|token| {
+            if token.trim().eq_ignore_ascii_case("win") {
+                "Super".to_string()
+            } else {
+                token.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// 解析快捷键字符串（先归一化 Win 写法）。
+///
+/// 所有 Shortcut 解析都必须走这里，避免新增调用点时漏掉归一化。
+fn parse_shortcut(shortcut: &str) -> Result<Shortcut, String> {
+    normalize_shortcut_str(shortcut)
+        .parse::<Shortcut>()
+        .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))
+}
+
 /// 内部辅助：在 app_handle 上注册单个全局快捷键，写入 SHORTCUT_ACTION_MAP。
 /// 由 `register_global_shortcut` 命令和应用启动时的 setup() 共用。
 pub fn register_shortcut_internal(
@@ -1631,9 +1658,8 @@ pub fn register_shortcut_internal(
 
     info!("[shortcut] register_shortcut_internal: shortcut='{}', action='{}'", shortcut, action);
 
-    // 解析快捷键字符串
-    let shortcut_parsed: Shortcut = shortcut.parse()
-        .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))?;
+    // 解析快捷键字符串（parse_shortcut 内部已做 Win → Super 归一化）
+    let shortcut_parsed = parse_shortcut(shortcut)?;
 
     // 获取全局快捷键管理器
     let global_shortcut = app_handle.global_shortcut();
@@ -1668,6 +1694,37 @@ pub fn register_shortcut_internal(
     Ok(())
 }
 
+#[cfg(test)]
+mod shortcut_tests {
+    use super::*;
+
+    /// "Win+V" 必须能解析，且与 "Super+V" 解析成同一个热键。
+    /// 这条断言是本次修复的回归护栏：解析器一旦不再接受 Win 写法，
+    /// 前端录制出来的快捷键会静默注册失败。
+    #[test]
+    fn test_win_shortcut_parses_like_super() {
+        let from_win = parse_shortcut("Win+V").expect("Win+V 应可解析");
+        let from_super = parse_shortcut("Super+V").expect("Super+V 应可解析");
+        assert_eq!(from_win, from_super);
+    }
+
+    #[test]
+    fn test_normalize_keeps_other_tokens_untouched() {
+        assert_eq!(normalize_shortcut_str("Ctrl+Shift+A"), "Ctrl+Shift+A");
+        assert_eq!(normalize_shortcut_str("win+F5"), "Super+F5");
+        // 主键原样保留，不能被误当修饰符改写
+        assert_eq!(normalize_shortcut_str("Win+Win+A"), "Super+Super+A");
+        assert_eq!(normalize_shortcut_str(""), "");
+    }
+
+    /// 非法的快捷键仍要报错，不能被归一化「洗白」
+    #[test]
+    fn test_invalid_shortcut_still_errors() {
+        assert!(parse_shortcut("Win+").is_err());
+        assert!(parse_shortcut("NotAKey").is_err());
+    }
+}
+
 /// 注册全局快捷键
 #[tauri::command]
 pub async fn register_global_shortcut(
@@ -1686,8 +1743,7 @@ pub async fn unregister_global_shortcut(
 ) -> Result<(), String> {
     use crate::common::globals::SHORTCUT_ACTION_MAP;
 
-    let shortcut_parsed: Shortcut = shortcut.parse()
-        .map_err(|e| format!("Failed to parse shortcut '{}': {:?}", shortcut, e))?;
+    let shortcut_parsed = parse_shortcut(&shortcut)?;
 
     let global_shortcut = app_handle.global_shortcut();
 

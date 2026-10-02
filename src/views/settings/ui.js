@@ -187,9 +187,17 @@ export function setupEscKey() {
     if (event.key === "Escape") {
       // 说明弹窗打开时，Esc 由弹窗自己处理（只关闭弹窗，不取消设置）
       if (isHelpModalOpen()) return;
+      // 字体下拉、快捷键录制中，Esc 是它们的「关闭」语义，不应连带取消设置
+      if (isOverlayLayerOpen()) return;
       await cancelAndClose();
     }
   });
+}
+
+// 是否有自行处理 Esc 的浮层处于打开状态（字体下拉已在自身处理器里阻断冒泡，
+// 这里作为兜底；快捷键录制只 preventDefault，事件仍会冒泡上来）
+function isOverlayLayerOpen() {
+  return !!document.querySelector(".font-picker.open, .shortcut-input.recording");
 }
 
 // 说明弹窗是否处于打开状态
