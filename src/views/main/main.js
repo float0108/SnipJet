@@ -371,15 +371,16 @@ function animateCollapse(el, durationMs, onDone) {
       }
 
       // 2) 同步更新内存数据（不涉及后端，纯数组操作）
+      //    收藏视图里的「删除」等同「取消收藏」：后端两者都是 DELETE FROM
+      //    favorites，历史表那条照旧保留，所以这里只清收藏态
       if (fromFavoritesView) {
-        const favIndex = allFavorites.findIndex(item => item.id === id);
-        if (favIndex !== -1) {
-          allFavorites.splice(favIndex, 1);
+        unfavoriteInMemory(id);
+      } else {
+        // 删历史只动历史表，收藏存的是完整副本、不依赖历史行；后端同样不碰收藏表
+        const historyIndex = allClipboardItems.findIndex(item => item.id === id);
+        if (historyIndex !== -1) {
+          allClipboardItems.splice(historyIndex, 1);
         }
-      }
-      const historyIndex = allClipboardItems.findIndex(item => item.id === id);
-      if (historyIndex !== -1) {
-        allClipboardItems.splice(historyIndex, 1);
       }
       // 搜索命中集合同步剔除，保证后续检索结果一致
       if (searchMatchIds) {
@@ -424,6 +425,63 @@ function animateCollapse(el, durationMs, onDone) {
     finishRemove();
   };
 
+  // 内存里的「取消收藏」：移出收藏集合并把历史项收藏态置否（点爱心与收藏视图删除共用）
+  function unfavoriteInMemory(id) {
+    const favIndex = allFavorites.findIndex(item => item.id === id);
+    if (favIndex !== -1) {
+      allFavorites.splice(favIndex, 1);
+    }
+    const historyIndex = allClipboardItems.findIndex(item => item.id === id);
+    if (historyIndex !== -1) {
+      allClipboardItems[historyIndex].is_favorite = false;
+    }
+  }
+
+  // 内存里的「加入收藏」。条目可能已不在历史窗口内（按条数清理过），此时本地
+  // 无内容可复用、toggle_favorite 也只查 state.history，只能回到收藏表重载；
+  // 塞只有 id 的残缺项会让收藏视图渲染出空白卡片。
+  // @returns {Promise<boolean>} 是否已由 reloadFavorites 做过整表重绘
+  async function favoriteInMemory(id) {
+    if (allFavorites.some(item => item.id === id)) return false;
+    const historyIndex = allClipboardItems.findIndex(item => item.id === id);
+    if (historyIndex === -1) {
+      // 收藏表是这条数据唯一可靠的来源
+      return reloadFavorites();
+    }
+    allFavorites.push({ ...allClipboardItems[historyIndex], is_favorite: true });
+    return false;
+  }
+
+  // 从收藏表重载并刷新收藏视图
+  // @returns {Promise<boolean>} 是否已经顺带做了整表重绘（调用方据此跳过就地更新）
+  async function reloadFavorites() {
+    try {
+      const favorites = await invoke("load_favorites_from_db");
+      updateFavorites(favorites);
+      await applyFilters(
+        document.getElementById("clipboard-history"),
+        document.getElementById("status")
+      );
+      return true;
+    } catch (e) {
+      console.error("[reloadFavorites] 重载收藏失败:", e);
+      return false;
+    }
+  }
+
+  // 单张卡片的收藏态渲染（点爱心与收藏视图删除共用，避免图标常量出现两份）
+  function applyFavoriteCardState(element, newState) {
+    const favoriteBtn = element.querySelector(".btn-favorite");
+    if (favoriteBtn) {
+      favoriteBtn.classList.toggle("active", newState);
+      favoriteBtn.title = newState ? t("action.unfavorite") : t("action.favorite");
+      favoriteBtn.innerHTML = newState
+        ? `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`;
+    }
+    element.classList.toggle("is-favorite", newState);
+  }
+
   // 切换收藏状态
   window.toggleFavorite = async function (id) {
     console.log("[toggleFavorite] 切换收藏状态:", id);
@@ -434,32 +492,17 @@ function animateCollapse(el, durationMs, onDone) {
         const newState = await invoke("toggle_favorite", { id });
         console.log("[toggleFavorite] 后端返回新状态:", newState);
 
-        // 更新 allClipboardItems 中的对应项目
-        const itemIndex = allClipboardItems.findIndex(item => item.id === id);
-        if (itemIndex !== -1) {
-          allClipboardItems[itemIndex].is_favorite = newState;
-          console.log("[toggleFavorite] 已更新 allClipboardItems:", id, "索引:", itemIndex, "新状态:", newState);
-          console.log("[toggleFavorite] 更新后的项目:", allClipboardItems[itemIndex]);
-
-          // 同步更新 allFavorites 数组
-          if (newState) {
-            // 添加收藏：复制到 allFavorites
-            const existingIndex = allFavorites.findIndex(item => item.id === id);
-            if (existingIndex === -1) {
-              allFavorites.push({...allClipboardItems[itemIndex]});
-              console.log("[toggleFavorite] 已添加到 allFavorites");
-            }
-          } else {
-            // 取消收藏：从 allFavorites 移除
-            const favIndex = allFavorites.findIndex(item => item.id === id);
-            if (favIndex !== -1) {
-              allFavorites.splice(favIndex, 1);
-              console.log("[toggleFavorite] 已从 allFavorites 移除");
-            }
+        // 收藏状态在内存里的同步。收藏项可能已不在历史窗口内
+        // （按条数清理过），不能只在 allClipboardItems 找到时才更新。
+        let alreadyRerendered = false;
+        if (newState) {
+          const itemIndex = allClipboardItems.findIndex(item => item.id === id);
+          if (itemIndex !== -1) {
+            allClipboardItems[itemIndex].is_favorite = true;
           }
+          alreadyRerendered = await favoriteInMemory(id);
         } else {
-          console.warn("[toggleFavorite] 未在 allClipboardItems 中找到项目:", id);
-          console.log("[toggleFavorite] 所有项目 ID:", allClipboardItems.map(i => i.id));
+          unfavoriteInMemory(id);
         }
 
         // 收藏数据已实时保存到数据库，无需额外保存历史记录
@@ -467,20 +510,8 @@ function animateCollapse(el, durationMs, onDone) {
         // 更新 UI
         const elementId = `item-${id}`;
         const element = document.getElementById(elementId);
-        if (element) {
-          // 更新收藏按钮状态
-          const favoriteBtn = element.querySelector(".btn-favorite");
-          if (favoriteBtn) {
-            favoriteBtn.classList.toggle("active", newState);
-            favoriteBtn.title = newState ? t('action.unfavorite') : t('action.favorite');
-            // 更新图标
-            favoriteBtn.innerHTML = newState
-              ? `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`
-              : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>`;
-          }
-
-          // 更新卡片收藏状态
-          element.classList.toggle("is-favorite", newState);
+        if (element && !alreadyRerendered) {
+          applyFavoriteCardState(element, newState);
 
           // 收藏切换动效：与粘贴动效颜色相反（标记语义 → 琥珀系）
           // 卡片先重启动画（先移除再回加），由设置决定撤销时长
@@ -796,6 +827,9 @@ async function init() {
     allClipboardItems.forEach(item => {
       item.is_favorite = favoriteIds.has(item.id);
     });
+    // 必须重渲染：上面 loadRealData 里的 applyFilters 跑在收藏数据回来之前，
+    // 当时 is_favorite 恒为 false，不重绘要等到下一次全量状态推送才显示收藏标记
+    applyFilters(container, statusElement);
     console.log("[init] 已同步历史中的收藏状态");
   } catch (e) {
     console.error("[init] 加载收藏数据失败:", e);
@@ -830,14 +864,27 @@ async function init() {
               local && it.id === local.id && it.preview === local.preview
             );
           });
+        // 后端历史查询的 is_favorite 恒为 false（收藏状态存在独立收藏表），
+        // 推送里的值不可信，也不能沿用本地旧值（会把已取消收藏的项锁死成实心），
+        // 一律以 allFavorites 为唯一事实来源推导
+        const favoriteIds = new Set(allFavorites.map(f => f.id));
+        // 收藏态变了就不能算「回声」跳过重绘，否则卡片上的实心爱心会一直留着
+        const favoriteStateChanged = allClipboardItems.some(
+          (local) => favoriteIds.has(local.id) !== (local.is_favorite === true)
+        );
+        incoming.forEach(it => {
+          it.is_favorite = favoriteIds.has(it.id);
+        });
         allClipboardItems = incoming;
         console.log(
           "收到全量状态推送，items count:",
           incoming.length,
           "echo(跳过重渲染):",
-          isEcho
+          isEcho,
+          "收藏态变化:",
+          favoriteStateChanged
         );
-        if (!isEcho) {
+        if (!isEcho || favoriteStateChanged) {
           applyFilters(container, statusElement);
         }
       }
