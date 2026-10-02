@@ -4,6 +4,9 @@ import { getClipboardContent } from "../../services/tauri-api.js";
 // 导航提示会由查看器窗口以 toast 形式展示，属于用户可见文案
 import { t } from "../../utils/i18n.js";
 
+// 当前 reader 正在使用的 transfer-* 键，切换条目时不能删
+let currentReaderKey = null;
+
 /**
  * 处理导航事件
  * @param {Object} payload - 导航事件数据
@@ -66,7 +69,25 @@ async function handleNavigation(payload, container) {
 
       // 使用 localStorage 传递大数据内容，避免 URL 长度限制
       const storageKey = `transfer-${targetId}`;
-      localStorage.setItem(storageKey, content);
+      // 先清掉其他 transfer-* 键：内容可能含敏感信息，不该在阅读器关闭后仍留盘，
+      // 也避免写满配额；当前 reader 正在用的那个键要保留
+      const keepKey = currentReaderKey || storageKey;
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("transfer-") && key !== keepKey) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (e) {
+        console.error("[navigate] 清理内容缓存失败:", e);
+      }
+      try {
+        localStorage.setItem(storageKey, content);
+        currentReaderKey = storageKey;
+      } catch (e) {
+        console.error("[navigate] 写入内容缓存失败:", e);
+      }
 
       // 发送事件给当前reader窗口，通知其刷新内容
       console.log("准备发送刷新事件");

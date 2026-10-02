@@ -102,15 +102,20 @@ export async function createWindow(label, options) {
     ...(savedSize ? {width: savedSize.width, height: savedSize.height} : {}),
   };
 
+  // WebviewWindow 本身不是 promise，创建结果只从 tauri://created / tauri://error
+  // 事件发出；包一层好让失败能抛给调用方，而不是只打条日志
   const webview = new WebviewWindow(label, windowOptions);
 
-  webview.once("tauri://created", () => {
-    console.log("窗口创建成功");
+  return new Promise((resolve, reject) => {
+    webview.once("tauri://created", () => {
+      console.log("窗口创建成功");
+      resolve(webview);
+    });
+    webview.once("tauri://error", (e) => {
+      console.error("创建失败", e);
+      reject(e instanceof Error ? e : new Error(String(e?.payload ?? e)));
+    });
   });
-
-  webview.once("tauri://error", (e) => console.error("创建失败", e));
-
-  return webview;
 }
 
 /**
@@ -126,6 +131,29 @@ export async function closeCurrentWindow() {
   } catch (err) {
     console.error("关闭窗口失败", err);
     window.close(); // 降级方案
+  }
+}
+
+/**
+ * 清理旧的 transfer-* 内容缓存键。
+ *
+ * 这些键存条目全文（含密码等敏感内容），只在「主窗口 → 阅读器」这一次跳转中
+ * 用得到；不清会长期留在 WebView2 的 localStorage 里直到写满配额。
+ *
+ * @param {string|null} keepKey 需要保留的键；传 null 表示全部清理
+ */
+function pruneTransferEntries(keepKey) {
+  try {
+    const stale = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("transfer-") && key !== keepKey) {
+        stale.push(key);
+      }
+    }
+    stale.forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    console.error("[pruneTransferEntries] 清理内容缓存失败:", e);
   }
 }
 
@@ -159,12 +187,27 @@ export async function openReaderWindow(element) {
 
   // 3. 使用 localStorage 传递大数据内容，避免 URL 长度限制
   const storageKey = `transfer-${contentId}`;
-  localStorage.setItem(storageKey, content);
+  // keepKey 必须传完整的 storageKey：pruneTransferEntries 比对的是 key 原值，
+  // 传裸 id 会连本次要写的键一起删掉，多开阅读器时另一个窗口就读不到了
+  pruneTransferEntries(storageKey);
+  try {
+    localStorage.setItem(storageKey, content);
+  } catch (e) {
+    console.error("[openReaderWindow] 写入内容缓存失败:", e);
+    // 配额不足时丢弃全部旧缓存后重试一次
+    try {
+      pruneTransferEntries(null);
+      localStorage.setItem(storageKey, content);
+    } catch (retryError) {
+      console.error("[openReaderWindow] 重试写入内容缓存仍失败:", retryError);
+      return;
+    }
+  }
 
-  // 打印调试信息
+  // 打印调试信息（不打印内容：可能是密码/令牌）
   console.log("获取到的数据:", {
     contentId,
-    content: content ? content.substring(0, 100) + "..." : "",
+    contentLength: content ? content.length : 0,
     format,
     timestamp,
     storageKey: storageKey,

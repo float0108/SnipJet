@@ -3,8 +3,17 @@ let currentContent = "";
 let currentMode = "render"; // 'render' or 'source'
 let refreshEventListener = null;
 
+// 已消费（并从 localStorage 删除）的 transfer-* 键及其内容。
+// transfer-* 读完即删，但 init() 会被 editContent() / refreshContent() 重入调用，
+// 只靠 localStorage 第二次必然读到 null（params.content 从未被主窗口写入），
+// 界面就会被清成"内容不可用"。切换条目带来的是新 cacheKey，不受影响，故只留最近一条。
+let consumedTransferKey = null;
+let consumedTransferContent = null;
+
 // 导入格式化工具
 import { html2text } from "../../utils/formatter.js";
+// 导入 HTML 白名单净化器（剪贴板内容不可信，进 iframe 前必须净化）
+import { sanitizeHtml } from "../../utils/sanitize-html.js";
 // 导入 Tauri v2 API
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
@@ -77,6 +86,7 @@ function buildFrameHtml(content, useUserFont = false) {
         <!DOCTYPE html>
         <html>
         <head>
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src http: https: data:; style-src 'unsafe-inline'; font-src http: https: data:; script-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'" />
           <style>
             * { box-sizing: border-box; }
             html, body { height: 100%; margin: 0; padding: 0; }
@@ -102,7 +112,7 @@ function buildFrameHtml(content, useUserFont = false) {
             ${codeFontRule}
           </style>
         </head>
-        <body>${content}</body>
+        <body>${sanitizeHtml(content)}</body>
         </html>
       `;
 }
@@ -271,7 +281,37 @@ async function init() {
 
   const cacheKey = params.cacheKey;
   // 主窗口写入 localStorage 的是未编码的原始内容（完整内容按需懒加载后直接写入）
-  const realContent = localStorage.getItem(cacheKey) || params.content;
+  // 读取顺序：localStorage → 已消费缓存（init() 重入）→ params.content → 后端回源。
+  // 最后一条兜底必需：多开时另一个阅读器窗口的清理会删掉本键，不回源就误显示"内容不可用"
+  let realContent =
+    localStorage.getItem(cacheKey) ||
+    (cacheKey === consumedTransferKey ? consumedTransferContent : null) ||
+    params.content;
+
+  if (!realContent && params.id) {
+    try {
+      const fetched = await invoke("get_clipboard_content", { id: params.id });
+      if (fetched && fetched.content) {
+        realContent = fetched.content;
+        console.log("[Reader] transfer 键缺失，已回源获取内容:", params.id);
+      }
+    } catch (e) {
+      console.error("[Reader] 回源获取内容失败:", e);
+    }
+  }
+
+  // 内容已进内存，transfer-* 键（含密码等敏感内容）读完即删，删前留一份供重入复用
+  if (cacheKey && cacheKey.startsWith("transfer-")) {
+    if (realContent) {
+      consumedTransferKey = cacheKey;
+      consumedTransferContent = realContent;
+    }
+    try {
+      localStorage.removeItem(cacheKey);
+    } catch (e) {
+      console.error("[Reader] 清理内容缓存失败:", e);
+    }
+  }
 
   if (realContent) {
     // 内容已是原始文本，无需再做 URI 解码
@@ -307,6 +347,10 @@ async function init() {
     if (params.format === "image") {
       // 图片视图由下方动态创建；三个文本类视图保持 CSS 默认的隐藏状态
       viewToggle.classList.add("is-hidden");
+
+      // 清掉上一项遗留的 mode-*：#text-fallback 与 #image-view 都是 height:100%，
+      // 不清会同时显示上一条的文字、把图片挤出可视区
+      switchMode("image");
 
       // 相对路径 (content 存储的是相对路径)
       const relativePath = decodedContent;
@@ -446,13 +490,17 @@ function editContent() {
   const editedContent = prompt(t("reader.editPrompt"), currentContent);
   if (editedContent !== null && editedContent !== currentContent) {
     currentContent = editedContent;
+    // 回写已消费缓存，否则 init() 重入会用编辑前的原文覆盖界面
+    if (consumedTransferKey) consumedTransferContent = editedContent;
     // 更新显示
     init();
     // 显示编辑成功提示
     const btn = document.querySelector(".edit-btn");
-    const originalText = btn.innerHTML;
-    btn.innerHTML = t("reader.saved");
-    setTimeout(() => (btn.innerHTML = originalText), 2000);
+    const originalText = btn ? btn.innerHTML : null;
+    if (btn) {
+      btn.innerHTML = t("reader.saved");
+      setTimeout(() => (btn.innerHTML = originalText), 2000);
+    }
   }
 }
 
@@ -829,6 +877,14 @@ async function initialize() {
 // 监听 ESC 键关闭窗口
 window.addEventListener("keydown", function (event) {
   if (event.key === "Escape") {
+    // 可编辑视图里按 Esc 属于取消输入法组合/关闭原生下拉，直接关窗会丢内容
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest('[contenteditable="true"], input, textarea, select')
+    ) {
+      return;
+    }
     closeWindow();
   }
 });
