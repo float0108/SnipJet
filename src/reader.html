@@ -75,10 +75,12 @@
           <div class="text-content" contenteditable="true"></div>
         </div>
 
+        <!-- allow-same-origin 供父窗口读 contentDocument 统计字数/选区；
+             不加 allow-scripts：剪贴板内容不可信，另配合 sanitize-html.js 与 CSP -->
         <iframe
           id="html-frame"
           class="content-frame"
-          sandbox="allow-same-origin allow-scripts"
+          sandbox="allow-same-origin"
         ></iframe>
 
         <!-- 文本框架组件 - 源码模式 -->

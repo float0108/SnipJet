@@ -68,7 +68,11 @@ function showToast(message, type = 'info') {
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `${icons[type]}<span>${message}</span>`;
+  // 消息里会插入规则键名/分组名（可能来自磁盘规则文件），不能当可信 HTML
+  toast.innerHTML = icons[type] || '';
+  const messageEl = document.createElement('span');
+  messageEl.textContent = message;
+  toast.appendChild(messageEl);
   document.body.appendChild(toast);
 
   requestAnimationFrame(() => toast.classList.add('show'));
@@ -86,21 +90,26 @@ function showConfirm(title, message) {
 
     const overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
+    // 同上：标题与正文走 textContent，不当可信 HTML
     overlay.innerHTML = `
       <div class="dialog-box">
-        <div class="dialog-title">${title}</div>
-        <div class="dialog-message">${message}</div>
+        <div class="dialog-title"></div>
+        <div class="dialog-message"></div>
         <div class="dialog-buttons">
           <button class="dialog-btn dialog-btn-cancel">${t("expander.dialog.cancel")}</button>
           <button class="dialog-btn dialog-btn-confirm">${t("expander.dialog.confirm")}</button>
         </div>
       </div>
     `;
+    overlay.querySelector('.dialog-title').textContent = title;
+    overlay.querySelector('.dialog-message').textContent = message;
     document.body.appendChild(overlay);
 
     requestAnimationFrame(() => overlay.classList.add('show'));
 
     const close = (result) => {
+      // 三条关闭路径都要解绑，否则每开一次对话框就多留一个 keydown 监听
+      document.removeEventListener('keydown', escHandler);
       overlay.classList.remove('show');
       setTimeout(() => overlay.remove(), 200);
       resolve(result);
@@ -111,10 +120,7 @@ function showConfirm(title, message) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
 
     const escHandler = (e) => {
-      if (e.key === 'Escape') {
-        document.removeEventListener('keydown', escHandler);
-        close(false);
-      }
+      if (e.key === 'Escape') close(false);
     };
     document.addEventListener('keydown', escHandler);
   });
@@ -555,14 +561,23 @@ function handleConfirmAdd() {
 }
 
 async function saveRules() {
-  // 顶部空卡片若已填写，一并作为新规则保存
+  // 顶部草稿卡片若已填写，一并作为新规则保存。
+  // 快照用于回滚：校验或保存失败时必须还原，否则草稿被重复 push，
+  // 用户只建了一条规则却收到「重复键」报错，且再也无法保存。
+  const rulesBefore = JSON.parse(JSON.stringify(rules));
   if (draftRule.key.trim() && draftRule.content.trim()) {
     rules.push({ ...draftRule });
   }
 
+  // 回滚保持草稿卡片内容不变，用户改完还能再保存
+  const rollback = () => {
+    rules = rulesBefore;
+  };
+
   const validRules = rules.filter(r => r.key.trim() && r.content.trim());
 
   if (validRules.length !== rules.length) {
+    rollback();
     showToast(t("expander.toast.required"), 'warning');
     return;
   }
@@ -570,6 +585,7 @@ async function saveRules() {
   const keys = validRules.map(r => r.key);
   const duplicates = keys.filter((item, idx) => keys.indexOf(item) !== idx);
   if (duplicates.length > 0) {
+    rollback();
     showToast(t("expander.toast.duplicateKeys").replace("{keys}", duplicates.join(', ')), 'error');
     return;
   }
@@ -582,7 +598,10 @@ async function saveRules() {
       t("expander.prefixConflictDialog.title"),
       t("expander.prefixConflictDialog.message").replace("{keys}", conflictKeys),
     );
-    if (!confirmed) return;
+    if (!confirmed) {
+      rollback();
+      return;
+    }
   }
 
   try {
@@ -593,6 +612,8 @@ async function saveRules() {
     await closeWindow();
   } catch (err) {
     console.error("[expander] 保存规则失败:", err);
+    // 保存失败同样回滚，否则再按一次 Ctrl+S 会多出一条同名规则
+    rollback();
     showToast(t("expander.toast.saveFailed").replace("{error}", err), 'error');
   }
 }
@@ -613,9 +634,14 @@ async function cancelChanges() {
 
 function escapeHtml(text) {
   if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  // 不能用 textContent → innerHTML：它不转义引号，而产物会拼进
+  // value="..." / data-group="..."，含 " 时会提前闭合属性并注入额外属性
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 window.closeWindow = closeWindow;
