@@ -334,6 +334,17 @@ async function unregisterAllQuickPasteShortcuts() {
 const quickPasteUnlisteners = new Map(); // eventName -> unlisten function
 let quickPasteListenersInitialized = false;
 
+// 仅主窗口执行：后端用 app_handle.emit 广播事件，而监听器状态是每个 webview
+// 各有一份的模块级变量，非主窗口再绑一套会让同一次按键执行多次
+function isMainWebview() {
+  try {
+    // 主窗口未在 tauri.conf.json 里显式指定 label，Tauri 默认为 "main"
+    return getCurrentWebviewWindow().label === "main";
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * 注册快速粘贴相关事件监听器（仅在第一次执行时绑定，避免重复触发）。
  *
@@ -342,6 +353,9 @@ let quickPasteListenersInitialized = false;
  * - 重复 listen 会导致每次按键触发 N 次回调。
  */
 async function ensureQuickPasteListeners() {
+  if (!isMainWebview()) {
+    return;
+  }
   if (quickPasteListenersInitialized) {
     return;
   }
@@ -440,8 +454,13 @@ async function setupQuickPasteShortcuts(mode, rotatingShortcut) {
 
 /**
  * 初始化全局快捷键监听
+ *
+ * 只在主窗口执行，理由同 isMainWebview。
  */
 export async function initGlobalShortcuts() {
+  if (!isMainWebview()) {
+    return;
+  }
   try {
     // 1. 获取设置
     const settings = await loadSettings();

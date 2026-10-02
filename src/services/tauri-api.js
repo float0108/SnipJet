@@ -34,10 +34,11 @@ export async function getClipboardHistory(limit = 0, offset = 0) {
     const result = await tauriInvoke("get_clipboard_history", args);
     console.log("[getClipboardHistory] 获取成功，记录数:", result?.length || 0);
     if (result && result.length > 0) {
-      console.log("[getClipboardHistory] 第一条记录示例:", {
+      // 预览文本本身即剪贴板内容（可能是密码），热路径上只打元数据
+      console.log("[getClipboardHistory] 第一条记录元信息:", {
         id: result[0].id,
         format: result[0].format,
-        preview: result[0].preview?.substring(0, 50),
+        contentLength: result[0].preview?.length ?? 0,
         is_favorite: result[0].is_favorite
       });
     }
@@ -55,7 +56,8 @@ export async function getClipboardHistory(limit = 0, offset = 0) {
 export async function testTauriConnection() {
   try {
     console.log("[testTauriConnection] 测试连接...");
-    const result = await tauriInvoke("get_clipboard_history");
+    // 只需确认命令可达：不带 limit 会把整份历史拉一遍，而调用方紧接着还要全量拉一次
+    const result = await tauriInvoke("get_clipboard_history", { limit: 1 });
     console.log("[testTauriConnection] 连接成功，结果类型:", typeof result, Array.isArray(result) ? "是数组" : "不是数组");
     return Array.isArray(result);
   } catch (error) {
@@ -73,6 +75,9 @@ export async function testTauriConnection() {
  */
 const _clipboardContentCache = new Map();
 
+// 缓存存条目全文，需设上限；Map 保持插入序，超限淘汰最旧的
+const CLIPBOARD_CONTENT_CACHE_MAX = 50;
+
 export async function getClipboardContent(id) {
   if (!id) return null;
   if (_clipboardContentCache.has(id)) {
@@ -82,6 +87,10 @@ export async function getClipboardContent(id) {
     const item = await tauriInvoke("get_clipboard_content", { id });
     if (item) {
       _clipboardContentCache.set(id, item);
+      while (_clipboardContentCache.size > CLIPBOARD_CONTENT_CACHE_MAX) {
+        const oldest = _clipboardContentCache.keys().next().value;
+        _clipboardContentCache.delete(oldest);
+      }
     }
     return item;
   } catch (error) {
