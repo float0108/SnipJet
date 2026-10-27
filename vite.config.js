@@ -32,7 +32,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // Not Vite's default 5173: that port is shared with every other Vite
+    // project on the machine. scripts/dev.mjs picks a free port per run and
+    // exports it as SNIPJET_DEV_PORT; this is the fallback for `npm run dev`
+    // on its own, and tauri.conf.json's devUrl points at the same one.
+    port: Number(process.env.SNIPJET_DEV_PORT) || 5180,
     strictPort: true
   }
 });

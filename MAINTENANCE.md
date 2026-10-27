@@ -19,8 +19,12 @@
 npm install
 
 # 启动 Tauri 开发窗口（自动运行 vite + 启动 Rust 后端）
-npm run tauri dev
+npm run tauri:dev
 ```
+
+开发服务器不再固定占用 Vite 默认的 5173：`npm run tauri:dev` 每次启动会从
+5180-5290 中挑一个空闲端口，并同时告知 Vite 和 Tauri，避免与本机上其它
+Vite 项目抢占端口。需要固定端口时设置环境变量 `SNIPJET_DEV_PORT`。
 
 ### 单独构建前端（调试 UI 用）
 
@@ -309,7 +313,7 @@ rules:
 提交代码前请确认：
 
 1. 已安装工具链：Rust 1.77+、Node 18+、Tauri CLI
-2. 在本地执行 `npm run tauri dev` 验证主流程可用
+2. 在本地执行 `npm run tauri:dev` 验证主流程可用
 3. 不要提交构建产物（`dist/`、`src-tauri/target/`）与本地配置
 4. 提交前请运行 `cargo fmt` 和 `cargo clippy`
 
