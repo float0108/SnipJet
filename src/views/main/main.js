@@ -810,30 +810,28 @@ async function init() {
     });
   }
 
-  // 初始加载历史记录
-  await loadRealData(container, statusElement, (history) => {
-    updateAllItems(history);
-    applyFilters(container, statusElement);
-  });
-
-  // 加载收藏数据
+  // 收藏数据必须先于首次渲染拿到：applyFilters 按 is_favorite 决定爱心图标，
+  // 而历史查询返回的 is_favorite 恒为 false，只能靠收藏表推导。放在
+  // loadRealData 之后就得再整表重建一次，长列表下那是 innerHTML 全量重建
+  // + 图片预览重载，白白多花一遍。查询失败也继续渲染，只是都不标收藏。
+  let favoriteIds = new Set();
   try {
     const favorites = await invoke("load_favorites_from_db");
     updateFavorites(favorites);
+    favoriteIds = new Set(favorites.map((f) => f.id));
     console.log("[init] 已加载收藏数据:", favorites.length, "项");
-
-    // 同步历史中的收藏状态
-    const favoriteIds = new Set(favorites.map(f => f.id));
-    allClipboardItems.forEach(item => {
-      item.is_favorite = favoriteIds.has(item.id);
-    });
-    // 必须重渲染：上面 loadRealData 里的 applyFilters 跑在收藏数据回来之前，
-    // 当时 is_favorite 恒为 false，不重绘要等到下一次全量状态推送才显示收藏标记
-    applyFilters(container, statusElement);
-    console.log("[init] 已同步历史中的收藏状态");
   } catch (e) {
     console.error("[init] 加载收藏数据失败:", e);
   }
+
+  // 初始加载历史记录（启动唯一一次整表渲染）
+  await loadRealData(container, statusElement, (history) => {
+    updateAllItems(history);
+    allClipboardItems.forEach((item) => {
+      item.is_favorite = favoriteIds.has(item.id);
+    });
+    applyFilters(container, statusElement);
+  });
 
   // 初始化自定义标题栏按钮事件
   initTitlebarButtons();
