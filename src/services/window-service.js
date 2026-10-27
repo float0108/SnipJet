@@ -199,8 +199,10 @@ export async function openReaderWindow(element) {
       pruneTransferEntries(null);
       localStorage.setItem(storageKey, content);
     } catch (retryError) {
-      console.error("[openReaderWindow] 重试写入内容缓存仍失败:", retryError);
-      return;
+      // 不再就此放弃：URL 里带着 id，阅读器发现 localStorage 取不到时会
+      // 调 get_clipboard_content 回源。直接 return 只会让这次点击毫无反应，
+      // 而回源路径已经覆盖了同样的场景。
+      await error("写入内容缓存仍失败，阅读器将回源获取内容", retryError);
     }
   }
 
