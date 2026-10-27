@@ -194,8 +194,9 @@ export function setupEscKey() {
   });
 }
 
-// 是否有自行处理 Esc 的浮层处于打开状态（字体下拉已在自身处理器里阻断冒泡，
-// 这里作为兜底；快捷键录制只 preventDefault，事件仍会冒泡上来）
+// 是否有自行处理 Esc 的浮层处于打开状态。
+// 字体下拉与快捷键录制现在都在自身处理器里 stopPropagation，事件到不了这里；
+// 保留这个判断作为兜底，免得以后新增浮层时又漏掉一层。
 function isOverlayLayerOpen() {
   return !!document.querySelector(".font-picker.open, .shortcut-input.recording");
 }

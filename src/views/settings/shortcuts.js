@@ -103,6 +103,11 @@ export function initShortcuts() {
 
     // 处理取消录制
     if (e.key === "Escape") {
+      // 必须阻断冒泡：ui.js 在 window 上监听 keydown，冒泡上去会 cancelAndClose
+      // 掉整个设置窗口。不能只靠 ui.js 的 isOverlayLayerOpen() 兜底——那里的
+      // .recording 类是在 blur 处理器的 import().then() 微任务里移除的，而冒泡
+      // 到 window 发生在同一轮同步派发中，时序一旦调整兜底就会失效。
+      e.stopPropagation();
       currentInput.blur();
       return;
     }
